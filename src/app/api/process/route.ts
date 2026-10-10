@@ -5,11 +5,9 @@ import { promisify } from "util";
 import path from "path";
 import { randomUUID } from "crypto";
 import { getServerSession } from "next-auth";
+import { getToken } from "next-auth/jwt";
 import { authOptions } from "@/lib/auth";
 import { deductCredits } from "@/lib/users";
-
-// Allow longer processing time
-export const maxDuration = 60;
 
 const execAsync = promisify(exec);
 
@@ -79,15 +77,21 @@ function getMetadataArgs(profile: MetadataProfile | MetadataProfile[]): string[]
 
 export async function POST(req: NextRequest) {
   try {
-    // Auth check
+    // Auth check — try session first, fall back to JWT
+    let userId: string | undefined;
+
     const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (session?.user) {
+      userId = (session.user as { id?: string }).id;
     }
 
-    const userId = (session.user as { id?: string }).id;
     if (!userId) {
-      return NextResponse.json({ error: "Invalid session" }, { status: 401 });
+      const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET || "uniq-social-dev-secret-change-in-prod" });
+      if (token?.id) userId = token.id as string;
+    }
+
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     // Deduct 1 credit

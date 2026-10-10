@@ -61,6 +61,7 @@ export default function Dashboard() {
   const [videos, setVideos] = useState<VideoFile[]>([]);
   const [metadata, setMetadata] = useState<MetadataProfile[]>(["random"]);
   const [copies, setCopies] = useState(1);
+  const [copiesInput, setCopiesInput] = useState("1");
   const [isProcessing, setIsProcessing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [credits, setCredits] = useState(0);
@@ -543,11 +544,30 @@ export default function Dashboard() {
                     Copies per video
                   </label>
                   <input
-                    type="number"
-                    min="1"
-                    max="20"
-                    value={copies}
-                    onChange={(e) => setCopies(e.target.value === "" ? 1 : Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
+                    type="text"
+                    inputMode="numeric"
+                    value={copiesInput}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/[^0-9]/g, "");
+                      setCopiesInput(raw);
+                      const num = parseInt(raw);
+                      if (!isNaN(num) && num >= 1 && num <= 20) {
+                        setCopies(num);
+                      }
+                    }}
+                    onBlur={() => {
+                      const num = parseInt(copiesInput);
+                      if (isNaN(num) || num < 1) {
+                        setCopies(1);
+                        setCopiesInput("1");
+                      } else if (num > 20) {
+                        setCopies(20);
+                        setCopiesInput("20");
+                      } else {
+                        setCopies(num);
+                        setCopiesInput(String(num));
+                      }
+                    }}
                     onFocus={(e) => e.target.select()}
                     className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50"
                   />
@@ -573,10 +593,12 @@ export default function Dashboard() {
               ) : (
                 <>
                   <Zap className="h-4 w-4" />
-                  Process {pendingCount > 0 ? `${pendingCount} video${pendingCount !== 1 ? "s" : ""}` : "videos"}
+                  {pendingCount > 0
+                    ? `Generate ${pendingCount * copies} video${pendingCount * copies !== 1 ? "s" : ""}`
+                    : "Process videos"}
                   {pendingCount > 0 && (
                     <span className="text-purple-300 text-xs">
-                      ({pendingCount * copies} credits)
+                      ({pendingCount * copies} credit{pendingCount * copies !== 1 ? "s" : ""})
                     </span>
                   )}
                 </>
