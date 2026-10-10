@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { writeFile, unlink, readFile, mkdir } from "fs/promises";
+import { writeFile, unlink, readFile, mkdir, rm } from "fs/promises";
 import { exec } from "child_process";
 import { promisify } from "util";
 import path from "path";
@@ -10,6 +10,9 @@ import { authOptions } from "@/lib/auth";
 import { deductCredits } from "@/lib/users";
 
 const execAsync = promisify(exec);
+
+// Increase exec buffer to 50MB for large video outputs
+const EXEC_OPTIONS = { maxBuffer: 50 * 1024 * 1024 };
 
 type MetadataProfile = "capcut" | "snapchat" | "iphone" | "random";
 
@@ -49,7 +52,6 @@ function rand(min: number, max: number): number {
 }
 
 function getMetadataArgs(profile: MetadataProfile | MetadataProfile[]): string[] {
-  // Support array of profiles — merge metadata from all selected
   const profiles = Array.isArray(profile) ? profile : [profile];
 
   const allFormat: string[] = [];
@@ -75,7 +77,21 @@ function getMetadataArgs(profile: MetadataProfile | MetadataProfile[]): string[]
   return [...allFormat, ...allVideo, ...allAudio];
 }
 
+// Process segments in parallel batches to avoid overwhelming the server
+async function processInBatches<T>(
+  items: T[],
+  fn: (item: T, index: number) => Promise<void>,
+  concurrency: number
+): Promise<void> {
+  for (let i = 0; i < items.length; i += concurrency) {
+    const batch = items.slice(i, i + concurrency);
+    await Promise.all(batch.map((item, batchIdx) => fn(item, i + batchIdx)));
+  }
+}
+
 export async function POST(req: NextRequest) {
+  let tmpDir: string | undefined;
+
   try {
     // Auth check — try session first, fall back to JWT
     let userId: string | undefined;
@@ -124,7 +140,7 @@ export async function POST(req: NextRequest) {
         };
 
     const jobId = randomUUID();
-    const tmpDir = path.join("/tmp", "uniq-processing", jobId);
+    tmpDir = path.join("/tmp", "uniq-processing", jobId);
     await mkdir(tmpDir, { recursive: true });
 
     // Save uploaded file
@@ -134,7 +150,8 @@ export async function POST(req: NextRequest) {
 
     // Get video info
     const { stdout: probeOut } = await execAsync(
-      `ffprobe -v quiet -print_format json -show_format -show_streams "${inputPath}"`
+      `ffprobe -v quiet -print_format json -show_format -show_streams "${inputPath}"`,
+      EXEC_OPTIONS
     );
     const probeData = JSON.parse(probeOut);
     const duration = parseFloat(probeData.format.duration);
@@ -194,64 +211,64 @@ export async function POST(req: NextRequest) {
     if (config.grain) vf += `,noise=alls=${config.grainIntensity}:allf=t`;
     if (config.sharpen) vf += `,unsharp=3:3:${config.sharpenAmount}:3:3:0.0`;
 
-    // Process each segment
-    const segFiles: string[] = [];
-    for (let i = 0; i < segments.length; i++) {
-      const [segStart, segEnd] = segments[i];
-      const segPath = path.join(tmpDir, `seg_${i}.mp4`);
-      const actualStart = startTrim + segStart;
-      const segDur = segEnd - segStart;
+    // === SPEED OPTIMISATION 1: Process segments in PARALLEL (3 at a time) ===
+    const segFiles: string[] = new Array(segments.length);
 
-      await execAsync(
-        `ffmpeg -y -ss ${actualStart} -i "${inputPath}" -t ${segDur} ` +
-          `-vf "${vf}" -c:v libx264 -preset fast -crf 18 ` +
-          `-c:a aac -b:a 128k -pix_fmt yuv420p "${segPath}"`
-      );
-      segFiles.push(segPath);
-    }
+    await processInBatches(
+      segments,
+      async ([segStart, segEnd], i) => {
+        const segPath = path.join(tmpDir!, `seg_${i}.mp4`);
+        const actualStart = startTrim + segStart;
+        const segDur = segEnd - segStart;
 
-    // Concat segments
+        // === SPEED OPTIMISATION 2: Use ultrafast preset instead of fast ===
+        await execAsync(
+          `ffmpeg -y -ss ${actualStart} -i "${inputPath}" -t ${segDur} ` +
+            `-vf "${vf}" -c:v libx264 -preset ultrafast -crf 18 ` +
+            `-c:a aac -b:a 128k -pix_fmt yuv420p -threads 2 "${segPath}"`,
+          EXEC_OPTIONS
+        );
+        segFiles[i] = segPath;
+      },
+      3 // Process 3 segments concurrently
+    );
+
+    // Concat segments (stream copy — instant)
     const concatPath = path.join(tmpDir, "concat.txt");
     const concatContent = segFiles.map((f) => `file '${f}'`).join("\n");
     await writeFile(concatPath, concatContent);
 
-    const tempOutput = path.join(tmpDir, "temp_output.mp4");
-    await execAsync(
-      `ffmpeg -y -f concat -safe 0 -i "${concatPath}" -c copy "${tempOutput}"`
-    );
+    const outputPath = path.join(tmpDir, "output.mp4");
 
-    // Apply metadata — quote each value to handle spaces (e.g. "iPhone 15 Pro")
+    // === SPEED OPTIMISATION 3: Apply metadata with stream copy, NOT re-encode ===
+    // Previously this did a FULL re-encode just to add metadata tags — insane.
+    // Now we concat + apply metadata in a single pass with -c copy.
     const metadataArgs = getMetadataArgs(config.metadata);
     const quotedMetadataArgs = metadataArgs.map((arg) => {
-      // Quote metadata values that contain spaces (the value after the flag)
       if (arg.includes("=") && arg.includes(" ")) {
         const eqIndex = arg.indexOf("=");
         const key = arg.substring(0, eqIndex);
         const value = arg.substring(eqIndex + 1);
         return `${key}="${value}"`;
       }
-      // Quote standalone values with spaces (like handler_name values)
       if (!arg.startsWith("-") && arg.includes(" ")) {
         return `"${arg}"`;
       }
       return arg;
     });
-    const outputPath = path.join(tmpDir, "output.mp4");
+
     await execAsync(
-      `ffmpeg -y -i "${tempOutput}" -c:v libx264 -preset fast -crf 18 ` +
-        `-c:a aac -b:a 128k -pix_fmt yuv420p ` +
-        `${quotedMetadataArgs.join(" ")} -movflags +faststart "${outputPath}"`
+      `ffmpeg -y -f concat -safe 0 -i "${concatPath}" ` +
+        `-c copy ` +
+        `${quotedMetadataArgs.join(" ")} -movflags +faststart "${outputPath}"`,
+      EXEC_OPTIONS
     );
 
     // Read output and return
     const outputBuffer = await readFile(outputPath);
 
-    // Cleanup
-    for (const f of segFiles) await unlink(f).catch(() => {});
-    await unlink(concatPath).catch(() => {});
-    await unlink(tempOutput).catch(() => {});
-    await unlink(inputPath).catch(() => {});
-    await unlink(outputPath).catch(() => {});
+    // Cleanup entire tmp dir
+    rm(tmpDir, { recursive: true, force: true }).catch(() => {});
 
     return new NextResponse(outputBuffer, {
       headers: {
@@ -260,6 +277,9 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error: unknown) {
+    // Cleanup on error
+    if (tmpDir) rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+
     console.error("Processing error:", error);
     const message = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json(

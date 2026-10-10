@@ -131,7 +131,7 @@ export default function Dashboard() {
 
   const clearAll = () => setVideos([]);
 
-  const processVideo = async (vid: VideoFile, copyIndex: number) => {
+  const processVideo = async (vid: VideoFile, copyIndex: number, retries = 2): Promise<{ url: string; filename: string }> => {
     const formData = new FormData();
     formData.append("video", vid.file);
     formData.append(
@@ -142,71 +142,111 @@ export default function Dashboard() {
       })
     );
 
-    const res = await fetch("/api/process", {
-      method: "POST",
-      body: formData,
-    });
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const res = await fetch("/api/process", {
+          method: "POST",
+          body: formData,
+        });
 
-    if (!res.ok) {
-      throw new Error(`Processing failed: ${res.statusText}`);
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          // Don't retry on auth/credit errors
+          if (res.status === 401 || res.status === 402) {
+            throw new Error(errData.error || `Processing failed: ${res.statusText}`);
+          }
+          if (attempt < retries) continue; // retry on server errors
+          throw new Error(errData.error || `Processing failed: ${res.statusText}`);
+        }
+
+        const blob = await res.blob();
+        const ext = vid.name.split(".").pop() || "mp4";
+        const suffix = copies > 1 ? `_v${copyIndex + 1}` : "";
+        const filename = vid.name.replace(`.${ext}`, `_uniq${suffix}.mp4`);
+        const url = URL.createObjectURL(blob);
+        return { url, filename };
+      } catch (err) {
+        if (attempt >= retries) throw err;
+        // Wait briefly before retry
+        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+      }
+    }
+    throw new Error("Processing failed after retries");
+  };
+
+  // Process copies for a single video concurrently (up to 3 at a time)
+  const processVideoCopies = async (vid: VideoFile): Promise<{ url: string; filename: string }[]> => {
+    const COPY_CONCURRENCY = 3;
+    const results: { url: string; filename: string }[] = new Array(copies);
+    let completedCopies = 0;
+
+    // Process copies in batches of COPY_CONCURRENCY
+    for (let batch = 0; batch < copies; batch += COPY_CONCURRENCY) {
+      const batchSize = Math.min(COPY_CONCURRENCY, copies - batch);
+      const batchPromises = Array.from({ length: batchSize }, async (_, i) => {
+        const copyIdx = batch + i;
+        const result = await processVideo(vid, copyIdx);
+        results[copyIdx] = result;
+        completedCopies++;
+        setVideos((prev) =>
+          prev.map((v) =>
+            v.id === vid.id
+              ? { ...v, progress: Math.round((completedCopies / copies) * 90) + 10 }
+              : v
+          )
+        );
+      });
+      await Promise.all(batchPromises);
     }
 
-    const blob = await res.blob();
-    const ext = vid.name.split(".").pop() || "mp4";
-    const suffix = copies > 1 ? `_v${copyIndex + 1}` : "";
-    const filename = vid.name.replace(`.${ext}`, `_uniq${suffix}.mp4`);
-    const url = URL.createObjectURL(blob);
-    return { url, filename };
+    return results;
   };
 
   const processAll = async () => {
     setIsProcessing(true);
     const pendingVids = videos.filter((v) => v.status === "pending");
 
-    for (const vid of pendingVids) {
-      setVideos((prev) =>
-        prev.map((v) =>
-          v.id === vid.id ? { ...v, status: "processing", progress: 10 } : v
-        )
-      );
+    // Process 2 videos concurrently to keep server from being overwhelmed
+    const VIDEO_CONCURRENCY = 2;
 
-      try {
-        const results: { url: string; filename: string }[] = [];
+    for (let batch = 0; batch < pendingVids.length; batch += VIDEO_CONCURRENCY) {
+      const batchVids = pendingVids.slice(batch, batch + VIDEO_CONCURRENCY);
 
-        for (let c = 0; c < copies; c++) {
+      await Promise.all(
+        batchVids.map(async (vid) => {
           setVideos((prev) =>
             prev.map((v) =>
-              v.id === vid.id
-                ? { ...v, progress: Math.round(((c + 0.5) / copies) * 90) + 10 }
-                : v
+              v.id === vid.id ? { ...v, status: "processing", progress: 5 } : v
             )
           );
 
-          const result = await processVideo(vid, c);
-          results.push(result);
-        }
+          try {
+            const results = await processVideoCopies(vid);
 
-        setVideos((prev) =>
-          prev.map((v) =>
-            v.id === vid.id
-              ? {
-                  ...v,
-                  status: "done",
-                  progress: 100,
-                  outputUrl: results[0].url,
-                  outputs: results,
-                } as VideoFile
-              : v
-          )
-        );
-      } catch {
-        setVideos((prev) =>
-          prev.map((v) =>
-            v.id === vid.id ? { ...v, status: "error", progress: 0 } : v
-          )
-        );
-      }
+            setVideos((prev) =>
+              prev.map((v) =>
+                v.id === vid.id
+                  ? {
+                      ...v,
+                      status: "done",
+                      progress: 100,
+                      outputUrl: results[0].url,
+                      outputs: results,
+                    } as VideoFile
+                  : v
+              )
+            );
+          } catch {
+            setVideos((prev) =>
+              prev.map((v) =>
+                v.id === vid.id ? { ...v, status: "error", progress: 0 } : v
+              )
+            );
+          }
+        })
+      );
     }
+
     // Refresh credits
     fetch("/api/credits")
       .then((r) => r.json())
@@ -551,7 +591,7 @@ export default function Dashboard() {
                       const raw = e.target.value.replace(/[^0-9]/g, "");
                       setCopiesInput(raw);
                       const num = parseInt(raw);
-                      if (!isNaN(num) && num >= 1 && num <= 20) {
+                      if (!isNaN(num) && num >= 1 && num <= 100) {
                         setCopies(num);
                       }
                     }}
@@ -560,9 +600,9 @@ export default function Dashboard() {
                       if (isNaN(num) || num < 1) {
                         setCopies(1);
                         setCopiesInput("1");
-                      } else if (num > 20) {
-                        setCopies(20);
-                        setCopiesInput("20");
+                      } else if (num > 100) {
+                        setCopies(100);
+                        setCopiesInput("100");
                       } else {
                         setCopies(num);
                         setCopiesInput(String(num));
