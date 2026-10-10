@@ -547,7 +547,11 @@ export default function Dashboard() {
                     min="1"
                     max="20"
                     value={copies}
-                    onChange={(e) => setCopies(+e.target.value)}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value);
+                      if (!isNaN(val) && val >= 1) setCopies(val);
+                      if (e.target.value === "") setCopies(1);
+                    }}
                     className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50"
                   />
                 </div>
