@@ -4,6 +4,9 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import path from "path";
 import { randomUUID } from "crypto";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { deductCredits } from "@/lib/users";
 
 // Allow longer processing time
 export const maxDuration = 60;
@@ -60,6 +63,23 @@ function getMetadataArgs(profile: MetadataProfile): string[] {
 
 export async function POST(req: NextRequest) {
   try {
+    // Auth check
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const userId = (session.user as { id?: string }).id;
+    if (!userId) {
+      return NextResponse.json({ error: "Invalid session" }, { status: 401 });
+    }
+
+    // Deduct 1 credit
+    const charged = deductCredits(userId, 1);
+    if (!charged) {
+      return NextResponse.json({ error: "Insufficient credits" }, { status: 402 });
+    }
+
     const formData = await req.formData();
     const file = formData.get("video") as File;
     const configStr = formData.get("config") as string;

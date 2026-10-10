@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
+import { useSession, signOut } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import {
   Upload,
   Fingerprint,
@@ -50,12 +52,14 @@ function formatSize(bytes: number) {
 }
 
 export default function Dashboard() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
   const [videos, setVideos] = useState<VideoFile[]>([]);
   const [metadata, setMetadata] = useState<MetadataProfile>("random");
   const [copies, setCopies] = useState(1);
   const [isProcessing, setIsProcessing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const credits = 247; // would come from API
+  const [credits, setCredits] = useState(0);
 
   // Edit parameter ranges
   const [editSettings, setEditSettings] = useState({
@@ -77,6 +81,31 @@ export default function Dashboard() {
     );
     addFiles(files);
   }, []);
+
+  // Redirect if not authenticated
+  useEffect(() => {
+    if (status === "unauthenticated") router.push("/login");
+  }, [status, router]);
+
+  // Fetch credits
+  useEffect(() => {
+    if (status === "authenticated") {
+      fetch("/api/credits")
+        .then((r) => r.json())
+        .then((d) => setCredits(d.credits ?? 0))
+        .catch(() => {});
+    }
+  }, [status]);
+
+  if (status === "loading") {
+    return (
+      <div className="min-h-screen bg-[#010313] flex items-center justify-center">
+        <Loader2 className="h-8 w-8 text-purple-400 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!session) return null;
 
   const addFiles = (files: File[]) => {
     const newVids: VideoFile[] = files.map((f) => ({
@@ -172,6 +201,12 @@ export default function Dashboard() {
         );
       }
     }
+    // Refresh credits
+    fetch("/api/credits")
+      .then((r) => r.json())
+      .then((d) => setCredits(d.credits ?? 0))
+      .catch(() => {});
+
     setIsProcessing(false);
   };
 
@@ -205,7 +240,10 @@ export default function Dashboard() {
             <button className="text-slate-500 hover:text-white transition-colors">
               <Settings className="h-4 w-4" />
             </button>
-            <button className="text-slate-500 hover:text-white transition-colors">
+            <button
+              onClick={() => signOut({ callbackUrl: "/login" })}
+              className="text-slate-500 hover:text-white transition-colors"
+            >
               <LogOut className="h-4 w-4" />
             </button>
           </div>

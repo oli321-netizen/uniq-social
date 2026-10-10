@@ -55,7 +55,7 @@ function Navbar() {
             Log in
           </a>
           <a
-            href="/signup"
+            href="/login"
             className="text-sm font-medium bg-purple-600 hover:bg-purple-700 text-white px-5 py-2 rounded-lg transition-all hover:shadow-lg hover:shadow-purple-500/20"
           >
             Get Started
@@ -90,7 +90,7 @@ function HeroSection() {
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
           <a
-            href="/signup"
+            href="/login"
             className="group flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white font-medium px-8 py-3.5 rounded-xl transition-all hover:shadow-xl hover:shadow-purple-500/20 text-base"
           >
             Start for free
@@ -432,7 +432,7 @@ function CTASection() {
               generate unique video content at scale.
             </p>
             <a
-              href="/signup"
+              href="/login"
               className="group inline-flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white font-medium px-8 py-3.5 rounded-xl transition-all hover:shadow-xl hover:shadow-purple-500/20"
             >
               Get started free
