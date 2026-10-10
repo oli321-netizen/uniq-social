@@ -59,7 +59,7 @@ export default function Dashboard() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [videos, setVideos] = useState<VideoFile[]>([]);
-  const [metadata, setMetadata] = useState<MetadataProfile>("random");
+  const [metadata, setMetadata] = useState<MetadataProfile[]>(["random"]);
   const [copies, setCopies] = useState(1);
   const [isProcessing, setIsProcessing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -137,7 +137,7 @@ export default function Dashboard() {
       "config",
       JSON.stringify({
         ...editSettings,
-        metadata,
+        metadata: metadata.length === 1 ? metadata[0] : metadata,
       })
     );
 
@@ -249,9 +249,9 @@ export default function Dashboard() {
               <Plus className="h-3 w-3" />
               Buy Credits
             </button>
-            <button className="text-slate-500 hover:text-white transition-colors">
+            <a href="/account" className="text-slate-500 hover:text-white transition-colors">
               <Settings className="h-4 w-4" />
-            </button>
+            </a>
             <button
               onClick={() => signOut({ callbackUrl: "/login" })}
               className="text-slate-500 hover:text-white transition-colors"
@@ -392,23 +392,52 @@ export default function Dashboard() {
                 <Sparkles className="h-4 w-4 text-purple-400" />
                 Metadata Profile
               </h3>
+              <p className="text-[11px] text-slate-600 mb-3">Select multiple to stack metadata together</p>
               <div className="space-y-2">
-                {METADATA_PROFILES.map((profile) => (
-                  <button
-                    key={profile.value}
-                    onClick={() => setMetadata(profile.value)}
-                    className={`w-full text-left p-3 rounded-xl border text-sm transition-all ${
-                      metadata === profile.value
-                        ? "border-purple-500/30 bg-purple-500/10 text-white"
-                        : "border-white/5 bg-white/[0.01] text-slate-400 hover:border-white/10"
-                    }`}
-                  >
-                    <span className="font-medium">{profile.label}</span>
-                    <span className="text-xs text-slate-600 block mt-0.5">
-                      {profile.desc}
-                    </span>
-                  </button>
-                ))}
+                {METADATA_PROFILES.map((profile) => {
+                  const isSelected = metadata.includes(profile.value);
+                  const isStackable = STACKABLE_PROFILES.includes(profile.value);
+
+                  return (
+                    <button
+                      key={profile.value}
+                      onClick={() => {
+                        if (profile.value === "random") {
+                          setMetadata(["random"]);
+                        } else {
+                          let next: MetadataProfile[];
+                          if (isSelected) {
+                            next = metadata.filter((m) => m !== profile.value);
+                            if (next.length === 0) next = ["random"];
+                          } else {
+                            next = [...metadata.filter((m) => m !== "random"), profile.value];
+                          }
+                          setMetadata(next);
+                        }
+                      }}
+                      className={`w-full text-left p-3 rounded-xl border text-sm transition-all ${
+                        isSelected
+                          ? "border-purple-500/30 bg-purple-500/10 text-white"
+                          : "border-white/5 bg-white/[0.01] text-slate-400 hover:border-white/10"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium">{profile.label}</span>
+                        {isSelected && isStackable && metadata.length > 1 && (
+                          <span className="text-[10px] font-medium text-purple-400 bg-purple-500/10 px-1.5 py-0.5 rounded">
+                            STACKED
+                          </span>
+                        )}
+                        {isSelected && (
+                          <Check className="h-3.5 w-3.5 text-purple-400" />
+                        )}
+                      </div>
+                      <span className="text-xs text-slate-600 block mt-0.5">
+                        {profile.desc}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
