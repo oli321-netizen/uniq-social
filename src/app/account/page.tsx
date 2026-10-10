@@ -17,6 +17,13 @@ import {
   CreditCard,
   User,
   Shield,
+  Gift,
+  Check,
+  Sparkles,
+  Crown,
+  Rocket,
+  Building2,
+  Star,
 } from "lucide-react";
 
 const TOP_UP_PACKS = [
@@ -28,11 +35,98 @@ const TOP_UP_PACKS = [
   { credits: 1000, price: "260" },
 ];
 
+type PlanName = "free" | "starter" | "growth" | "pro" | "business" | "agency";
+
+const PLAN_CONFIG: Record<
+  PlanName,
+  {
+    label: string;
+    credits: number;
+    price: string;
+    color: string;
+    gradient: string;
+    icon: React.ReactNode;
+    tagline: string;
+    perks: string[];
+  }
+> = {
+  free: {
+    label: "Free",
+    credits: 5,
+    price: "0",
+    color: "text-slate-400",
+    gradient: "from-slate-500 to-slate-600",
+    icon: <User className="h-8 w-8" />,
+    tagline: "Getting started",
+    perks: ["5 free credits", "Basic processing"],
+  },
+  starter: {
+    label: "Starter",
+    credits: 100,
+    price: "24",
+    color: "text-blue-400",
+    gradient: "from-blue-500 to-blue-600",
+    icon: <Rocket className="h-8 w-8" />,
+    tagline: "Ready for takeoff",
+    perks: ["100 credits", "24p per credit", "All processing features"],
+  },
+  growth: {
+    label: "Growth",
+    credits: 500,
+    price: "75",
+    color: "text-emerald-400",
+    gradient: "from-emerald-500 to-emerald-600",
+    icon: <Sparkles className="h-8 w-8" />,
+    tagline: "Scaling up",
+    perks: ["500 credits", "15p per credit", "Priority processing"],
+  },
+  pro: {
+    label: "Pro",
+    credits: 1500,
+    price: "150",
+    color: "text-purple-400",
+    gradient: "from-purple-500 to-purple-600",
+    icon: <Star className="h-8 w-8" />,
+    tagline: "Professional grade",
+    perks: ["1,500 credits", "10p per credit", "Fast processing"],
+  },
+  business: {
+    label: "Business",
+    credits: 5000,
+    price: "350",
+    color: "text-amber-400",
+    gradient: "from-amber-500 to-amber-600",
+    icon: <Building2 className="h-8 w-8" />,
+    tagline: "Built for scale",
+    perks: ["5,000 credits", "7p per credit", "Bulk processing"],
+  },
+  agency: {
+    label: "Agency",
+    credits: 15000,
+    price: "750",
+    color: "text-rose-400",
+    gradient: "from-rose-500 via-pink-500 to-purple-500",
+    icon: <Crown className="h-8 w-8" />,
+    tagline: "Maximum power unlocked",
+    perks: ["15,000 credits", "5p per credit", "Unlimited potential"],
+  },
+};
+
 export default function AccountPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [credits, setCredits] = useState(0);
+  const [plan, setPlan] = useState<PlanName>("free");
   const [showTopUp, setShowTopUp] = useState(false);
+
+  // Promo code state
+  const [promoCode, setPromoCode] = useState("");
+  const [promoLoading, setPromoLoading] = useState(false);
+  const [promoError, setPromoError] = useState("");
+  const [promoSuccess, setPromoSuccess] = useState<{
+    plan: PlanName;
+    creditsAdded: number;
+  } | null>(null);
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login");
@@ -42,10 +136,44 @@ export default function AccountPage() {
     if (status === "authenticated") {
       fetch("/api/credits")
         .then((r) => r.json())
-        .then((d) => setCredits(d.credits ?? 0))
+        .then((d) => {
+          setCredits(d.credits ?? 0);
+          if (d.plan) setPlan(d.plan);
+        })
         .catch(() => {});
     }
   }, [status]);
+
+  const handleRedeemCode = async () => {
+    if (!promoCode.trim()) return;
+    setPromoError("");
+    setPromoLoading(true);
+
+    try {
+      const res = await fetch("/api/promo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: promoCode.trim() }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setPromoError(data.error || "Failed to redeem code");
+        setPromoLoading(false);
+        return;
+      }
+
+      // Success — show upgrade popup
+      setPlan(data.plan);
+      setCredits((prev) => prev + data.creditsAdded);
+      setPromoCode("");
+      setPromoSuccess({ plan: data.plan, creditsAdded: data.creditsAdded });
+    } catch {
+      setPromoError("Something went wrong. Try again.");
+    } finally {
+      setPromoLoading(false);
+    }
+  };
 
   if (status === "loading") {
     return (
@@ -56,6 +184,8 @@ export default function AccountPage() {
   }
 
   if (!session) return null;
+
+  const currentPlan = PLAN_CONFIG[plan];
 
   return (
     <div className="min-h-screen bg-[#010313]">
@@ -128,7 +258,9 @@ export default function AccountPage() {
               <Zap className="h-4 w-4 text-purple-400" />
               <div>
                 <p className="text-xs text-slate-500">Available credits</p>
-                <p className="text-sm font-semibold text-white">{credits} credits</p>
+                <p className="text-sm font-semibold text-white">
+                  {credits.toLocaleString()} credits
+                </p>
               </div>
             </div>
             <button
@@ -140,16 +272,71 @@ export default function AccountPage() {
             </button>
           </div>
           <div className="flex items-center justify-between py-3">
-            <div>
-              <p className="text-xs text-slate-500">Current plan</p>
-              <p className="text-sm text-white">Free</p>
+            <div className="flex items-center gap-3">
+              <div className={currentPlan.color}>
+                {plan === "free" ? (
+                  <User className="h-4 w-4" />
+                ) : (
+                  <Crown className="h-4 w-4" />
+                )}
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Current plan</p>
+                <p className={`text-sm font-semibold ${currentPlan.color}`}>
+                  {currentPlan.label}
+                </p>
+              </div>
             </div>
-            <a
-              href="/#pricing"
-              className="text-xs font-medium text-purple-400 hover:text-purple-300 transition-colors"
+            {plan === "free" && (
+              <a
+                href="/#pricing"
+                className="text-xs font-medium text-purple-400 hover:text-purple-300 transition-colors"
+              >
+                Upgrade →
+              </a>
+            )}
+          </div>
+        </div>
+
+        {/* Redeem Code */}
+        <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-6 mb-6">
+          <h2 className="text-sm font-semibold mb-4 flex items-center gap-2">
+            <Gift className="h-4 w-4 text-purple-400" />
+            Redeem Code
+          </h2>
+          <p className="text-xs text-slate-500 mb-4">
+            Got a promo code? Enter it below to unlock your upgrade.
+          </p>
+
+          {promoError && (
+            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-sm text-red-400 mb-4">
+              {promoError}
+            </div>
+          )}
+
+          <div className="flex gap-3">
+            <input
+              type="text"
+              value={promoCode}
+              onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+              onKeyDown={(e) => e.key === "Enter" && handleRedeemCode()}
+              placeholder="Enter code"
+              className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm uppercase tracking-widest font-mono focus:outline-none focus:border-purple-500/50 placeholder:text-slate-700 placeholder:tracking-normal placeholder:font-sans transition-colors"
+            />
+            <button
+              onClick={handleRedeemCode}
+              disabled={promoLoading || !promoCode.trim()}
+              className="px-5 py-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
-              Upgrade →
-            </a>
+              {promoLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <>
+                  <Gift className="h-4 w-4" />
+                  Redeem
+                </>
+              )}
+            </button>
           </div>
         </div>
 
@@ -172,11 +359,15 @@ export default function AccountPage() {
 
         {/* Danger zone */}
         <div className="rounded-2xl border border-red-500/10 bg-red-500/[0.02] p-6">
-          <h2 className="text-sm font-semibold mb-4 text-red-400">Danger Zone</h2>
+          <h2 className="text-sm font-semibold mb-4 text-red-400">
+            Danger Zone
+          </h2>
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-white">Sign out</p>
-              <p className="text-xs text-slate-500">Sign out of your account on this device</p>
+              <p className="text-xs text-slate-500">
+                Sign out of your account on this device
+              </p>
             </div>
             <button
               onClick={() => signOut({ callbackUrl: "/login" })}
@@ -217,17 +408,22 @@ export default function AccountPage() {
                   className="group p-4 rounded-xl border border-white/10 bg-white/[0.02] hover:border-purple-500/30 hover:bg-purple-500/[0.03] transition-all text-left"
                 >
                   <div className="flex items-baseline justify-between mb-1">
-                    <span className="text-lg font-bold text-white">{pack.credits.toLocaleString()}</span>
+                    <span className="text-lg font-bold text-white">
+                      {pack.credits.toLocaleString()}
+                    </span>
                     <span className="text-xs text-slate-500">26p/ea</span>
                   </div>
                   <div className="text-xs text-slate-500 mb-3">credits</div>
-                  <div className="text-sm font-semibold text-purple-400">£{pack.price}</div>
+                  <div className="text-sm font-semibold text-purple-400">
+                    £{pack.price}
+                  </div>
                 </button>
               ))}
             </div>
 
             <p className="text-[11px] text-slate-600 text-center mb-4">
-              All top-ups at 26p per credit. Save more with a plan — from 5p/credit on higher tiers.
+              All top-ups at 26p per credit. Save more with a plan — from
+              5p/credit on higher tiers.
             </p>
 
             <div className="flex gap-3">
@@ -243,6 +439,98 @@ export default function AccountPage() {
               >
                 View Plans
               </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Upgrade success popup */}
+      {promoSuccess && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
+          <div className="w-full max-w-md relative">
+            {/* Glow effect behind card */}
+            <div
+              className={`absolute -inset-1 rounded-3xl bg-gradient-to-r ${PLAN_CONFIG[promoSuccess.plan].gradient} opacity-20 blur-xl`}
+            />
+
+            <div className="relative rounded-2xl border border-white/10 bg-[#010313] p-8 overflow-hidden">
+              {/* Animated background particles */}
+              <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                <div className="absolute top-4 left-8 w-2 h-2 rounded-full bg-white/20 animate-pulse" />
+                <div
+                  className="absolute top-12 right-12 w-1.5 h-1.5 rounded-full bg-white/15 animate-pulse"
+                  style={{ animationDelay: "0.5s" }}
+                />
+                <div
+                  className="absolute bottom-16 left-16 w-1 h-1 rounded-full bg-white/10 animate-pulse"
+                  style={{ animationDelay: "1s" }}
+                />
+                <div
+                  className="absolute top-20 left-1/2 w-2 h-2 rounded-full bg-white/10 animate-pulse"
+                  style={{ animationDelay: "0.3s" }}
+                />
+                <div
+                  className="absolute bottom-8 right-8 w-1.5 h-1.5 rounded-full bg-white/15 animate-pulse"
+                  style={{ animationDelay: "0.7s" }}
+                />
+              </div>
+
+              <div className="relative text-center">
+                {/* Plan icon */}
+                <div
+                  className={`mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br ${PLAN_CONFIG[promoSuccess.plan].gradient} shadow-lg`}
+                >
+                  <div className="text-white">
+                    {PLAN_CONFIG[promoSuccess.plan].icon}
+                  </div>
+                </div>
+
+                {/* Checkmark badge */}
+                <div className="absolute top-14 left-1/2 translate-x-4 -translate-y-1 flex h-7 w-7 items-center justify-center rounded-full bg-green-500 border-2 border-[#010313] shadow-lg">
+                  <Check className="h-4 w-4 text-white" />
+                </div>
+
+                <h2 className="text-2xl font-bold mb-1 mt-2">
+                  Welcome to{" "}
+                  <span className={PLAN_CONFIG[promoSuccess.plan].color}>
+                    {PLAN_CONFIG[promoSuccess.plan].label}
+                  </span>
+                </h2>
+                <p className="text-sm text-slate-400 mb-6">
+                  {PLAN_CONFIG[promoSuccess.plan].tagline}
+                </p>
+
+                {/* Credits added */}
+                <div className="rounded-xl bg-white/5 border border-white/10 p-4 mb-5">
+                  <div className="flex items-center justify-center gap-2 mb-2">
+                    <Zap className="h-5 w-5 text-purple-400" />
+                    <span className="text-2xl font-bold text-white">
+                      +{promoSuccess.creditsAdded.toLocaleString()}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500">credits added to your account</p>
+                </div>
+
+                {/* Plan perks */}
+                <div className="space-y-2 mb-6">
+                  {PLAN_CONFIG[promoSuccess.plan].perks.map((perk, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-2 text-sm text-slate-300"
+                    >
+                      <Check className="h-3.5 w-3.5 text-green-400 shrink-0" />
+                      {perk}
+                    </div>
+                  ))}
+                </div>
+
+                <button
+                  onClick={() => setPromoSuccess(null)}
+                  className={`w-full py-3.5 rounded-xl font-medium text-sm bg-gradient-to-r ${PLAN_CONFIG[promoSuccess.plan].gradient} text-white transition-all hover:shadow-lg hover:brightness-110`}
+                >
+                  Let&apos;s Go
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { getCredits } from "@/lib/users";
+import { getCredits, getUserPlan } from "@/lib/users";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -14,5 +14,8 @@ export async function GET() {
     return NextResponse.json({ error: "Invalid session" }, { status: 401 });
   }
 
-  return NextResponse.json({ credits: getCredits(userId) });
+  return NextResponse.json({
+    credits: getCredits(userId),
+    plan: getUserPlan(userId),
+  });
 }
