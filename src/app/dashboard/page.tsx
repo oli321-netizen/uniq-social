@@ -44,6 +44,8 @@ const METADATA_PROFILES: { value: MetadataProfile; label: string; desc: string }
   { value: "random", label: "Random", desc: "Randomly selected per video" },
 ];
 
+const STACKABLE_PROFILES: MetadataProfile[] = ["capcut", "snapchat", "iphone"];
+
 function genId() {
   return Math.random().toString(36).slice(2, 10);
 }
