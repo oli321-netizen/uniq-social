@@ -220,13 +220,27 @@ export async function POST(req: NextRequest) {
       `ffmpeg -y -f concat -safe 0 -i "${concatPath}" -c copy "${tempOutput}"`
     );
 
-    // Apply metadata
+    // Apply metadata — quote each value to handle spaces (e.g. "iPhone 15 Pro")
     const metadataArgs = getMetadataArgs(config.metadata);
+    const quotedMetadataArgs = metadataArgs.map((arg) => {
+      // Quote metadata values that contain spaces (the value after the flag)
+      if (arg.includes("=") && arg.includes(" ")) {
+        const eqIndex = arg.indexOf("=");
+        const key = arg.substring(0, eqIndex);
+        const value = arg.substring(eqIndex + 1);
+        return `${key}="${value}"`;
+      }
+      // Quote standalone values with spaces (like handler_name values)
+      if (!arg.startsWith("-") && arg.includes(" ")) {
+        return `"${arg}"`;
+      }
+      return arg;
+    });
     const outputPath = path.join(tmpDir, "output.mp4");
     await execAsync(
       `ffmpeg -y -i "${tempOutput}" -c:v libx264 -preset fast -crf 18 ` +
         `-c:a aac -b:a 128k -pix_fmt yuv420p ` +
-        `${metadataArgs.join(" ")} -movflags +faststart "${outputPath}"`
+        `${quotedMetadataArgs.join(" ")} -movflags +faststart "${outputPath}"`
     );
 
     // Read output and return
