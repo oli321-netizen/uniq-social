@@ -25,7 +25,7 @@ interface ProcessingConfig {
   sharpen: boolean;
   sharpenAmount: number;
   mirror: boolean;
-  metadata: MetadataProfile;
+  metadata: MetadataProfile | MetadataProfile[];
 }
 
 const METADATA_PROFILES: Record<string, { format: string[]; video: string[]; audio: string[] }> = {
@@ -50,15 +50,31 @@ function rand(min: number, max: number): number {
   return Math.random() * (max - min) + min;
 }
 
-function getMetadataArgs(profile: MetadataProfile): string[] {
-  if (profile === "random") {
-    const profiles = Object.keys(METADATA_PROFILES);
-    const chosen = profiles[Math.floor(Math.random() * profiles.length)];
-    const meta = METADATA_PROFILES[chosen];
-    return [...meta.format, ...meta.video, ...meta.audio];
+function getMetadataArgs(profile: MetadataProfile | MetadataProfile[]): string[] {
+  // Support array of profiles — merge metadata from all selected
+  const profiles = Array.isArray(profile) ? profile : [profile];
+
+  const allFormat: string[] = [];
+  const allVideo: string[] = [];
+  const allAudio: string[] = [];
+
+  for (const p of profiles) {
+    if (p === "random") {
+      const keys = Object.keys(METADATA_PROFILES);
+      const chosen = keys[Math.floor(Math.random() * keys.length)];
+      const meta = METADATA_PROFILES[chosen];
+      allFormat.push(...meta.format);
+      allVideo.push(...meta.video);
+      allAudio.push(...meta.audio);
+    } else {
+      const meta = METADATA_PROFILES[p];
+      allFormat.push(...meta.format);
+      allVideo.push(...meta.video);
+      allAudio.push(...meta.audio);
+    }
   }
-  const meta = METADATA_PROFILES[profile];
-  return [...meta.format, ...meta.video, ...meta.audio];
+
+  return [...allFormat, ...allVideo, ...allAudio];
 }
 
 export async function POST(req: NextRequest) {
