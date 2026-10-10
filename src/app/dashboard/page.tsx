@@ -18,6 +18,7 @@ import {
   Plus,
   ShoppingCart,
 } from "lucide-react";
+import JSZip from "jszip";
 
 type VideoOutput = {
   url: string;
@@ -393,19 +394,9 @@ export default function Dashboard() {
 
                     <div className="flex items-center gap-2">
                       {vid.status === "done" && vid.outputs && (
-                        <div className="flex items-center gap-2">
-                          {vid.outputs.map((out, idx) => (
-                            <a
-                              key={idx}
-                              href={out.url}
-                              download={out.filename}
-                              className="text-xs text-purple-400 hover:text-purple-300 transition-colors flex items-center gap-1"
-                            >
-                              <Download className="h-3.5 w-3.5" />
-                              {vid.outputs!.length > 1 ? `v${idx + 1}` : "Download"}
-                            </a>
-                          ))}
-                        </div>
+                        <span className="text-xs text-green-400 font-medium">
+                          {vid.outputs.length} clip{vid.outputs.length !== 1 ? "s" : ""} ready
+                        </span>
                       )}
                       {vid.status === "error" && (
                         <span className="text-xs text-red-400">Failed</span>
@@ -645,25 +636,39 @@ export default function Dashboard() {
               )}
             </button>
 
-            {/* Download all */}
+            {/* Download all as zip */}
             {doneCount > 0 && (
               <button
-                onClick={() => {
+                onClick={async () => {
+                  const zip = new JSZip();
+                  const allOutputs: { url: string; filename: string }[] = [];
                   videos.forEach((v) => {
                     if (v.status === "done" && v.outputs) {
-                      v.outputs.forEach((out) => {
-                        const a = document.createElement("a");
-                        a.href = out.url;
-                        a.download = out.filename;
-                        a.click();
-                      });
+                      v.outputs.forEach((out) => allOutputs.push(out));
                     }
                   });
+
+                  // Fetch all blobs and add to zip
+                  await Promise.all(
+                    allOutputs.map(async (out) => {
+                      const res = await fetch(out.url);
+                      const blob = await res.blob();
+                      zip.file(out.filename, blob);
+                    })
+                  );
+
+                  const zipBlob = await zip.generateAsync({ type: "blob" });
+                  const url = URL.createObjectURL(zipBlob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `uniq_${Date.now()}.zip`;
+                  a.click();
+                  URL.revokeObjectURL(url);
                 }}
                 className="w-full py-3 rounded-xl font-medium text-sm bg-white/5 hover:bg-white/10 text-white border border-white/10 transition-all flex items-center justify-center gap-2"
               >
                 <Download className="h-4 w-4" />
-                Download all ({doneCount})
+                Download all
               </button>
             )}
           </div>
