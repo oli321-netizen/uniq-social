@@ -58,7 +58,7 @@ function Navbar() {
             href="/login"
             className="text-sm font-medium bg-purple-600 hover:bg-purple-700 text-white px-5 py-2 rounded-lg transition-all hover:shadow-lg hover:shadow-purple-500/20"
           >
-            Get Started
+            Get 5 Free Credits
           </a>
         </div>
       </div>
@@ -73,9 +73,13 @@ function HeroSection() {
       <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-purple-700/5 rounded-full blur-[128px] pointer-events-none" />
 
       <div className="relative z-10 mx-auto max-w-5xl px-6 text-center">
-        <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-purple-500/20 bg-purple-500/5 px-4 py-1.5 text-sm text-purple-300">
+        <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-purple-500/20 bg-purple-500/5 px-4 py-1.5 text-sm text-purple-300">
           <Sparkles className="h-3.5 w-3.5" />
           <span>Now in public beta</span>
+        </div>
+        <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-green-500/20 bg-green-500/5 px-4 py-1.5 text-sm text-green-300">
+          <Zap className="h-3.5 w-3.5" />
+          <span>5 free credits on signup — no card required</span>
         </div>
 
         <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight leading-[1.1] mb-6">
@@ -93,7 +97,7 @@ function HeroSection() {
             href="/login"
             className="group flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white font-medium px-8 py-3.5 rounded-xl transition-all hover:shadow-xl hover:shadow-purple-500/20 text-base"
           >
-            Start for free
+            Start free — 5 credits included
             <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
           </a>
           <a
@@ -354,7 +358,7 @@ function PricingSection() {
             <span className="gradient-text">pricing</span>
           </h2>
           <p className="mt-4 text-slate-400 max-w-xl mx-auto">
-            1 credit = 1 unique video. Buy what you need, use when you want.
+            1 credit = 1 unique video. Start with 5 free credits, then buy what you need.
             Bigger packs, bigger savings.
           </p>
         </div>
@@ -411,6 +415,42 @@ function PricingSection() {
             </div>
           ))}
         </div>
+
+        {/* Top-up credits */}
+        <div className="mt-16 text-center">
+          <p className="text-sm font-medium text-purple-400 tracking-wider uppercase mb-3">
+            Need more?
+          </p>
+          <h3 className="text-2xl font-bold tracking-tight mb-3">
+            Top up credits <span className="gradient-text">anytime</span>
+          </h3>
+          <p className="text-slate-400 text-sm mb-8 max-w-lg mx-auto">
+            Already on a plan? Buy extra credits without upgrading. Pay-as-you-go at a flexible rate.
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 max-w-5xl mx-auto">
+            {[
+              { credits: "20", price: "5.20", perCredit: "26p" },
+              { credits: "50", price: "13", perCredit: "26p" },
+              { credits: "100", price: "26", perCredit: "26p" },
+              { credits: "250", price: "65", perCredit: "26p" },
+              { credits: "500", price: "130", perCredit: "26p" },
+              { credits: "1,000", price: "260", perCredit: "26p" },
+            ].map((pack) => (
+              <div
+                key={pack.credits}
+                className="p-5 rounded-2xl border border-white/5 bg-white/[0.02] hover:border-purple-500/20 hover:bg-white/[0.04] transition-all duration-300"
+              >
+                <div className="text-2xl font-bold text-white mb-1">{pack.credits}</div>
+                <div className="text-xs text-slate-500 mb-3">credits</div>
+                <div className="text-lg font-semibold text-white mb-1">£{pack.price}</div>
+                <div className="text-[10px] text-slate-500">{pack.perCredit}/credit</div>
+                <button className="mt-4 w-full py-2 rounded-lg text-xs font-medium bg-white/5 hover:bg-white/10 text-white border border-white/10 transition-all">
+                  Buy
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </section>
   );
@@ -435,7 +475,7 @@ function CTASection() {
               href="/login"
               className="group inline-flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white font-medium px-8 py-3.5 rounded-xl transition-all hover:shadow-xl hover:shadow-purple-500/20"
             >
-              Get started free
+              Start free — 5 credits included
               <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
             </a>
           </div>
