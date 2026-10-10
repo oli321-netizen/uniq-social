@@ -15,6 +15,11 @@ import {
   Zap,
 } from "lucide-react";
 
+type VideoOutput = {
+  url: string;
+  filename: string;
+};
+
 type VideoFile = {
   id: string;
   file: File;
@@ -23,6 +28,7 @@ type VideoFile = {
   status: "pending" | "processing" | "done" | "error";
   progress: number;
   outputUrl?: string;
+  outputs?: VideoOutput[];
 };
 
 type MetadataProfile = "capcut" | "snapchat" | "iphone" | "random";
@@ -90,34 +96,81 @@ export default function Dashboard() {
 
   const clearAll = () => setVideos([]);
 
+  const processVideo = async (vid: VideoFile, copyIndex: number) => {
+    const formData = new FormData();
+    formData.append("video", vid.file);
+    formData.append(
+      "config",
+      JSON.stringify({
+        ...editSettings,
+        metadata,
+      })
+    );
+
+    const res = await fetch("/api/process", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!res.ok) {
+      throw new Error(`Processing failed: ${res.statusText}`);
+    }
+
+    const blob = await res.blob();
+    const ext = vid.name.split(".").pop() || "mp4";
+    const suffix = copies > 1 ? `_v${copyIndex + 1}` : "";
+    const filename = vid.name.replace(`.${ext}`, `_uniq${suffix}.mp4`);
+    const url = URL.createObjectURL(blob);
+    return { url, filename };
+  };
+
   const processAll = async () => {
     setIsProcessing(true);
-    // Simulate processing — in production this hits the API
-    for (let i = 0; i < videos.length; i++) {
-      const vid = videos[i];
-      if (vid.status !== "pending") continue;
+    const pendingVids = videos.filter((v) => v.status === "pending");
 
+    for (const vid of pendingVids) {
       setVideos((prev) =>
         prev.map((v) =>
-          v.id === vid.id ? { ...v, status: "processing", progress: 0 } : v
+          v.id === vid.id ? { ...v, status: "processing", progress: 10 } : v
         )
       );
 
-      // Simulate progress
-      for (let p = 0; p <= 100; p += 10) {
-        await new Promise((r) => setTimeout(r, 200));
+      try {
+        const results: { url: string; filename: string }[] = [];
+
+        for (let c = 0; c < copies; c++) {
+          setVideos((prev) =>
+            prev.map((v) =>
+              v.id === vid.id
+                ? { ...v, progress: Math.round(((c + 0.5) / copies) * 90) + 10 }
+                : v
+            )
+          );
+
+          const result = await processVideo(vid, c);
+          results.push(result);
+        }
+
         setVideos((prev) =>
-          prev.map((v) => (v.id === vid.id ? { ...v, progress: p } : v))
+          prev.map((v) =>
+            v.id === vid.id
+              ? {
+                  ...v,
+                  status: "done",
+                  progress: 100,
+                  outputUrl: results[0].url,
+                  outputs: results,
+                } as VideoFile
+              : v
+          )
+        );
+      } catch {
+        setVideos((prev) =>
+          prev.map((v) =>
+            v.id === vid.id ? { ...v, status: "error", progress: 0 } : v
+          )
         );
       }
-
-      setVideos((prev) =>
-        prev.map((v) =>
-          v.id === vid.id
-            ? { ...v, status: "done", progress: 100, outputUrl: "#" }
-            : v
-        )
-      );
     }
     setIsProcessing(false);
   };
@@ -248,11 +301,23 @@ export default function Dashboard() {
                     </div>
 
                     <div className="flex items-center gap-2">
-                      {vid.status === "done" && (
-                        <button className="text-xs text-purple-400 hover:text-purple-300 transition-colors flex items-center gap-1">
-                          <Download className="h-3.5 w-3.5" />
-                          Download
-                        </button>
+                      {vid.status === "done" && vid.outputs && (
+                        <div className="flex items-center gap-2">
+                          {vid.outputs.map((out, idx) => (
+                            <a
+                              key={idx}
+                              href={out.url}
+                              download={out.filename}
+                              className="text-xs text-purple-400 hover:text-purple-300 transition-colors flex items-center gap-1"
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                              {vid.outputs!.length > 1 ? `v${idx + 1}` : "Download"}
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                      {vid.status === "error" && (
+                        <span className="text-xs text-red-400">Failed</span>
                       )}
                       {vid.status === "pending" && (
                         <button
@@ -440,7 +505,21 @@ export default function Dashboard() {
 
             {/* Download all */}
             {doneCount > 0 && (
-              <button className="w-full py-3 rounded-xl font-medium text-sm bg-white/5 hover:bg-white/10 text-white border border-white/10 transition-all flex items-center justify-center gap-2">
+              <button
+                onClick={() => {
+                  videos.forEach((v) => {
+                    if (v.status === "done" && v.outputs) {
+                      v.outputs.forEach((out) => {
+                        const a = document.createElement("a");
+                        a.href = out.url;
+                        a.download = out.filename;
+                        a.click();
+                      });
+                    }
+                  });
+                }}
+                className="w-full py-3 rounded-xl font-medium text-sm bg-white/5 hover:bg-white/10 text-white border border-white/10 transition-all flex items-center justify-center gap-2"
+              >
                 <Download className="h-4 w-4" />
                 Download all ({doneCount})
               </button>

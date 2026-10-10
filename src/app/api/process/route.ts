@@ -5,6 +5,9 @@ import { promisify } from "util";
 import path from "path";
 import { randomUUID } from "crypto";
 
+// Allow longer processing time
+export const maxDuration = 60;
+
 const execAsync = promisify(exec);
 
 type MetadataProfile = "capcut" | "snapchat" | "iphone" | "random";
