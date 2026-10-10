@@ -67,6 +67,7 @@ export default function Dashboard() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [credits, setCredits] = useState(0);
   const [showTopUp, setShowTopUp] = useState(false);
+  const [isZipping, setIsZipping] = useState(false);
 
   // Edit parameter ranges
   const [editSettings, setEditSettings] = useState({
@@ -412,6 +413,60 @@ export default function Dashboard() {
                     </div>
                   </div>
                 ))}
+
+                {/* Download all as zip — right below the video list */}
+                {doneCount > 0 && (
+                  <button
+                    disabled={isZipping}
+                    onClick={async () => {
+                      setIsZipping(true);
+                      try {
+                        const zip = new JSZip();
+                        const allOutputs: { url: string; filename: string }[] = [];
+                        videos.forEach((v) => {
+                          if (v.status === "done" && v.outputs) {
+                            v.outputs.forEach((out) => allOutputs.push(out));
+                          }
+                        });
+
+                        await Promise.all(
+                          allOutputs.map(async (out) => {
+                            const res = await fetch(out.url);
+                            const blob = await res.blob();
+                            zip.file(out.filename, blob);
+                          })
+                        );
+
+                        const zipBlob = await zip.generateAsync({ type: "blob" });
+                        const url = URL.createObjectURL(zipBlob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = `uniq_${Date.now()}.zip`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        setTimeout(() => URL.revokeObjectURL(url), 5000);
+                      } catch (err) {
+                        console.error("Zip download failed:", err);
+                      } finally {
+                        setIsZipping(false);
+                      }
+                    }}
+                    className="w-full py-3 rounded-xl font-medium text-sm bg-purple-600 hover:bg-purple-700 text-white transition-all flex items-center justify-center gap-2 hover:shadow-lg hover:shadow-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isZipping ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Zipping...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="h-4 w-4" />
+                        Download all
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -636,41 +691,6 @@ export default function Dashboard() {
               )}
             </button>
 
-            {/* Download all as zip */}
-            {doneCount > 0 && (
-              <button
-                onClick={async () => {
-                  const zip = new JSZip();
-                  const allOutputs: { url: string; filename: string }[] = [];
-                  videos.forEach((v) => {
-                    if (v.status === "done" && v.outputs) {
-                      v.outputs.forEach((out) => allOutputs.push(out));
-                    }
-                  });
-
-                  // Fetch all blobs and add to zip
-                  await Promise.all(
-                    allOutputs.map(async (out) => {
-                      const res = await fetch(out.url);
-                      const blob = await res.blob();
-                      zip.file(out.filename, blob);
-                    })
-                  );
-
-                  const zipBlob = await zip.generateAsync({ type: "blob" });
-                  const url = URL.createObjectURL(zipBlob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = `uniq_${Date.now()}.zip`;
-                  a.click();
-                  URL.revokeObjectURL(url);
-                }}
-                className="w-full py-3 rounded-xl font-medium text-sm bg-white/5 hover:bg-white/10 text-white border border-white/10 transition-all flex items-center justify-center gap-2"
-              >
-                <Download className="h-4 w-4" />
-                Download all
-              </button>
-            )}
           </div>
         </div>
       </div>
