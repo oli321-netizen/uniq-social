@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createUser } from "@/lib/users";
+import { sendWelcomeEmail } from "@/lib/email";
 
 export async function POST(req: NextRequest) {
   try {
@@ -20,6 +21,9 @@ export async function POST(req: NextRequest) {
     }
 
     const user = await createUser(email, password);
+
+    // Fire and forget — don't block signup on email delivery
+    sendWelcomeEmail(user.email).catch(() => {});
 
     return NextResponse.json({
       id: user.id,

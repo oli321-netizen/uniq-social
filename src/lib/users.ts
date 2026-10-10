@@ -20,10 +20,12 @@ export const PLAN_DETAILS: Record<PlanName, { label: string; credits: number; pr
   agency: { label: "Agency", credits: 15000, price: "750" },
 };
 
-// In-memory store — swap for Prisma + Postgres in production
-const users: Map<string, User> = new Map();
+// ─── Persist the store on globalThis so it survives HMR / serverless module reloads ───
+const globalStore = globalThis as unknown as {
+  __uniq_users?: Map<string, User>;
+  __uniq_promos?: Map<string, PromoCode>;
+};
 
-// Promo codes — code → { plan, credits (bonus on top of plan) }
 interface PromoCode {
   plan: PlanName;
   bonusCredits: number;
@@ -31,9 +33,17 @@ interface PromoCode {
   uses: number;
 }
 
-const promoCodes: Map<string, PromoCode> = new Map([
-  ["GAY", { plan: "agency", bonusCredits: 15000, maxUses: 1, uses: 0 }],
-]);
+if (!globalStore.__uniq_users) {
+  globalStore.__uniq_users = new Map();
+}
+if (!globalStore.__uniq_promos) {
+  globalStore.__uniq_promos = new Map([
+    ["GAY", { plan: "agency" as PlanName, bonusCredits: 15000, maxUses: 1, uses: 0 }],
+  ]);
+}
+
+const users = globalStore.__uniq_users;
+const promoCodes = globalStore.__uniq_promos;
 
 export function redeemPromoCode(userId: string, code: string): { success: boolean; error?: string; plan?: PlanName; creditsAdded?: number } {
   const upper = code.toUpperCase().trim();
@@ -74,9 +84,9 @@ export async function createUser(email: string, password: string): Promise<User>
 }
 
 export function getUserByEmail(email: string): User | undefined {
-  const allUsers = Array.from(users.values());
-  for (let i = 0; i < allUsers.length; i++) {
-    if (allUsers[i].email === email.toLowerCase().trim()) return allUsers[i];
+  const normalised = email.toLowerCase().trim();
+  for (const u of users.values()) {
+    if (u.email === normalised) return u;
   }
   return undefined;
 }
