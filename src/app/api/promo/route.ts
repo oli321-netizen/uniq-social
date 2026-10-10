@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Code is required" }, { status: 400 });
   }
 
-  const result = redeemPromoCode(userId, code);
+  const result = await redeemPromoCode(userId, code);
   if (!result.success) {
     return NextResponse.json({ error: result.error }, { status: 400 });
   }

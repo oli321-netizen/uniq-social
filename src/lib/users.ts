@@ -1,15 +1,7 @@
 import bcrypt from "bcryptjs";
+import { prisma } from "./prisma";
 
 export type PlanName = "free" | "starter" | "growth" | "pro" | "business" | "agency";
-
-export interface User {
-  id: string;
-  email: string;
-  password: string;
-  credits: number;
-  plan: PlanName;
-  createdAt: Date;
-}
 
 export const PLAN_DETAILS: Record<PlanName, { label: string; credits: number; price: string }> = {
   free: { label: "Free", credits: 5, price: "0" },
@@ -20,96 +12,92 @@ export const PLAN_DETAILS: Record<PlanName, { label: string; credits: number; pr
   agency: { label: "Agency", credits: 15000, price: "750" },
 };
 
-// ─── Persist the store on globalThis so it survives HMR / serverless module reloads ───
-const globalStore = globalThis as unknown as {
-  __uniq_users?: Map<string, User>;
-  __uniq_promos?: Map<string, PromoCode>;
-};
-
-interface PromoCode {
-  plan: PlanName;
-  bonusCredits: number;
-  maxUses: number;
-  uses: number;
-}
-
-if (!globalStore.__uniq_users) {
-  globalStore.__uniq_users = new Map();
-}
-if (!globalStore.__uniq_promos) {
-  globalStore.__uniq_promos = new Map([
-    ["GAY", { plan: "agency" as PlanName, bonusCredits: 15000, maxUses: 1, uses: 0 }],
-  ]);
-}
-
-const users = globalStore.__uniq_users;
-const promoCodes = globalStore.__uniq_promos;
-
-export function redeemPromoCode(userId: string, code: string): { success: boolean; error?: string; plan?: PlanName; creditsAdded?: number } {
+export async function redeemPromoCode(
+  userId: string,
+  code: string
+): Promise<{ success: boolean; error?: string; plan?: PlanName; creditsAdded?: number }> {
   const upper = code.toUpperCase().trim();
-  const promo = promoCodes.get(upper);
+
+  const promo = await prisma.promoCode.findUnique({ where: { code: upper } });
   if (!promo) return { success: false, error: "Invalid promo code" };
   if (promo.uses >= promo.maxUses) return { success: false, error: "This code has already been used" };
 
-  const user = users.get(userId);
+  const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) return { success: false, error: "User not found" };
 
-  // Apply plan and credits
-  promo.uses++;
-  user.plan = promo.plan;
-  user.credits += promo.bonusCredits;
+  // Apply plan and credits atomically
+  await prisma.$transaction([
+    prisma.promoCode.update({
+      where: { code: upper },
+      data: { uses: { increment: 1 } },
+    }),
+    prisma.user.update({
+      where: { id: userId },
+      data: {
+        plan: promo.plan,
+        credits: { increment: promo.bonusCredits },
+      },
+    }),
+  ]);
 
   return {
     success: true,
-    plan: promo.plan,
+    plan: promo.plan as PlanName,
     creditsAdded: promo.bonusCredits,
   };
 }
 
-export async function createUser(email: string, password: string): Promise<User> {
-  const existing = getUserByEmail(email);
+export async function createUser(email: string, password: string) {
+  const normalised = email.toLowerCase().trim();
+
+  const existing = await prisma.user.findUnique({ where: { email: normalised } });
   if (existing) throw new Error("Email already registered");
 
   const hashed = await bcrypt.hash(password, 12);
-  const user: User = {
-    id: crypto.randomUUID(),
-    email: email.toLowerCase().trim(),
-    password: hashed,
-    credits: 5, // free starter credits
-    plan: "free",
-    createdAt: new Date(),
-  };
-  users.set(user.id, user);
+
+  const user = await prisma.user.create({
+    data: {
+      email: normalised,
+      password: hashed,
+      credits: 5,
+      plan: "free",
+    },
+  });
+
   return user;
 }
 
-export function getUserByEmail(email: string): User | undefined {
+export async function getUserByEmail(email: string) {
   const normalised = email.toLowerCase().trim();
-  for (const u of Array.from(users.values())) {
-    if (u.email === normalised) return u;
-  }
-  return undefined;
+  return prisma.user.findUnique({ where: { email: normalised } });
 }
 
-export function getUserById(id: string): User | undefined {
-  return users.get(id);
+export async function getUserById(id: string) {
+  return prisma.user.findUnique({ where: { id } });
 }
 
-export async function verifyPassword(user: User, password: string): Promise<boolean> {
+export async function verifyPassword(user: { password: string }, password: string): Promise<boolean> {
   return bcrypt.compare(password, user.password);
 }
 
-export function deductCredits(userId: string, amount: number): boolean {
-  const user = users.get(userId);
+export async function deductCredits(userId: string, amount: number): Promise<boolean> {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user || user.credits < amount) return false;
-  user.credits -= amount;
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: { credits: { decrement: amount } },
+  });
+
   return true;
 }
 
-export function getCredits(userId: string): number {
-  return users.get(userId)?.credits ?? 0;
+export async function getCredits(userId: string): Promise<number> {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  return user?.credits ?? 0;
 }
 
-export function getUserPlan(userId: string): PlanName {
-  return users.get(userId)?.plan ?? "free";
+export async function getUserPlan(userId: string): Promise<PlanName> {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  return (user?.plan as PlanName) ?? "free";
 }

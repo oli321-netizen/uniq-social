@@ -15,7 +15,7 @@ export async function GET() {
   }
 
   return NextResponse.json({
-    credits: getCredits(userId),
-    plan: getUserPlan(userId),
+    credits: await getCredits(userId),
+    plan: await getUserPlan(userId),
   });
 }

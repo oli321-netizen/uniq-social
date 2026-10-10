@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Deduct 1 credit
-    const charged = deductCredits(userId, 1);
+    const charged = await deductCredits(userId, 1);
     if (!charged) {
       return NextResponse.json({ error: "Insufficient credits" }, { status: 402 });
     }
