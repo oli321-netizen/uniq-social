@@ -85,7 +85,7 @@ export async function createUser(email: string, password: string): Promise<User>
 
 export function getUserByEmail(email: string): User | undefined {
   const normalised = email.toLowerCase().trim();
-  for (const u of users.values()) {
+  for (const u of Array.from(users.values())) {
     if (u.email === normalised) return u;
   }
   return undefined;
