@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Fingerprint, CheckCircle, XCircle, Loader2, ArrowRight, Mail } from "lucide-react";
+import { Fingerprint, CheckCircle, XCircle, Loader2, ArrowRight } from "lucide-react";
 
 function VerifyContent() {
   const searchParams = useSearchParams();

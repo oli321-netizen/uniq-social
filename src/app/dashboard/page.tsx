@@ -311,6 +311,33 @@ export default function Dashboard() {
         </div>
       </header>
 
+      {/* Email verification banner */}
+      {!emailVerified && (
+        <div className="bg-amber-500/10 border-b border-amber-500/20">
+          <div className="mx-auto max-w-7xl px-6 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Mail className="h-4 w-4 text-amber-400" />
+              <p className="text-sm text-amber-200">
+                Please verify your email address to keep your account secure.
+              </p>
+            </div>
+            <button
+              onClick={async () => {
+                setResendingVerification(true);
+                try {
+                  await fetch('/api/auth/resend-verification', { method: 'POST' });
+                } catch {}
+                setResendingVerification(false);
+              }}
+              disabled={resendingVerification}
+              className="text-xs font-medium text-amber-400 hover:text-amber-300 transition-colors disabled:opacity-50"
+            >
+              {resendingVerification ? 'Sending...' : 'Resend email'}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="mx-auto max-w-6xl px-6 py-8">
         <div className="grid lg:grid-cols-[1fr_320px] gap-8">
           {/* Main area */}
