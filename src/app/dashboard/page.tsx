@@ -648,21 +648,25 @@ export default function Dashboard() {
                   </label>
                   <div className="flex gap-2">
                     <input
-                      type="number"
-                      step="0.1"
+                      type="text"
+                      inputMode="decimal"
                       value={editSettings.trimMin}
-                      onChange={(e) =>
-                        setEditSettings({ ...editSettings, trimMin: +e.target.value })
-                      }
+                      onChange={(e) => {
+                        const v = e.target.value.replace(/[^0-9.]/g, "");
+                        setEditSettings({ ...editSettings, trimMin: v === "" ? 0 : parseFloat(v) });
+                      }}
+                      onFocus={(e) => e.target.select()}
                       className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50"
                     />
                     <input
-                      type="number"
-                      step="0.1"
+                      type="text"
+                      inputMode="decimal"
                       value={editSettings.trimMax}
-                      onChange={(e) =>
-                        setEditSettings({ ...editSettings, trimMax: +e.target.value })
-                      }
+                      onChange={(e) => {
+                        const v = e.target.value.replace(/[^0-9.]/g, "");
+                        setEditSettings({ ...editSettings, trimMax: v === "" ? 0 : parseFloat(v) });
+                      }}
+                      onFocus={(e) => e.target.select()}
                       className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50"
                     />
                   </div>
@@ -674,25 +678,25 @@ export default function Dashboard() {
                   </label>
                   <div className="flex gap-2">
                     <input
-                      type="number"
-                      step="1"
-                      min="1"
-                      max="20"
+                      type="text"
+                      inputMode="numeric"
                       value={editSettings.cutsMin}
-                      onChange={(e) =>
-                        setEditSettings({ ...editSettings, cutsMin: +e.target.value })
-                      }
+                      onChange={(e) => {
+                        const v = e.target.value.replace(/[^0-9]/g, "");
+                        setEditSettings({ ...editSettings, cutsMin: v === "" ? 0 : parseInt(v) });
+                      }}
+                      onFocus={(e) => e.target.select()}
                       className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50"
                     />
                     <input
-                      type="number"
-                      step="1"
-                      min="1"
-                      max="20"
+                      type="text"
+                      inputMode="numeric"
                       value={editSettings.cutsMax}
-                      onChange={(e) =>
-                        setEditSettings({ ...editSettings, cutsMax: +e.target.value })
-                      }
+                      onChange={(e) => {
+                        const v = e.target.value.replace(/[^0-9]/g, "");
+                        setEditSettings({ ...editSettings, cutsMax: v === "" ? 0 : parseInt(v) });
+                      }}
+                      onFocus={(e) => e.target.select()}
                       className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50"
                     />
                   </div>
@@ -704,21 +708,25 @@ export default function Dashboard() {
                   </label>
                   <div className="flex gap-2">
                     <input
-                      type="number"
-                      step="0.5"
+                      type="text"
+                      inputMode="decimal"
                       value={editSettings.zoomMin}
-                      onChange={(e) =>
-                        setEditSettings({ ...editSettings, zoomMin: +e.target.value })
-                      }
+                      onChange={(e) => {
+                        const v = e.target.value.replace(/[^0-9.]/g, "");
+                        setEditSettings({ ...editSettings, zoomMin: v === "" ? 0 : parseFloat(v) });
+                      }}
+                      onFocus={(e) => e.target.select()}
                       className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50"
                     />
                     <input
-                      type="number"
-                      step="0.5"
+                      type="text"
+                      inputMode="decimal"
                       value={editSettings.zoomMax}
-                      onChange={(e) =>
-                        setEditSettings({ ...editSettings, zoomMax: +e.target.value })
-                      }
+                      onChange={(e) => {
+                        const v = e.target.value.replace(/[^0-9.]/g, "");
+                        setEditSettings({ ...editSettings, zoomMax: v === "" ? 0 : parseFloat(v) });
+                      }}
+                      onFocus={(e) => e.target.select()}
                       className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50"
                     />
                   </div>
