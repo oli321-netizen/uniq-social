@@ -287,13 +287,32 @@ export default function AccountPage() {
                 </p>
               </div>
             </div>
-            {plan === "free" && (
-              <a
-                href="/#pricing"
+            {plan === "free" ? (
+              <button
+                type="button"
+                onClick={() => (window.location.href = "/#pricing")}
                 className="text-xs font-medium text-purple-400 hover:text-purple-300 transition-colors"
               >
                 Upgrade →
-              </a>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const res = await fetch("/api/stripe/portal", {
+                      method: "POST",
+                    });
+                    const data = await res.json();
+                    if (data.url) window.location.href = data.url;
+                  } catch {
+                    alert("Failed to open billing portal");
+                  }
+                }}
+                className="text-xs font-medium text-purple-400 hover:text-purple-300 transition-colors"
+              >
+                Manage →
+              </button>
             )}
           </div>
         </div>
@@ -404,8 +423,27 @@ export default function AccountPage() {
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
               {TOP_UP_PACKS.map((pack) => (
                 <button
+                  type="button"
                   key={pack.credits}
-                  className="group p-4 rounded-xl border border-white/10 bg-white/[0.02] hover:border-purple-500/30 hover:bg-purple-500/[0.03] transition-all text-left"
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    try {
+                      const res = await fetch("/api/stripe/checkout", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ credits: pack.credits }),
+                      });
+                      const data = await res.json();
+                      if (data.url) {
+                        window.location.href = data.url;
+                      } else {
+                        alert(data.error || "Failed to start checkout");
+                      }
+                    } catch {
+                      alert("Failed to connect to payment service");
+                    }
+                  }}
+                  className="group p-4 rounded-xl border border-white/10 bg-white/[0.02] hover:border-purple-500/30 hover:bg-purple-500/[0.03] transition-all text-left cursor-pointer"
                 >
                   <div className="flex items-baseline justify-between mb-1">
                     <span className="text-lg font-bold text-white">

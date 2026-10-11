@@ -8,14 +8,19 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String
-  credits   Int      @default(5)
-  plan      String   @default("free")
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  passwordResets PasswordReset[]
+  id                    String   @id @default(uuid())
+  email                 String   @unique
+  password              String
+  credits               Int      @default(5)
+  plan                  String   @default("free")
+  stripeCustomerId      String?  @unique
+  stripeSubscriptionId  String?  @unique
+  stripePriceId         String?
+  subscriptionStatus    String?
+  currentPeriodEnd      DateTime?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+  passwordResets        PasswordReset[]
 }
 
 model PasswordReset {

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   Zap,
   Shield,
@@ -258,8 +259,34 @@ function HowItWorksSection() {
 }
 
 function PricingSection() {
+  const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
+
+  const handleSubscribe = async (planKey: string) => {
+    setLoadingPlan(planKey);
+    try {
+      const res = await fetch("/api/stripe/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ planKey }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else if (res.status === 401) {
+        window.location.href = "/login";
+      } else {
+        alert(data.error || "Failed to start checkout");
+      }
+    } catch {
+      window.location.href = "/login";
+    } finally {
+      setLoadingPlan(null);
+    }
+  };
+
   const plans = [
     {
+      key: "starter",
       name: "Starter",
       price: "24",
       credits: "100",
@@ -275,6 +302,7 @@ function PricingSection() {
       popular: false,
     },
     {
+      key: "growth",
       name: "Growth",
       price: "75",
       credits: "500",
@@ -291,6 +319,7 @@ function PricingSection() {
       popular: false,
     },
     {
+      key: "pro",
       name: "Pro",
       price: "150",
       credits: "1,500",
@@ -308,6 +337,7 @@ function PricingSection() {
       popular: true,
     },
     {
+      key: "business",
       name: "Business",
       price: "350",
       credits: "5,000",
@@ -326,6 +356,7 @@ function PricingSection() {
       popular: false,
     },
     {
+      key: "agency",
       name: "Agency",
       price: "750",
       credits: "15,000",
@@ -403,16 +434,18 @@ function PricingSection() {
                 ))}
               </ul>
 
-              <a
-                href="/login"
-                className={`block w-full py-2.5 rounded-xl font-medium text-sm text-center transition-all ${
+              <button
+                type="button"
+                onClick={() => handleSubscribe(plan.key)}
+                disabled={loadingPlan === plan.key}
+                className={`w-full py-2.5 rounded-xl font-medium text-sm text-center transition-all cursor-pointer disabled:opacity-50 ${
                   plan.popular
                     ? "bg-purple-600 hover:bg-purple-700 text-white hover:shadow-lg hover:shadow-purple-500/20"
                     : "bg-white/5 hover:bg-white/10 text-white border border-white/10"
                 }`}
               >
-                Get Started
-              </a>
+                {loadingPlan === plan.key ? "Loading..." : "Get Started"}
+              </button>
             </div>
           ))}
         </div>
