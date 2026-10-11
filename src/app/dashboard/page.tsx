@@ -75,6 +75,7 @@ export default function Dashboard() {
   const [plan, setPlan] = useState("free");
   const [showPlans, setShowPlans] = useState(false);
   const [subscribingPlan, setSubscribingPlan] = useState<string | null>(null);
+  const outOfCreditsRef = useRef(false);
   const [isZipping, setIsZipping] = useState(false);
 
   // Edit parameter ranges
@@ -202,6 +203,7 @@ export default function Dashboard() {
         const result = await processVideo(vid, copyIdx);
         results[copyIdx] = result;
         completedCopies++;
+        setCredits((prev) => Math.max(0, prev - 1));
         setVideos((prev) =>
           prev.map((v) =>
             v.id === vid.id
@@ -217,14 +219,23 @@ export default function Dashboard() {
   };
 
   const processAll = async () => {
-    setIsProcessing(true);
     const pendingVids = videos.filter((v) => v.status === "pending");
+    const totalNeeded = pendingVids.length * copies;
+
+    if (credits < totalNeeded) {
+      alert(`Not enough credits. You need ${totalNeeded} but only have ${credits}.`);
+      return;
+    }
+
+    setIsProcessing(true);
+    outOfCreditsRef.current = false;
 
     // Process 2 videos concurrently to keep server from being overwhelmed
     const VIDEO_CONCURRENCY = 2;
 
     for (let batch = 0; batch < pendingVids.length; batch += VIDEO_CONCURRENCY) {
       const batchVids = pendingVids.slice(batch, batch + VIDEO_CONCURRENCY);
+      if (outOfCreditsRef.current) break;
 
       await Promise.all(
         batchVids.map(async (vid) => {
@@ -250,7 +261,11 @@ export default function Dashboard() {
                   : v
               )
             );
-          } catch {
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : "";
+            if (msg.includes("Insufficient credits") || msg.includes("402")) {
+              outOfCreditsRef.current = true;
+            }
             setVideos((prev) =>
               prev.map((v) =>
                 v.id === vid.id ? { ...v, status: "error", progress: 0 } : v
@@ -739,9 +754,9 @@ export default function Dashboard() {
             {/* Process button */}
             <button
               onClick={processAll}
-              disabled={pendingCount === 0 || isProcessing}
+              disabled={pendingCount === 0 || isProcessing || credits < pendingCount * copies}
               className={`w-full py-3.5 rounded-xl font-medium text-sm transition-all flex items-center justify-center gap-2 ${
-                pendingCount > 0 && !isProcessing
+                pendingCount > 0 && !isProcessing && credits >= pendingCount * copies
                   ? "bg-purple-600 hover:bg-purple-700 text-white hover:shadow-lg hover:shadow-purple-500/20"
                   : "bg-white/5 text-slate-600 cursor-not-allowed"
               }`}
@@ -765,6 +780,14 @@ export default function Dashboard() {
                 </>
               )}
             </button>
+            {pendingCount > 0 && !isProcessing && credits < pendingCount * copies && (
+              <p className="text-xs text-red-400 text-center mt-2">
+                Not enough credits — you need {pendingCount * copies} but have {credits}.{" "}
+                <button onClick={() => setShowPlans(true)} className="underline text-purple-400 hover:text-purple-300">
+                  Get more credits
+                </button>
+              </p>
+            )}
 
           </div>
         </div>
