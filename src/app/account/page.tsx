@@ -119,6 +119,8 @@ export default function AccountPage() {
   const [plan, setPlan] = useState<PlanName>("free");
   const [showTopUp, setShowTopUp] = useState(false);
   const [hasSubscription, setHasSubscription] = useState(false);
+  const [showPlans, setShowPlans] = useState(false);
+  const [subscribingPlan, setSubscribingPlan] = useState<PlanName | null>(null);
 
   // Promo code state
   const [promoCode, setPromoCode] = useState("");
@@ -292,7 +294,7 @@ export default function AccountPage() {
             {plan === "free" ? (
               <button
                 type="button"
-                onClick={() => (window.location.href = "/#pricing")}
+                onClick={() => setShowPlans(true)}
                 className="text-xs font-medium text-purple-400 hover:text-purple-300 transition-colors"
               >
                 Upgrade →
@@ -499,18 +501,100 @@ export default function AccountPage() {
               >
                 Cancel
               </button>
-              <a
-                href="/#pricing"
+              <button
+                onClick={() => { setShowTopUp(false); setShowPlans(true); }}
                 className="flex-1 py-3 rounded-xl text-sm font-medium bg-purple-600 hover:bg-purple-700 text-white text-center transition-all hover:shadow-lg hover:shadow-purple-500/20"
               >
                 View Plans
-              </a>
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Upgrade success popup */}
+
+      {/* Plans modal */}
+      {showPlans && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+          <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#010313] p-8 relative max-h-[90vh] overflow-y-auto">
+            <button
+              onClick={() => setShowPlans(false)}
+              className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div className="text-center mb-6">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-purple-500/10 border border-purple-500/20">
+                <Crown className="h-6 w-6 text-purple-400" />
+              </div>
+              <h2 className="text-xl font-bold">Choose a Plan</h2>
+              <p className="text-sm text-slate-500 mt-1">
+                Subscribe monthly and save on every credit
+              </p>
+            </div>
+
+            <div className="space-y-3 mb-6">
+              {(["starter", "growth", "pro", "business", "agency"] as PlanName[]).map((key) => {
+                const p = PLAN_CONFIG[key];
+                return (
+                  <button
+                    type="button"
+                    key={key}
+                    disabled={subscribingPlan === key}
+                    onClick={async () => {
+                      setSubscribingPlan(key);
+                      try {
+                        const res = await fetch("/api/stripe/subscribe", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ planKey: key }),
+                        });
+                        const data = await res.json();
+                        if (data.url) {
+                          window.location.href = data.url;
+                        } else {
+                          alert(data.error || "Failed to start checkout");
+                          setSubscribingPlan(null);
+                        }
+                      } catch {
+                        alert("Failed to connect to payment service");
+                        setSubscribingPlan(null);
+                      }
+                    }}
+                    className="w-full flex items-center justify-between p-4 rounded-xl border border-white/10 bg-white/[0.02] hover:border-purple-500/30 hover:bg-purple-500/[0.03] transition-all text-left cursor-pointer disabled:opacity-50"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`${p.color}`}>{p.icon}</div>
+                      <div>
+                        <div className="text-sm font-semibold text-white">{p.label}</div>
+                        <div className="text-xs text-slate-500">{p.credits.toLocaleString()} credits/mo</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-semibold text-white">\u00a3{p.price}/mo</span>
+                      {subscribingPlan === key ? (
+                        <Loader2 className="h-4 w-4 text-purple-400 animate-spin" />
+                      ) : (
+                        <span className="text-xs font-medium text-purple-400">Subscribe →</span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              onClick={() => setShowPlans(false)}
+              className="w-full py-3 rounded-xl text-sm font-medium bg-white/5 hover:bg-white/10 text-white border border-white/10 transition-all"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Upgrade success popup */
       {promoSuccess && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
           <div className="w-full max-w-md relative">
