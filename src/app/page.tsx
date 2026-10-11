@@ -403,15 +403,16 @@ function PricingSection() {
                 ))}
               </ul>
 
-              <button
-                className={`w-full py-2.5 rounded-xl font-medium text-sm transition-all ${
+              <a
+                href="/login"
+                className={`block w-full py-2.5 rounded-xl font-medium text-sm text-center transition-all ${
                   plan.popular
                     ? "bg-purple-600 hover:bg-purple-700 text-white hover:shadow-lg hover:shadow-purple-500/20"
                     : "bg-white/5 hover:bg-white/10 text-white border border-white/10"
                 }`}
               >
                 Get Started
-              </button>
+              </a>
             </div>
           ))}
         </div>
@@ -444,9 +445,9 @@ function PricingSection() {
                 <div className="text-xs text-slate-500 mb-3">credits</div>
                 <div className="text-lg font-semibold text-white mb-1">£{pack.price}</div>
                 <div className="text-[10px] text-slate-500">{pack.perCredit}/credit</div>
-                <button className="mt-4 w-full py-2 rounded-lg text-xs font-medium bg-white/5 hover:bg-white/10 text-white border border-white/10 transition-all">
+                <a href="/login" className="mt-4 block w-full py-2 rounded-lg text-xs font-medium bg-white/5 hover:bg-white/10 text-white border border-white/10 transition-all text-center">
                   Buy
-                </button>
+                </a>
               </div>
             ))}
           </div>

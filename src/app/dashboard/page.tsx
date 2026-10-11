@@ -437,7 +437,7 @@ export default function Dashboard() {
                           })
                         );
 
-                        const zipBlob = await zip.generateAsync({ type: "blob" });
+                        const zipBlob = await zip.generateAsync({ type: "blob", compression: "STORE" });
                         const url = URL.createObjectURL(zipBlob);
                         const a = document.createElement("a");
                         a.href = url;
@@ -726,8 +726,28 @@ export default function Dashboard() {
                 { credits: 1000, price: "260" },
               ].map((pack) => (
                 <button
+                  type="button"
                   key={pack.credits}
-                  className="group p-4 rounded-xl border border-white/10 bg-white/[0.02] hover:border-purple-500/30 hover:bg-purple-500/[0.03] transition-all text-left"
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    try {
+                      const res = await fetch("/api/stripe/checkout", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ credits: pack.credits }),
+                      });
+                      const data = await res.json();
+                      if (data.url) {
+                        window.location.href = data.url;
+                      } else {
+                        alert(data.error || "Failed to start checkout");
+                      }
+                    } catch (err) {
+                      console.error("Checkout error:", err);
+                      alert("Failed to connect to payment service");
+                    }
+                  }}
+                  className="group p-4 rounded-xl border border-white/10 bg-white/[0.02] hover:border-purple-500/30 hover:bg-purple-500/[0.03] transition-all text-left cursor-pointer relative z-10"
                 >
                   <div className="flex items-baseline justify-between mb-1">
                     <span className="text-lg font-bold text-white">{pack.credits.toLocaleString()}</span>
@@ -751,7 +771,7 @@ export default function Dashboard() {
                 Cancel
               </button>
               <a
-                href="/#pricing"
+                href="/account"
                 className="flex-1 py-3 rounded-xl text-sm font-medium bg-purple-600 hover:bg-purple-700 text-white text-center transition-all hover:shadow-lg hover:shadow-purple-500/20"
               >
                 View Plans
