@@ -10,10 +10,66 @@ function generateCode(): string {
 }
 
 export async function POST(req: NextRequest) {
+  let body: { email?: string } = {};
+  try {
+    body = await req.json();
+  } catch {}
+
+  // Case 1: Pre-signup resend — email in body, no user exists yet (pending signup)
+  if (body.email) {
+    const normalised = body.email.toLowerCase().trim();
+
+    // Check if this is a pending signup (verification record with no userId)
+    const pending = await prisma.emailVerification.findFirst({
+      where: { email: normalised, userId: null },
+    });
+
+    if (pending) {
+      // Delete old codes and create a new one
+      await prisma.emailVerification.deleteMany({
+        where: { email: normalised, userId: null },
+      });
+
+      const code = generateCode();
+      await prisma.emailVerification.create({
+        data: {
+          token: code,
+          email: normalised,
+          passwordHash: pending.passwordHash,
+          expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+        },
+      });
+
+      await sendVerificationCode(normalised, code);
+      return NextResponse.json({ success: true });
+    }
+
+    // Check if it's an existing user who needs re-verification
+    const user = await prisma.user.findUnique({ where: { email: normalised } });
+    if (user && !user.emailVerified) {
+      await prisma.emailVerification.deleteMany({ where: { userId: user.id } });
+
+      const code = generateCode();
+      await prisma.emailVerification.create({
+        data: {
+          token: code,
+          email: normalised,
+          userId: user.id,
+          expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+        },
+      });
+
+      await sendVerificationCode(normalised, code);
+      return NextResponse.json({ success: true });
+    }
+
+    return NextResponse.json({ error: "No pending verification found" }, { status: 400 });
+  }
+
+  // Case 2: Logged-in user resending from dashboard
   let userId: string | undefined;
   let userEmail: string | undefined;
 
-  // Try to get user from session or JWT
   const session = await getServerSession(authOptions);
   if (session?.user) {
     userId = (session.user as { id?: string }).id;
@@ -31,20 +87,6 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Also accept email in body (for pre-login resend from signup screen)
-  if (!userId) {
-    try {
-      const body = await req.json();
-      if (body.email) {
-        const user = await prisma.user.findUnique({ where: { email: body.email } });
-        if (user) {
-          userId = user.id;
-          userEmail = user.email;
-        }
-      }
-    } catch {}
-  }
-
   if (!userId || !userEmail) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -58,20 +100,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Email already verified" }, { status: 400 });
   }
 
-  // Delete old tokens
   await prisma.emailVerification.deleteMany({ where: { userId } });
 
-  // Create new 6-digit code (15 min expiry)
   const code = generateCode();
   await prisma.emailVerification.create({
     data: {
       token: code,
+      email: user.email,
       userId,
       expiresAt: new Date(Date.now() + 15 * 60 * 1000),
     },
   });
 
   await sendVerificationCode(user.email, code);
-
   return NextResponse.json({ success: true });
 }

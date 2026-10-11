@@ -332,7 +332,7 @@ export default function Dashboard() {
               disabled={resendingVerification}
               className="text-xs font-medium text-amber-400 hover:text-amber-300 transition-colors disabled:opacity-50"
             >
-              {resendingVerification ? 'Sending...' : 'Resend email'}
+              {resendingVerification ? 'Sending...' : 'Resend code'}
             </button>
           </div>
         </div>

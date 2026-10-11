@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createUser } from "@/lib/users";
-import { sendVerificationCode } from "@/lib/email";
 import { prisma } from "@/lib/prisma";
+import { sendVerificationCode } from "@/lib/email";
+import bcrypt from "bcryptjs";
 
 function generateCode(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -25,27 +25,43 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const user = await createUser(email, password);
+    const normalised = email.toLowerCase().trim();
 
-    // Create 6-digit verification code (15 min expiry)
+    // Check if email is already taken
+    const existing = await prisma.user.findUnique({ where: { email: normalised } });
+    if (existing) {
+      return NextResponse.json(
+        { error: "Email already registered" },
+        { status: 400 }
+      );
+    }
+
+    // Hash password for temporary storage
+    const passwordHash = await bcrypt.hash(password, 12);
+
+    // Clean up any previous pending signups for this email
+    await prisma.emailVerification.deleteMany({
+      where: { email: normalised, userId: null },
+    });
+
+    // Create verification code (15 min expiry) — no user created yet
     const code = generateCode();
     await prisma.emailVerification.create({
       data: {
         token: code,
-        userId: user.id,
+        email: normalised,
+        passwordHash,
         expiresAt: new Date(Date.now() + 15 * 60 * 1000),
       },
     });
 
     // Send verification code email
-    sendVerificationCode(user.email, code).catch((err) => {
+    sendVerificationCode(normalised, code).catch((err) => {
       console.error("Failed to send verification code:", err);
     });
 
     return NextResponse.json({
-      id: user.id,
-      email: user.email,
-      credits: user.credits,
+      email: normalised,
       needsVerification: true,
     });
   } catch (error: unknown) {

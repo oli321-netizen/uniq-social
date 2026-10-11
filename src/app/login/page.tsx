@@ -167,11 +167,11 @@ export default function LoginPage() {
             </span>
           </a>
           <h1 className="text-2xl font-bold mb-2">
-            {showCodeEntry ? "Enter verification code" : isSignUp ? "Create your account" : "Welcome back"}
+            {showCodeEntry ? "Enter your code" : isSignUp ? "Create your account" : "Welcome back"}
           </h1>
           <p className="text-sm text-slate-500">
             {showCodeEntry
-              ? <>We sent a 6-digit code to <span className="text-white">{email}</span></>
+              ? <>Enter the 6-digit code we emailed to <span className="text-white">{email}</span></>
               : isSignUp
               ? "Get 5 free credits to start processing"
               : "Sign in to your dashboard"}
