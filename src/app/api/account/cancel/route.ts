@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { getToken } from "next-auth/jwt";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { stripe } from "@/lib/stripe";
 
 export async function POST(req: NextRequest) {
   let userId: string | undefined;
@@ -31,9 +32,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Already on free plan" }, { status: 400 });
   }
 
-  // If they have a Stripe subscription, they should use the billing portal
+  // If they have a Stripe subscription, cancel it
   if (user.stripeSubscriptionId) {
-    return NextResponse.json({ error: "Use billing portal to manage Stripe subscriptions" }, { status: 400 });
+    try {
+      await stripe.subscriptions.cancel(user.stripeSubscriptionId);
+    } catch (err) {
+      console.error("Failed to cancel Stripe subscription:", err);
+    }
   }
 
   // Downgrade to free (keep remaining credits)
@@ -41,6 +46,10 @@ export async function POST(req: NextRequest) {
     where: { id: userId },
     data: {
       plan: "free",
+      stripeSubscriptionId: null,
+      stripePriceId: null,
+      subscriptionStatus: "cancelled",
+      currentPeriodEnd: null,
     },
   });
 
