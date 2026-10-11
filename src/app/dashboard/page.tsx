@@ -74,8 +74,12 @@ export default function Dashboard() {
   const [showTopUp, setShowTopUp] = useState(false);
   const [plan, setPlan] = useState("free");
   const [showPlans, setShowPlans] = useState(false);
+  const [showLowCredits, setShowLowCredits] = useState(false);
+  const lowCreditsShownRef = useRef(false);
   const [subscribingPlan, setSubscribingPlan] = useState<string | null>(null);
   const outOfCreditsRef = useRef(false);
+  const planRank: Record<string, number> = { free: 0, starter: 1, growth: 2, pro: 3, business: 4, agency: 5 };
+  const currentRank = planRank[plan] ?? 0;
   const [isZipping, setIsZipping] = useState(false);
 
   // Edit parameter ranges
@@ -117,6 +121,14 @@ export default function Dashboard() {
         .catch(() => {});
     }
   }, [status]);
+
+  // Show low-credits popup when balance gets low (once per session)
+  useEffect(() => {
+    if (credits <= 2 && credits >= 0 && !lowCreditsShownRef.current && plan === "free") {
+      lowCreditsShownRef.current = true;
+      setShowLowCredits(true);
+    }
+  }, [credits, plan]);
 
   if (status === "loading") {
     return (
@@ -795,6 +807,42 @@ export default function Dashboard() {
 
 
       {/* Plans modal */}
+      {/* Low credits popup */}
+      {showLowCredits && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#010313] p-8 relative text-center">
+            <button
+              onClick={() => setShowLowCredits(false)}
+              className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-amber-500/10 border border-amber-500/20">
+              <Zap className="h-7 w-7 text-amber-400" />
+            </div>
+            <h2 className="text-lg font-bold mb-2">Running low on credits</h2>
+            <p className="text-sm text-slate-400 mb-6">
+              You have <span className="text-white font-semibold">{credits}</span> credit{credits !== 1 ? "s" : ""} remaining. Top up or subscribe to keep generating.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowLowCredits(false); setShowTopUp(true); }}
+                className="flex-1 py-3 rounded-xl text-sm font-medium bg-white/5 hover:bg-white/10 text-white border border-white/10 transition-all"
+              >
+                Top Up Credits
+              </button>
+              <button
+                onClick={() => { setShowLowCredits(false); setShowPlans(true); }}
+                className="flex-1 py-3 rounded-xl text-sm font-medium bg-purple-600 hover:bg-purple-700 text-white transition-all"
+              >
+                View Plans
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showPlans && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
           <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#010313] p-8 relative max-h-[90vh] overflow-y-auto">
@@ -822,7 +870,7 @@ export default function Dashboard() {
                 { key: "pro", label: "Pro", credits: "1,500", price: "150", icon: "\u2b50" },
                 { key: "business", label: "Business", credits: "5,000", price: "350", icon: "\ud83c\udfe2" },
                 { key: "agency", label: "Agency", credits: "15,000", price: "750", icon: "\ud83d\udc51" },
-              ].map((p) => (
+              ].filter((p) => (planRank[p.key] ?? 0) > currentRank).map((p) => (
                 <button
                   type="button"
                   key={p.key}
@@ -864,6 +912,12 @@ export default function Dashboard() {
                 </button>
               ))}
             </div>
+
+            {plan === "agency" && (
+              <div className="text-center py-6 text-sm text-slate-400">
+                You&apos;re on the top plan — Agency with 15,000 credits/mo.
+              </div>
+            )}
 
             <button
               onClick={() => setShowPlans(false)}
