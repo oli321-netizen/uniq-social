@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { rateLimit } from "@/lib/rate-limit";
 import { getServerSession } from "next-auth";
 import { getToken } from "next-auth/jwt";
 import { authOptions } from "@/lib/auth";
 import { stripe, CREDIT_PACKS } from "@/lib/stripe";
 
 export async function POST(req: NextRequest) {
+  const ip = req.headers.get("x-forwarded-for") || "unknown";
+  const rl = rateLimit(`checkout:${ip}`, 60000, 10);
+  if (!rl.ok) return NextResponse.json({ error: "Too many requests." }, { status: 429 });
   // Auth check — session first, JWT fallback
   let userId: string | undefined;
   let userEmail: string | undefined;

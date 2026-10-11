@@ -71,6 +71,29 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // Apply referral code if provided during signup
+    if (verification.referralCode) {
+      const referral = await prisma.referral.findUnique({
+        where: { code: verification.referralCode },
+      });
+      if (referral && !referral.referredId) {
+        await prisma.$transaction([
+          prisma.referral.update({
+            where: { id: referral.id },
+            data: { referredId: user.id, credited: true },
+          }),
+          prisma.user.update({
+            where: { id: referral.referrerId },
+            data: { credits: { increment: 50 } },
+          }),
+          prisma.user.update({
+            where: { id: user.id },
+            data: { credits: { increment: 50 } },
+          }),
+        ]);
+      }
+    }
+
     // Clean up verification record
     await prisma.emailVerification.deleteMany({
       where: { email: normalised, userId: null },

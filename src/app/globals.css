@@ -9,6 +9,48 @@
   --foreground: #e2e8f0;
 }
 
+html.light {
+  --background: #f8fafc;
+  --foreground: #1e293b;
+}
+
+html.light body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+html.light .bg-\[\\#010313\] {
+  background-color: #f8fafc !important;
+}
+
+html.light .border-white\/5,
+html.light .border-white\/10 {
+  border-color: rgba(0,0,0,0.08) !important;
+}
+
+html.light .bg-white\/\[0\.02\],
+html.light .bg-white\/\[0\.01\] {
+  background-color: rgba(0,0,0,0.03) !important;
+}
+
+html.light .bg-white\/5 {
+  background-color: rgba(0,0,0,0.05) !important;
+}
+
+html.light .text-slate-300,
+html.light .text-slate-400 {
+  color: #475569 !important;
+}
+
+html.light .text-slate-500,
+html.light .text-slate-600 {
+  color: #64748b !important;
+}
+
+html.light .text-white {
+  color: #1e293b !important;
+}
+
 body {
   color: var(--foreground);
   background: var(--background);

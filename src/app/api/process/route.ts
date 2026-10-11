@@ -8,6 +8,8 @@ import { getServerSession } from "next-auth";
 import { getToken } from "next-auth/jwt";
 import { authOptions } from "@/lib/auth";
 import { deductCredits } from "@/lib/users";
+import { rateLimit } from "@/lib/rate-limit";
+import { prisma } from "@/lib/prisma";
 
 const execAsync = promisify(exec);
 
@@ -112,6 +114,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Rate limit: 30 requests per minute per user
+    const rl = rateLimit(`process:${userId}`, 60000, 30);
+    if (!rl.ok) {
+      return NextResponse.json({ error: "Too many requests. Please wait a moment." }, { status: 429 });
+    }
     // Deduct 1 credit
     const charged = await deductCredits(userId, 1);
     if (!charged) {
@@ -273,6 +280,14 @@ export async function POST(req: NextRequest) {
 
     // Cleanup entire tmp dir
     rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+
+    // Log processing job
+    try {
+      const origName = file?.name || "unknown";
+      await prisma.processingJob.create({
+        data: { userId, fileName: origName, copies: 1, status: "completed" },
+      });
+    } catch {}
 
     return new NextResponse(outputBuffer, {
       headers: {

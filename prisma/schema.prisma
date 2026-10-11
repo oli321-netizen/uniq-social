@@ -14,6 +14,7 @@ model User {
   emailVerified         Boolean  @default(false)
   credits               Int      @default(5)
   plan                  String   @default("free")
+  referralCode          String?  @unique
   stripeCustomerId      String?  @unique
   stripeSubscriptionId  String?  @unique
   stripePriceId         String?
@@ -24,6 +25,9 @@ model User {
   passwordResets        PasswordReset[]
   transactions          Transaction[]
   emailVerifications    EmailVerification[]
+  processingJobs        ProcessingJob[]
+  referralsGiven        Referral[] @relation("ReferralsGiven")
+  referredBy            Referral?  @relation("ReferredBy")
 }
 
 model PasswordReset {
@@ -49,10 +53,10 @@ model Transaction {
   id          String   @id @default(uuid())
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type        String   // "credit_purchase" | "subscription" | "renewal" | "cancellation" | "promo"
+  type        String
   description String
   credits     Int      @default(0)
-  amount      Int      @default(0)  // in pence
+  amount      Int      @default(0)
   currency    String   @default("gbp")
   createdAt   DateTime @default(now())
 }
@@ -62,8 +66,30 @@ model EmailVerification {
   token        String
   email        String   @default("")
   passwordHash String?
+  referralCode String?
   userId       String?
   user         User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   expiresAt    DateTime
   createdAt    DateTime @default(now())
+}
+
+model ProcessingJob {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fileName   String
+  copies     Int      @default(1)
+  status     String   @default("completed")
+  createdAt  DateTime @default(now())
+}
+
+model Referral {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  referrerId  String
+  referrer    User     @relation("ReferralsGiven", fields: [referrerId], references: [id], onDelete: Cascade)
+  referredId  String?  @unique
+  referred    User?    @relation("ReferredBy", fields: [referredId], references: [id])
+  credited    Boolean  @default(false)
+  createdAt   DateTime @default(now())
 }

@@ -20,6 +20,12 @@ import {
   Mail,
   Crown,
   ArrowRight,
+  Sun,
+  Moon,
+  BarChart3,
+  Gift,
+  History,
+  Copy,
 } from "lucide-react";
 import JSZip from "jszip";
 
@@ -82,6 +88,13 @@ export default function Dashboard() {
   const planRank: Record<string, number> = { free: 0, starter: 1, growth: 2, pro: 3, business: 4, agency: 5 };
   const currentRank = planRank[plan] ?? 0;
   const [isZipping, setIsZipping] = useState(false);
+  const [activeTab, setActiveTab] = useState<"process" | "history" | "stats" | "refer">("process");
+  const [historyJobs, setHistoryJobs] = useState<any[]>([]);
+  const [usageData, setUsageData] = useState<any>(null);
+  const [referralData, setReferralData] = useState<any>(null);
+  const [referralCopied, setReferralCopied] = useState(false);
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [previewVid, setPreviewVid] = useState<VideoFile | null>(null);
 
   // Edit parameter ranges
   const [editSettings, setEditSettings] = useState({
@@ -111,20 +124,33 @@ export default function Dashboard() {
     if (status === "unauthenticated") router.push("/login");
   }, [status, router]);
 
-  // Fetch credits
+  // Reusable credit refresh
+  const refreshCredits = useCallback(() => {
+    fetch("/api/credits")
+      .then((r) => r.json())
+      .then((d) => {
+        setCredits(d.credits ?? 0);
+        setPlan(d.plan ?? "free");
+        setCreditsLoaded(true);
+        setEmailVerified(d.emailVerified !== false);
+      })
+      .catch(() => {});
+  }, []);
+
+  // Fetch credits on load
   useEffect(() => {
-    if (status === "authenticated") {
-      fetch("/api/credits")
-        .then((r) => r.json())
-        .then((d) => {
-          setCredits(d.credits ?? 0);
-          setPlan(d.plan ?? "free");
-          setCreditsLoaded(true);
-          setEmailVerified(d.emailVerified !== false);
-        })
-        .catch(() => {});
-    }
-  }, [status]);
+    if (status === "authenticated") refreshCredits();
+  }, [status, refreshCredits]);
+
+  // Refresh credits when user returns to tab (e.g. after Stripe checkout)
+  useEffect(() => {
+    const onFocus = () => { if (status === "authenticated") refreshCredits(); };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible" && status === "authenticated") refreshCredits();
+    });
+    return () => { window.removeEventListener("focus", onFocus); };
+  }, [status, refreshCredits]);
 
   // Show low-credits popup when balance gets low (once per session)
   useEffect(() => {
@@ -133,6 +159,18 @@ export default function Dashboard() {
       setShowLowCredits(true);
     }
   }, [credits, creditsLoaded]);
+
+  // Fetch tab data when tab changes
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    if (activeTab === "history") {
+      fetch("/api/history").then(r => r.json()).then(d => setHistoryJobs(d.jobs || [])).catch(() => {});
+    } else if (activeTab === "stats") {
+      fetch("/api/usage").then(r => r.json()).then(d => setUsageData(d)).catch(() => {});
+    } else if (activeTab === "refer") {
+      fetch("/api/referral").then(r => r.json()).then(d => setReferralData(d)).catch(() => {});
+    }
+  }, [activeTab, status]);
 
   if (status === "loading") {
     return (
@@ -292,11 +330,18 @@ export default function Dashboard() {
       );
     }
 
-    // Refresh credits
-    fetch("/api/credits")
-      .then((r) => r.json())
-      .then((d) => { setCredits(d.credits ?? 0); setPlan(d.plan ?? "free"); })
-      .catch(() => {});
+    // Refresh credits from server
+    refreshCredits();
+
+    // Send completion email notification
+    const completedCount = videos.filter((v) => v.status === "done").length;
+    if (completedCount > 0) {
+      fetch("/api/notify-complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ totalVideos: completedCount, totalCopies: completedCount * copies }),
+      }).catch(() => {});
+    }
 
     setIsProcessing(false);
   };
@@ -334,6 +379,18 @@ export default function Dashboard() {
             >
               <Plus className="h-3 w-3" />
               Buy Credits
+            </button>
+            <button
+              onClick={() => {
+                const next = theme === "dark" ? "light" : "dark";
+                setTheme(next);
+                document.documentElement.classList.toggle("dark", next === "dark");
+                document.documentElement.classList.toggle("light", next === "light");
+              }}
+              className="text-slate-500 hover:text-white transition-colors"
+              title="Toggle theme"
+            >
+              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
             <a href="/account" className="text-slate-500 hover:text-white transition-colors">
               <Settings className="h-4 w-4" />
@@ -411,6 +468,35 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+      {/* Tab bar */}
+      <div className="mx-auto max-w-6xl px-6 pt-6">
+        <div className="flex gap-1 p-1 rounded-xl bg-white/[0.03] border border-white/5 w-fit">
+          {([
+            { key: "process", label: "Process", icon: "Zap" },
+            { key: "history", label: "History", icon: "History" },
+            { key: "stats", label: "Stats", icon: "BarChart3" },
+            { key: "refer", label: "Refer & Earn", icon: "Gift" },
+          ] as const).map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                activeTab === tab.key
+                  ? "bg-purple-600 text-white shadow-lg shadow-purple-500/20"
+                  : "text-slate-500 hover:text-white hover:bg-white/5"
+              }`}
+            >
+              {tab.key === "process" && <Zap className="h-3.5 w-3.5" />}
+              {tab.key === "history" && <History className="h-3.5 w-3.5" />}
+              {tab.key === "stats" && <BarChart3 className="h-3.5 w-3.5" />}
+              {tab.key === "refer" && <Gift className="h-3.5 w-3.5" />}
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {activeTab === "process" && (
       <div className="mx-auto max-w-6xl px-6 py-8">
         <div className="grid lg:grid-cols-[1fr_320px] gap-8">
           {/* Main area */}
@@ -501,9 +587,17 @@ export default function Dashboard() {
 
                     <div className="flex items-center gap-2">
                       {vid.status === "done" && vid.outputs && (
-                        <span className="text-xs text-green-400 font-medium">
-                          {vid.outputs.length} clip{vid.outputs.length !== 1 ? "s" : ""} ready
-                        </span>
+                        <>
+                          <button
+                            onClick={() => setPreviewVid(vid)}
+                            className="text-xs text-purple-400 hover:text-purple-300 font-medium transition-colors"
+                          >
+                            Preview
+                          </button>
+                          <span className="text-xs text-green-400 font-medium">
+                            {vid.outputs.length} clip{vid.outputs.length !== 1 ? "s" : ""} ready
+                          </span>
+                        </>
                       )}
                       {vid.status === "error" && (
                         <span className="text-xs text-red-400">Failed</span>
@@ -846,6 +940,191 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+      )}
+
+      {/* History tab */}
+      {activeTab === "history" && (
+        <div className="mx-auto max-w-6xl px-6 py-8">
+          <div className="rounded-2xl border border-white/5 bg-white/[0.02] overflow-hidden">
+            <div className="p-5 border-b border-white/5">
+              <h2 className="text-sm font-semibold flex items-center gap-2">
+                <History className="h-4 w-4 text-purple-400" />
+                Processing History
+              </h2>
+            </div>
+            {historyJobs.length === 0 ? (
+              <div className="p-12 text-center">
+                <History className="h-8 w-8 text-slate-700 mx-auto mb-3" />
+                <p className="text-sm text-slate-500">No processing history yet</p>
+                <p className="text-xs text-slate-600 mt-1">Videos you process will appear here</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-white/5">
+                {historyJobs.map((job: any) => (
+                  <div key={job.id} className="flex items-center justify-between px-5 py-3.5">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-green-500/10 border border-green-500/20 flex-shrink-0">
+                        <Check className="h-3.5 w-3.5 text-green-400" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{job.fileName}</p>
+                        <p className="text-xs text-slate-600">
+                          {new Date(job.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-xs text-slate-500 flex-shrink-0">
+                      {job.copies} {job.copies === 1 ? "copy" : "copies"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Stats tab */}
+      {activeTab === "stats" && (
+        <div className="mx-auto max-w-6xl px-6 py-8">
+          <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-5">
+            <h2 className="text-sm font-semibold mb-6 flex items-center gap-2">
+              <BarChart3 className="h-4 w-4 text-purple-400" />
+              Usage — Last 30 Days
+            </h2>
+            {!usageData ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-6 w-6 text-purple-400 animate-spin" />
+              </div>
+            ) : usageData.days?.length === 0 ? (
+              <div className="text-center py-12">
+                <BarChart3 className="h-8 w-8 text-slate-700 mx-auto mb-3" />
+                <p className="text-sm text-slate-500">No usage data yet</p>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-3 gap-4 mb-8">
+                  <div className="rounded-xl bg-purple-500/[0.06] border border-purple-500/10 p-4 text-center">
+                    <p className="text-2xl font-bold text-purple-400">{usageData.totalVideos ?? 0}</p>
+                    <p className="text-xs text-slate-500 mt-1">Videos processed</p>
+                  </div>
+                  <div className="rounded-xl bg-purple-500/[0.06] border border-purple-500/10 p-4 text-center">
+                    <p className="text-2xl font-bold text-purple-400">{usageData.totalCopies ?? 0}</p>
+                    <p className="text-xs text-slate-500 mt-1">Total copies</p>
+                  </div>
+                  <div className="rounded-xl bg-purple-500/[0.06] border border-purple-500/10 p-4 text-center">
+                    <p className="text-2xl font-bold text-purple-400">{usageData.totalCopies ?? 0}</p>
+                    <p className="text-xs text-slate-500 mt-1">Credits used</p>
+                  </div>
+                </div>
+                {/* Simple bar chart */}
+                <div className="h-40 flex items-end gap-1">
+                  {(usageData.days || []).slice(-14).map((d: any, i: number) => {
+                    const max = Math.max(...(usageData.days || []).slice(-14).map((x: any) => x.copies || 0), 1);
+                    const h = ((d.copies || 0) / max) * 100;
+                    return (
+                      <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                        <div
+                          className="w-full bg-purple-500/40 rounded-t hover:bg-purple-500/60 transition-colors"
+                          style={{ height: `${Math.max(h, 2)}%` }}
+                          title={`${d.date}: ${d.copies} copies`}
+                        />
+                        {i % 2 === 0 && (
+                          <span className="text-[9px] text-slate-600 whitespace-nowrap">
+                            {new Date(d.date).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Refer & Earn tab */}
+      {activeTab === "refer" && (
+        <div className="mx-auto max-w-6xl px-6 py-8">
+          <div className="max-w-lg mx-auto space-y-6">
+            <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-6 text-center">
+              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-purple-500/10 border border-purple-500/20">
+                <Gift className="h-7 w-7 text-purple-400" />
+              </div>
+              <h2 className="text-lg font-bold mb-2">Refer & Earn Credits</h2>
+              <p className="text-sm text-slate-400 mb-6">
+                Share your referral code. When someone signs up with it, you both get <span className="text-purple-400 font-semibold">50 free credits</span>!
+              </p>
+
+              {!referralData ? (
+                <Loader2 className="h-6 w-6 text-purple-400 animate-spin mx-auto" />
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 p-3 rounded-xl bg-white/5 border border-white/10 mb-4">
+                    <code className="flex-1 text-sm font-mono text-purple-300 select-all">{referralData.code}</code>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(referralData.code);
+                        setReferralCopied(true);
+                        setTimeout(() => setReferralCopied(false), 2000);
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium transition-all flex items-center gap-1.5"
+                    >
+                      {referralCopied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                      {referralCopied ? "Copied!" : "Copy"}
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-xl bg-white/5 border border-white/10 p-4">
+                      <p className="text-xl font-bold text-white">{referralData.totalReferred ?? 0}</p>
+                      <p className="text-xs text-slate-500 mt-1">People referred</p>
+                    </div>
+                    <div className="rounded-xl bg-white/5 border border-white/10 p-4">
+                      <p className="text-xl font-bold text-purple-400">{(referralData.totalReferred ?? 0) * 50}</p>
+                      <p className="text-xs text-slate-500 mt-1">Credits earned</p>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Before/after preview modal */}
+      {previewVid && previewVid.outputs && previewVid.outputs.length > 0 && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm px-4">
+          <div className="w-full max-w-4xl rounded-2xl border border-white/10 bg-[#010313] p-6 relative">
+            <button
+              onClick={() => setPreviewVid(null)}
+              className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <h2 className="text-sm font-semibold mb-4">Before / After Preview</h2>
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs text-slate-500 mb-2">Original</p>
+                <video
+                  src={URL.createObjectURL(previewVid.file)}
+                  controls
+                  className="w-full rounded-xl border border-white/10"
+                />
+              </div>
+              <div>
+                <p className="text-xs text-slate-500 mb-2">Processed</p>
+                <video
+                  src={previewVid.outputs[0].url}
+                  controls
+                  className="w-full rounded-xl border border-white/10"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
 
       {/* Plans modal */}

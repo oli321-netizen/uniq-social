@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { rateLimit } from "@/lib/rate-limit";
 import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { sendPasswordResetEmail } from "@/lib/email";
 
 export async function POST(req: NextRequest) {
+  const ip = req.headers.get("x-forwarded-for") || "unknown";
+  const rl = rateLimit(`forgot:${ip}`, 3600000, 5);
+  if (!rl.ok) return NextResponse.json({ error: "Too many attempts. Try again later." }, { status: 429 });
   try {
     const { email } = await req.json();
 

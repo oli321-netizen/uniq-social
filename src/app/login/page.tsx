@@ -14,6 +14,7 @@ export default function LoginPage() {
   const [code, setCode] = useState(["", "", "", "", "", ""]);
   const [verifying, setVerifying] = useState(false);
   const [resending, setResending] = useState(false);
+  const [referralCode, setReferralCode] = useState("");
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   const handleCodeChange = (index: number, value: string) => {
@@ -116,7 +117,7 @@ export default function LoginPage() {
         const res = await fetch("/api/auth/signup", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password }),
+          body: JSON.stringify({ email, password, referralCode: referralCode.trim() || undefined }),
         });
 
         const data = await res.json();
@@ -290,6 +291,19 @@ export default function LoginPage() {
                 />
               </div>
             </div>
+
+            {isSignUp && (
+              <div>
+                <label className="text-xs text-slate-500 block mb-1.5">Referral Code (optional)</label>
+                <input
+                  type="text"
+                  value={referralCode}
+                  onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+                  placeholder="e.g. ABC123"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-purple-500/50 placeholder:text-slate-700 transition-colors font-mono tracking-wider"
+                />
+              </div>
+            )}
 
             {!isSignUp && (
               <div className="flex justify-end -mt-1">

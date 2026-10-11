@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { rateLimit } from "@/lib/rate-limit";
 import { prisma } from "@/lib/prisma";
 import { sendVerificationCode } from "@/lib/email";
 import bcrypt from "bcryptjs";
@@ -8,8 +9,12 @@ function generateCode(): string {
 }
 
 export async function POST(req: NextRequest) {
+  // Rate limit: 5 signups per hour per IP
+  const ip = req.headers.get("x-forwarded-for") || "unknown";
+  const rl = rateLimit(`signup:${ip}`, 3600000, 5);
+  if (!rl.ok) return NextResponse.json({ error: "Too many attempts. Try again later." }, { status: 429 });
   try {
-    const { email, password } = await req.json();
+    const { email, password, referralCode } = await req.json();
 
     if (!email || !password) {
       return NextResponse.json(
@@ -51,6 +56,7 @@ export async function POST(req: NextRequest) {
         token: code,
         email: normalised,
         passwordHash,
+        referralCode: referralCode?.trim() || null,
         expiresAt: new Date(Date.now() + 15 * 60 * 1000),
       },
     });
