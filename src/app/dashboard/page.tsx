@@ -86,6 +86,8 @@ export default function Dashboard() {
   const [editSettings, setEditSettings] = useState({
     trimMin: 0.3,
     trimMax: 0.7,
+    cutsMin: 3,
+    cutsMax: 7,
     zoomMin: 1,
     zoomMax: 7,
     grain: true,
@@ -658,6 +660,36 @@ export default function Dashboard() {
                       value={editSettings.trimMax}
                       onChange={(e) =>
                         setEditSettings({ ...editSettings, trimMax: +e.target.value })
+                      }
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs text-slate-500 block mb-2">
+                    Number of Cuts (trims milliseconds at each point)
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      step="1"
+                      min="1"
+                      max="20"
+                      value={editSettings.cutsMin}
+                      onChange={(e) =>
+                        setEditSettings({ ...editSettings, cutsMin: +e.target.value })
+                      }
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50"
+                    />
+                    <input
+                      type="number"
+                      step="1"
+                      min="1"
+                      max="20"
+                      value={editSettings.cutsMax}
+                      onChange={(e) =>
+                        setEditSettings({ ...editSettings, cutsMax: +e.target.value })
                       }
                       className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50"
                     />

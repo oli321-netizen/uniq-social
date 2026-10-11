@@ -19,6 +19,8 @@ type MetadataProfile = "capcut" | "snapchat" | "iphone" | "random";
 interface ProcessingConfig {
   trimMin: number;
   trimMax: number;
+  cutsMin: number;
+  cutsMax: number;
   zoomMin: number;
   zoomMax: number;
   grain: boolean;
@@ -129,6 +131,8 @@ export async function POST(req: NextRequest) {
       : {
           trimMin: 0.3,
           trimMax: 0.7,
+          cutsMin: 3,
+          cutsMax: 7,
           zoomMin: 1,
           zoomMax: 7,
           grain: true,
@@ -172,7 +176,7 @@ export async function POST(req: NextRequest) {
     const effectiveDuration = duration - startTrim;
 
     // Generate random cut points
-    const numCuts = Math.floor(rand(3, 7));
+    const numCuts = Math.floor(rand(config.cutsMin, config.cutsMax + 1));
     const cutPoints: number[] = [];
     for (let i = 0; i < numCuts; i++) {
       cutPoints.push(parseFloat(rand(0.5, effectiveDuration - 0.5).toFixed(3)));
