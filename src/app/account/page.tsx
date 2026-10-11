@@ -118,6 +118,7 @@ export default function AccountPage() {
   const [credits, setCredits] = useState(0);
   const [plan, setPlan] = useState<PlanName>("free");
   const [showTopUp, setShowTopUp] = useState(false);
+  const [hasSubscription, setHasSubscription] = useState(false);
 
   // Promo code state
   const [promoCode, setPromoCode] = useState("");
@@ -139,6 +140,7 @@ export default function AccountPage() {
         .then((d) => {
           setCredits(d.credits ?? 0);
           if (d.plan) setPlan(d.plan);
+          setHasSubscription(!!d.hasSubscription);
         })
         .catch(() => {});
     }
@@ -287,15 +289,7 @@ export default function AccountPage() {
                 </p>
               </div>
             </div>
-            {plan === "free" ? (
-              <button
-                type="button"
-                onClick={() => (window.location.href = "/#pricing")}
-                className="text-xs font-medium text-purple-400 hover:text-purple-300 transition-colors"
-              >
-                Upgrade →
-              </button>
-            ) : (
+            {hasSubscription ? (
               <button
                 type="button"
                 onClick={async () => {
@@ -313,7 +307,15 @@ export default function AccountPage() {
               >
                 Manage →
               </button>
-            )}
+            ) : plan === "free" ? (
+              <button
+                type="button"
+                onClick={() => (window.location.href = "/#pricing")}
+                className="text-xs font-medium text-purple-400 hover:text-purple-300 transition-colors"
+              >
+                Upgrade →
+              </button>
+            ) : null}
           </div>
         </div>
 
