@@ -533,9 +533,9 @@ function Footer() {
             </span>
           </div>
           <div className="flex items-center gap-6 text-sm text-slate-500">
-            <a href="#" className="hover:text-white transition-colors">Terms</a>
-            <a href="#" className="hover:text-white transition-colors">Privacy</a>
-            <a href="#" className="hover:text-white transition-colors">Contact</a>
+            <a href="/terms" className="hover:text-white transition-colors">Terms</a>
+            <a href="/privacy" className="hover:text-white transition-colors">Privacy</a>
+            <a href="mailto:support@uniqsocial.com" className="hover:text-white transition-colors">Contact</a>
           </div>
           <p className="text-xs text-slate-600">
             &copy; 2024 Uniq Social. All rights reserved.
