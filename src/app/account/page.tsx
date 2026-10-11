@@ -315,7 +315,29 @@ export default function AccountPage() {
               >
                 Upgrade →
               </button>
-            ) : null}
+            ) : (
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!confirm("Are you sure you want to cancel your plan? You\'ll be downgraded to Free but keep your remaining credits.")) return;
+                  try {
+                    const res = await fetch("/api/account/cancel", { method: "POST" });
+                    const data = await res.json();
+                    if (data.success) {
+                      setPlan("free");
+                      alert("Plan cancelled. You\'re now on the Free plan.");
+                    } else {
+                      alert(data.error || "Failed to cancel plan");
+                    }
+                  } catch {
+                    alert("Something went wrong");
+                  }
+                }}
+                className="text-xs font-medium text-red-400 hover:text-red-300 transition-colors"
+              >
+                Cancel Plan
+              </button>
+            )}
           </div>
         </div>
 
