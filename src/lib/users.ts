@@ -40,6 +40,18 @@ export async function redeemPromoCode(
     }),
   ]);
 
+  // Record transaction
+  await prisma.transaction.create({
+    data: {
+      userId,
+      type: "promo",
+      description: `Redeemed promo code ${upper} — ${promo.plan.charAt(0).toUpperCase() + promo.plan.slice(1)} plan + ${promo.bonusCredits} credits`,
+      credits: promo.bonusCredits,
+      amount: 0,
+      currency: "gbp",
+    },
+  });
+
   return {
     success: true,
     plan: promo.plan as PlanName,

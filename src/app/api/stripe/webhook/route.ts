@@ -56,6 +56,20 @@ export async function POST(req: NextRequest) {
               credits: { increment: credits },
             },
           });
+
+          // Record transaction
+          const planConfig = SUBSCRIPTION_PLANS.find((p) => p.key === planKey);
+          await prisma.transaction.create({
+            data: {
+              userId,
+              type: "subscription",
+              description: `Subscribed to ${planConfig?.label || planKey} plan`,
+              credits,
+              amount: planConfig?.priceInPence || 0,
+              currency: "gbp",
+            },
+          });
+
           console.log(
             `Subscription created: user ${userId} → ${planKey} (+${credits} credits)`
           );
@@ -66,12 +80,26 @@ export async function POST(req: NextRequest) {
       // One-time payment — add credits only
       const userId = session.metadata?.userId;
       const credits = parseInt(session.metadata?.credits || "0");
+      const amountTotal = (session as unknown as { amount_total: number | null }).amount_total;
 
       if (userId && credits > 0) {
         await prisma.user.update({
           where: { id: userId },
           data: { credits: { increment: credits } },
         });
+
+        // Record transaction
+        await prisma.transaction.create({
+          data: {
+            userId,
+            type: "credit_purchase",
+            description: `Purchased ${credits} credits`,
+            credits,
+            amount: amountTotal || 0,
+            currency: "gbp",
+          },
+        });
+
         console.log(`Added ${credits} credits to user ${userId}`);
       }
       break;
@@ -109,6 +137,18 @@ export async function POST(req: NextRequest) {
         },
       });
 
+      // Record transaction
+      await prisma.transaction.create({
+        data: {
+          userId: user.id,
+          type: "renewal",
+          description: `${plan.label} plan renewed — ${plan.credits} credits added`,
+          credits: plan.credits,
+          amount: plan.priceInPence,
+          currency: "gbp",
+        },
+      });
+
       console.log(
         `Renewal: user ${user.id} → +${plan.credits} credits (${plan.key})`
       );
@@ -125,6 +165,18 @@ export async function POST(req: NextRequest) {
       });
 
       if (user) {
+        // Record transaction before wiping plan
+        await prisma.transaction.create({
+          data: {
+            userId: user.id,
+            type: "cancellation",
+            description: `${user.plan.charAt(0).toUpperCase() + user.plan.slice(1)} plan cancelled`,
+            credits: 0,
+            amount: 0,
+            currency: "gbp",
+          },
+        });
+
         await prisma.user.update({
           where: { id: user.id },
           data: {

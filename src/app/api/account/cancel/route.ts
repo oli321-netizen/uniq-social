@@ -41,6 +41,18 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Record transaction
+  await prisma.transaction.create({
+    data: {
+      userId,
+      type: "cancellation",
+      description: `Cancelled ${user.plan.charAt(0).toUpperCase() + user.plan.slice(1)} plan`,
+      credits: 0,
+      amount: 0,
+      currency: "gbp",
+    },
+  });
+
   // Downgrade to free (keep remaining credits)
   await prisma.user.update({
     where: { id: userId },

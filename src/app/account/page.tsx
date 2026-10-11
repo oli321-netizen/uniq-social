@@ -5,6 +5,7 @@ import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import {
   Fingerprint,
+  Receipt,
   ArrowLeft,
   Mail,
   Zap,
@@ -122,6 +123,13 @@ export default function AccountPage() {
   const [showPlans, setShowPlans] = useState(false);
   const [subscribingPlan, setSubscribingPlan] = useState<PlanName | null>(null);
 
+  // Transaction history
+  const [transactions, setTransactions] = useState<
+    { id: string; type: string; description: string; credits: number; amount: number; currency: string; createdAt: string }[]
+  >([]);
+  const [loadingTxns, setLoadingTxns] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+
   // Promo code state
   const [promoCode, setPromoCode] = useState("");
   const [promoLoading, setPromoLoading] = useState(false);
@@ -145,6 +153,16 @@ export default function AccountPage() {
           setHasSubscription(!!d.hasSubscription);
         })
         .catch(() => {});
+
+      // Fetch transaction history
+      setLoadingTxns(true);
+      fetch("/api/transactions")
+        .then((r) => r.json())
+        .then((d) => {
+          setTransactions(d.transactions ?? []);
+          setLoadingTxns(false);
+        })
+        .catch(() => setLoadingTxns(false));
     }
   }, [status]);
 
@@ -347,7 +365,95 @@ export default function AccountPage() {
           </div>
         </div>
 
-        {/* Redeem Code */}
+
+        {/* Transaction History */}
+        <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-6 mb-6">
+          <button
+            onClick={() => setShowHistory(!showHistory)}
+            className="w-full flex items-center justify-between"
+          >
+            <h2 className="text-sm font-semibold flex items-center gap-2">
+              <Receipt className="h-4 w-4 text-purple-400" />
+              Transaction History
+            </h2>
+            <span className="text-xs text-slate-500">
+              {showHistory ? "Hide" : `Show (${transactions.length})`}
+            </span>
+          </button>
+
+          {showHistory && (
+            <div className="mt-4 space-y-2">
+              {loadingTxns ? (
+                <div className="flex justify-center py-6">
+                  <Loader2 className="h-5 w-5 animate-spin text-purple-400" />
+                </div>
+              ) : transactions.length === 0 ? (
+                <p className="text-xs text-slate-600 text-center py-4">
+                  No transactions yet
+                </p>
+              ) : (
+                transactions.map((tx) => (
+                  <div
+                    key={tx.id}
+                    className="flex items-center justify-between py-3 border-b border-white/5 last:border-0"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`h-8 w-8 rounded-lg flex items-center justify-center text-xs font-bold ${
+                          tx.type === "credit_purchase"
+                            ? "bg-blue-500/10 text-blue-400"
+                            : tx.type === "subscription"
+                            ? "bg-purple-500/10 text-purple-400"
+                            : tx.type === "renewal"
+                            ? "bg-emerald-500/10 text-emerald-400"
+                            : tx.type === "promo"
+                            ? "bg-amber-500/10 text-amber-400"
+                            : "bg-red-500/10 text-red-400"
+                        }`}
+                      >
+                        {tx.type === "credit_purchase"
+                          ? "CR"
+                          : tx.type === "subscription"
+                          ? "SUB"
+                          : tx.type === "renewal"
+                          ? "REN"
+                          : tx.type === "promo"
+                          ? "PRO"
+                          : "CAN"}
+                      </div>
+                      <div>
+                        <p className="text-sm text-white">{tx.description}</p>
+                        <p className="text-xs text-slate-600">
+                          {new Date(tx.createdAt).toLocaleDateString("en-GB", {
+                            day: "numeric",
+                            month: "short",
+                            year: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      {tx.credits > 0 && (
+                        <p className="text-sm font-medium text-emerald-400">
+                          +{tx.credits.toLocaleString()} credits
+                        </p>
+                      )}
+                      {tx.amount > 0 && (
+                        <p className="text-xs text-slate-500">
+                          \u00a3{(tx.amount / 100).toFixed(2)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Redeem Code */
         <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-6 mb-6">
           <h2 className="text-sm font-semibold mb-4 flex items-center gap-2">
             <Gift className="h-4 w-4 text-purple-400" />
