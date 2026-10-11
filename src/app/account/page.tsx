@@ -442,7 +442,7 @@ export default function AccountPage() {
                       )}
                       {tx.amount > 0 && (
                         <p className="text-xs text-slate-500">
-                          \u00a3{(tx.amount / 100).toFixed(2)}
+                          £{(tx.amount / 100).toFixed(2)}
                         </p>
                       )}
                     </div>
@@ -678,7 +678,7 @@ export default function AccountPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-sm font-semibold text-white">\u00a3{p.price}/mo</span>
+                      <span className="text-sm font-semibold text-white">£{p.price}/mo</span>
                       {subscribingPlan === key ? (
                         <Loader2 className="h-4 w-4 text-purple-400 animate-spin" />
                       ) : (

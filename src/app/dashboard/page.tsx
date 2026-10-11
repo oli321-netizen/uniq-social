@@ -18,6 +18,8 @@ import {
   Plus,
   ShoppingCart,
   Mail,
+  Crown,
+  ArrowRight,
 } from "lucide-react";
 import JSZip from "jszip";
 
@@ -70,6 +72,9 @@ export default function Dashboard() {
   const [emailVerified, setEmailVerified] = useState(true);
   const [resendingVerification, setResendingVerification] = useState(false);
   const [showTopUp, setShowTopUp] = useState(false);
+  const [plan, setPlan] = useState("free");
+  const [showPlans, setShowPlans] = useState(false);
+  const [subscribingPlan, setSubscribingPlan] = useState<string | null>(null);
   const [isZipping, setIsZipping] = useState(false);
 
   // Edit parameter ranges
@@ -105,6 +110,7 @@ export default function Dashboard() {
         .then((r) => r.json())
         .then((d) => {
           setCredits(d.credits ?? 0);
+          setPlan(d.plan ?? "free");
           setEmailVerified(d.emailVerified !== false);
         })
         .catch(() => {});
@@ -258,7 +264,7 @@ export default function Dashboard() {
     // Refresh credits
     fetch("/api/credits")
       .then((r) => r.json())
-      .then((d) => setCredits(d.credits ?? 0))
+      .then((d) => { setCredits(d.credits ?? 0); setPlan(d.plan ?? "free"); })
       .catch(() => {});
 
     setIsProcessing(false);
@@ -338,6 +344,42 @@ export default function Dashboard() {
         </div>
       )}
 
+
+      {/* Upgrade banner for free users */}
+      {plan === "free" && (
+        <div className="mx-auto max-w-6xl px-6 pt-6">
+          <div className="rounded-2xl border border-purple-500/20 bg-gradient-to-r from-purple-500/[0.08] to-purple-600/[0.04] p-5">
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <div className="flex items-center gap-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-500/10 border border-purple-500/20">
+                  <Crown className="h-5 w-5 text-purple-400" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-white">Upgrade your plan</h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Get monthly credits from £24/mo — save up to 80% vs top-ups
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setShowTopUp(true)}
+                  className="px-4 py-2 rounded-xl text-xs font-medium bg-white/5 hover:bg-white/10 text-white border border-white/10 transition-all"
+                >
+                  Top Up Credits
+                </button>
+                <button
+                  onClick={() => setShowPlans(true)}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium bg-purple-600 hover:bg-purple-700 text-white transition-all hover:shadow-lg hover:shadow-purple-500/20"
+                >
+                  View Plans
+                  <ArrowRight className="h-3 w-3" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="mx-auto max-w-6xl px-6 py-8">
         <div className="grid lg:grid-cols-[1fr_320px] gap-8">
           {/* Main area */}
@@ -728,6 +770,87 @@ export default function Dashboard() {
         </div>
       </div>
 
+
+      {/* Plans modal */}
+      {showPlans && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+          <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#010313] p-8 relative max-h-[90vh] overflow-y-auto">
+            <button
+              onClick={() => setShowPlans(false)}
+              className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div className="text-center mb-6">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-purple-500/10 border border-purple-500/20">
+                <Crown className="h-6 w-6 text-purple-400" />
+              </div>
+              <h2 className="text-xl font-bold">Choose a Plan</h2>
+              <p className="text-sm text-slate-500 mt-1">
+                Subscribe monthly and save on every credit
+              </p>
+            </div>
+
+            <div className="space-y-3 mb-6">
+              {[
+                { key: "starter", label: "Starter", credits: "100", price: "24", icon: "\u2728" },
+                { key: "growth", label: "Growth", credits: "500", price: "75", icon: "\u2728" },
+                { key: "pro", label: "Pro", credits: "1,500", price: "150", icon: "\u2b50" },
+                { key: "business", label: "Business", credits: "5,000", price: "350", icon: "\ud83c\udfe2" },
+                { key: "agency", label: "Agency", credits: "15,000", price: "750", icon: "\ud83d\udc51" },
+              ].map((p) => (
+                <button
+                  type="button"
+                  key={p.key}
+                  disabled={subscribingPlan === p.key}
+                  onClick={async () => {
+                    setSubscribingPlan(p.key);
+                    try {
+                      const res = await fetch("/api/stripe/subscribe", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ planKey: p.key }),
+                      });
+                      const data = await res.json();
+                      if (data.url) {
+                        window.location.href = data.url;
+                      } else {
+                        alert(data.error || "Failed to start checkout");
+                        setSubscribingPlan(null);
+                      }
+                    } catch {
+                      alert("Failed to connect to payment service");
+                      setSubscribingPlan(null);
+                    }
+                  }}
+                  className="w-full flex items-center justify-between p-4 rounded-xl border border-white/10 bg-white/[0.02] hover:border-purple-500/30 hover:bg-purple-500/[0.03] transition-all text-left cursor-pointer disabled:opacity-50"
+                >
+                  <div>
+                    <div className="text-sm font-semibold text-white">{p.label}</div>
+                    <div className="text-xs text-slate-500">{p.credits} credits/mo</div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-semibold text-white">£{p.price}/mo</span>
+                    {subscribingPlan === p.key ? (
+                      <Loader2 className="h-4 w-4 text-purple-400 animate-spin" />
+                    ) : (
+                      <span className="text-xs font-medium text-purple-400">Subscribe →</span>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => setShowPlans(false)}
+              className="w-full py-3 rounded-xl text-sm font-medium bg-white/5 hover:bg-white/10 text-white border border-white/10 transition-all"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
       {/* Top-up credits modal */}
       {showTopUp && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
