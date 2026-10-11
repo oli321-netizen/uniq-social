@@ -17,6 +17,7 @@ import {
   Zap,
   Plus,
   ShoppingCart,
+  Mail,
 } from "lucide-react";
 import JSZip from "jszip";
 
@@ -66,6 +67,8 @@ export default function Dashboard() {
   const [isProcessing, setIsProcessing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [credits, setCredits] = useState(0);
+  const [emailVerified, setEmailVerified] = useState(true);
+  const [resendingVerification, setResendingVerification] = useState(false);
   const [showTopUp, setShowTopUp] = useState(false);
   const [isZipping, setIsZipping] = useState(false);
 
@@ -100,7 +103,10 @@ export default function Dashboard() {
     if (status === "authenticated") {
       fetch("/api/credits")
         .then((r) => r.json())
-        .then((d) => setCredits(d.credits ?? 0))
+        .then((d) => {
+          setCredits(d.credits ?? 0);
+          setEmailVerified(d.emailVerified !== false);
+        })
         .catch(() => {});
     }
   }, [status]);

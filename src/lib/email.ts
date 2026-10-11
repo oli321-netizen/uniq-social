@@ -23,6 +23,24 @@ export async function sendWelcomeEmail(to: string) {
   }
 }
 
+
+
+export async function sendVerificationEmail(to: string, verificationToken: string) {
+  try {
+    const resend = getResendClient();
+    const baseUrl = process.env.NEXTAUTH_URL || "https://uniqsocial.com";
+    const verifyUrl = `${baseUrl}/verify-email?token=${verificationToken}`;
+    await resend.emails.send({
+      from: FROM_EMAIL,
+      to,
+      subject: "Verify your email — UniqSocial",
+      html: buildVerificationHtml(verifyUrl),
+    });
+  } catch (err) {
+    console.error("Failed to send verification email:", err);
+  }
+}
+
 export async function sendPasswordResetEmail(to: string, resetToken: string) {
   try {
     const resend = getResendClient();
@@ -38,6 +56,72 @@ export async function sendPasswordResetEmail(to: string, resetToken: string) {
     console.error("Failed to send password reset email:", err);
     throw err; // Re-throw so the API route can handle it
   }
+}
+
+
+function buildVerificationHtml(verifyUrl: string) {
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Verify Your Email</title>
+</head>
+<body style="margin:0;padding:0;background-color:#010313;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#010313;min-height:100vh;">
+    <tr>
+      <td align="center" style="padding:40px 20px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;">
+          <tr>
+            <td align="center" style="padding-bottom:32px;">
+              <table role="presentation" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="background:rgba(124,58,237,0.1);border:1px solid rgba(124,58,237,0.2);border-radius:12px;padding:10px 12px;">
+                    <span style="color:#a78bfa;font-size:18px;font-weight:700;">&#9670;</span>
+                  </td>
+                  <td style="padding-left:10px;">
+                    <span style="color:#ffffff;font-size:20px;font-weight:700;letter-spacing:-0.5px;">Uniq</span><span style="color:#a78bfa;font-size:20px;font-weight:700;">Social</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:20px;padding:44px 36px;">
+              <h1 style="margin:0 0 8px;color:#ffffff;font-size:26px;font-weight:700;text-align:center;line-height:1.3;">
+                Verify your email
+              </h1>
+              <p style="margin:0 0 28px;color:#64748b;font-size:14px;text-align:center;line-height:1.6;">
+                Click the button below to verify your email address. This link expires in 24 hours.
+              </p>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
+                <tr>
+                  <td align="center">
+                    <a href="${verifyUrl}" style="display:inline-block;background:#7c3aed;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:14px 40px;border-radius:12px;letter-spacing:0.3px;">
+                      Verify Email &rarr;
+                    </a>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:0;color:#475569;font-size:12px;text-align:center;line-height:1.6;">
+                If you didn&rsquo;t create an account, you can safely ignore this email.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding-top:28px;text-align:center;">
+              <p style="margin:0;color:#334155;font-size:12px;">
+                <a href="https://uniqsocial.com" style="color:#7c3aed;text-decoration:none;">uniqsocial.com</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
 }
 
 function buildPasswordResetHtml(resetUrl: string) {

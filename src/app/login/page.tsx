@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { signIn } from "next-auth/react";
-import { Fingerprint, Loader2, Mail, Lock, ArrowRight } from "lucide-react";
+import { Fingerprint, Loader2, Mail, Lock, ArrowRight, CheckCircle } from "lucide-react";
 
 export default function LoginPage() {
   const [isSignUp, setIsSignUp] = useState(false);
@@ -10,6 +10,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showVerifyMessage, setShowVerifyMessage] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,6 +32,11 @@ export default function LoginPage() {
           setLoading(false);
           return;
         }
+
+        // Show verification message instead of auto-login
+        setShowVerifyMessage(true);
+        setLoading(false);
+        return;
       }
 
       // Sign in
@@ -81,6 +87,29 @@ export default function LoginPage() {
 
         {/* Form card */}
         <div className="rounded-2xl border border-white/5 bg-white/[0.02] backdrop-blur-sm p-8">
+          {showVerifyMessage ? (
+            <div className="text-center">
+              <div className="flex justify-center mb-4">
+                <div className="h-14 w-14 rounded-2xl bg-green-500/10 border border-green-500/20 flex items-center justify-center">
+                  <CheckCircle className="h-7 w-7 text-green-400" />
+                </div>
+              </div>
+              <h2 className="text-xl font-bold mb-2">Check your email</h2>
+              <p className="text-sm text-slate-400 mb-6">
+                We sent a verification link to <span className="text-white font-medium">{email}</span>. Click it to activate your account.
+              </p>
+              <button
+                onClick={() => {
+                  setShowVerifyMessage(false);
+                  setIsSignUp(false);
+                }}
+                className="text-sm text-purple-400 hover:text-purple-300 transition-colors"
+              >
+                Back to sign in
+              </button>
+            </div>
+          ) : (
+          <>
           <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
               <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-sm text-red-400">
@@ -163,6 +192,8 @@ export default function LoginPage() {
                 : "Don't have an account? Sign up"}
             </button>
           </div>
+          </>
+          )}
         </div>
       </div>
     </div>

@@ -453,7 +453,7 @@ export default function AccountPage() {
           )}
         </div>
 
-        {/* Redeem Code */
+        {/* Redeem Code */}
         <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-6 mb-6">
           <h2 className="text-sm font-semibold mb-4 flex items-center gap-2">
             <Gift className="h-4 w-4 text-purple-400" />
@@ -700,7 +700,7 @@ export default function AccountPage() {
         </div>
       )}
 
-      {/* Upgrade success popup */
+      {/* Upgrade success popup */}
       {promoSuccess && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
           <div className="w-full max-w-md relative">

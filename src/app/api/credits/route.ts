@@ -20,5 +20,6 @@ export async function GET() {
     credits: user?.credits ?? 0,
     plan: user?.plan ?? "free",
     hasSubscription: !!user?.stripeSubscriptionId,
+    emailVerified: user?.emailVerified ?? false,
   });
 }
