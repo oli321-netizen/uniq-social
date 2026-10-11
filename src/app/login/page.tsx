@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { signIn } from "next-auth/react";
-import { Fingerprint, Loader2, Mail, Lock, ArrowRight, CheckCircle } from "lucide-react";
+import { Fingerprint, Loader2, Mail, Lock, ArrowRight, ShieldCheck } from "lucide-react";
 
 export default function LoginPage() {
   const [isSignUp, setIsSignUp] = useState(false);
@@ -10,7 +10,101 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [showVerifyMessage, setShowVerifyMessage] = useState(false);
+  const [showCodeEntry, setShowCodeEntry] = useState(false);
+  const [code, setCode] = useState(["", "", "", "", "", ""]);
+  const [verifying, setVerifying] = useState(false);
+  const [resending, setResending] = useState(false);
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  const handleCodeChange = (index: number, value: string) => {
+    if (!/^\d*$/.test(value)) return;
+    const newCode = [...code];
+    
+    if (value.length > 1) {
+      // Handle paste
+      const digits = value.replace(/\D/g, "").slice(0, 6).split("");
+      digits.forEach((d, i) => {
+        if (index + i < 6) newCode[index + i] = d;
+      });
+      setCode(newCode);
+      const nextIndex = Math.min(index + digits.length, 5);
+      inputRefs.current[nextIndex]?.focus();
+      return;
+    }
+
+    newCode[index] = value;
+    setCode(newCode);
+    if (value && index < 5) {
+      inputRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleKeyDown = (index: number, e: React.KeyboardEvent) => {
+    if (e.key === "Backspace" && !code[index] && index > 0) {
+      inputRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handleVerifyCode = async () => {
+    const fullCode = code.join("");
+    if (fullCode.length !== 6) {
+      setError("Please enter the full 6-digit code");
+      return;
+    }
+    setError("");
+    setVerifying(true);
+
+    try {
+      const res = await fetch("/api/auth/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: fullCode, email }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || "Invalid code");
+        setVerifying(false);
+        return;
+      }
+
+      // Code verified — sign them in
+      const result = await signIn("credentials", {
+        email,
+        password,
+        redirect: false,
+      });
+
+      if (result?.error) {
+        // Account is verified but sign-in failed — send them to login
+        setShowCodeEntry(false);
+        setIsSignUp(false);
+        setError("Account verified! Please sign in.");
+        setVerifying(false);
+        return;
+      }
+
+      window.location.href = "/dashboard";
+    } catch {
+      setError("Something went wrong. Try again.");
+      setVerifying(false);
+    }
+  };
+
+  const handleResendCode = async () => {
+    setResending(true);
+    setError("");
+    try {
+      await fetch("/api/auth/resend-verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      setCode(["", "", "", "", "", ""]);
+      inputRefs.current[0]?.focus();
+    } catch {}
+    setResending(false);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,7 +113,6 @@ export default function LoginPage() {
 
     try {
       if (isSignUp) {
-        // Create account first
         const res = await fetch("/api/auth/signup", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -33,13 +126,13 @@ export default function LoginPage() {
           return;
         }
 
-        // Show verification message instead of auto-login
-        setShowVerifyMessage(true);
+        // Show code entry screen
+        setShowCodeEntry(true);
         setLoading(false);
+        setTimeout(() => inputRefs.current[0]?.focus(), 100);
         return;
       }
 
-      // Sign in
       const result = await signIn("credentials", {
         email,
         password,
@@ -47,7 +140,7 @@ export default function LoginPage() {
       });
 
       if (result?.error) {
-        setError(isSignUp ? "Account created but login failed. Try signing in." : "Invalid email or password");
+        setError("Invalid email or password");
         setLoading(false);
         return;
       }
@@ -61,11 +154,9 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-[#010313] flex items-center justify-center px-4">
-      {/* Background grid */}
       <div className="fixed inset-0 grid-bg opacity-30 pointer-events-none" />
 
       <div className="w-full max-w-md relative z-10">
-        {/* Logo */}
         <div className="text-center mb-8">
           <a href="/" className="inline-flex items-center gap-2 mb-6">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-500/10 border border-purple-500/20">
@@ -76,37 +167,85 @@ export default function LoginPage() {
             </span>
           </a>
           <h1 className="text-2xl font-bold mb-2">
-            {isSignUp ? "Create your account" : "Welcome back"}
+            {showCodeEntry ? "Enter verification code" : isSignUp ? "Create your account" : "Welcome back"}
           </h1>
           <p className="text-sm text-slate-500">
-            {isSignUp
+            {showCodeEntry
+              ? <>We sent a 6-digit code to <span className="text-white">{email}</span></>
+              : isSignUp
               ? "Get 5 free credits to start processing"
               : "Sign in to your dashboard"}
           </p>
         </div>
 
-        {/* Form card */}
         <div className="rounded-2xl border border-white/5 bg-white/[0.02] backdrop-blur-sm p-8">
-          {showVerifyMessage ? (
-            <div className="text-center">
-              <div className="flex justify-center mb-4">
-                <div className="h-14 w-14 rounded-2xl bg-green-500/10 border border-green-500/20 flex items-center justify-center">
-                  <CheckCircle className="h-7 w-7 text-green-400" />
+          {showCodeEntry ? (
+            <div>
+              <div className="flex justify-center mb-6">
+                <div className="h-14 w-14 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center">
+                  <ShieldCheck className="h-7 w-7 text-purple-400" />
                 </div>
               </div>
-              <h2 className="text-xl font-bold mb-2">Check your email</h2>
-              <p className="text-sm text-slate-400 mb-6">
-                We sent a verification link to <span className="text-white font-medium">{email}</span>. Click it to activate your account.
-              </p>
+
+              {error && (
+                <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-sm text-red-400 mb-5 text-center">
+                  {error}
+                </div>
+              )}
+
+              <div className="flex justify-center gap-2 mb-6">
+                {code.map((digit, i) => (
+                  <input
+                    key={i}
+                    ref={(el) => { inputRefs.current[i] = el; }}
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={digit}
+                    onChange={(e) => handleCodeChange(i, e.target.value)}
+                    onKeyDown={(e) => handleKeyDown(i, e)}
+                    className="w-12 h-14 text-center text-xl font-bold bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-purple-500/50 transition-colors"
+                  />
+                ))}
+              </div>
+
               <button
-                onClick={() => {
-                  setShowVerifyMessage(false);
-                  setIsSignUp(false);
-                }}
-                className="text-sm text-purple-400 hover:text-purple-300 transition-colors"
+                onClick={handleVerifyCode}
+                disabled={verifying || code.join("").length !== 6}
+                className="w-full py-3.5 rounded-xl font-medium text-sm bg-purple-600 hover:bg-purple-700 text-white transition-all flex items-center justify-center gap-2 hover:shadow-lg hover:shadow-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Back to sign in
+                {verifying ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <>
+                    Verify & Continue
+                    <ArrowRight className="h-4 w-4" />
+                  </>
+                )}
               </button>
+
+              <div className="mt-5 text-center space-y-2">
+                <button
+                  onClick={handleResendCode}
+                  disabled={resending}
+                  className="text-sm text-slate-500 hover:text-purple-400 transition-colors disabled:opacity-50"
+                >
+                  {resending ? "Sending..." : "Resend code"}
+                </button>
+                <div>
+                  <button
+                    onClick={() => {
+                      setShowCodeEntry(false);
+                      setIsSignUp(false);
+                      setCode(["", "", "", "", "", ""]);
+                      setError("");
+                    }}
+                    className="text-sm text-slate-600 hover:text-slate-400 transition-colors"
+                  >
+                    Back to sign in
+                  </button>
+                </div>
+              </div>
             </div>
           ) : (
           <>

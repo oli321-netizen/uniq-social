@@ -25,19 +25,17 @@ export async function sendWelcomeEmail(to: string) {
 
 
 
-export async function sendVerificationEmail(to: string, verificationToken: string) {
+export async function sendVerificationCode(to: string, code: string) {
   try {
     const resend = getResendClient();
-    const baseUrl = process.env.NEXTAUTH_URL || "https://uniqsocial.com";
-    const verifyUrl = `${baseUrl}/verify-email?token=${verificationToken}`;
     await resend.emails.send({
       from: FROM_EMAIL,
       to,
-      subject: "Verify your email — UniqSocial",
-      html: buildVerificationHtml(verifyUrl),
+      subject: `Your verification code: ${code} — UniqSocial`,
+      html: buildVerificationCodeHtml(code),
     });
   } catch (err) {
-    console.error("Failed to send verification email:", err);
+    console.error("Failed to send verification code:", err);
   }
 }
 
@@ -59,14 +57,14 @@ export async function sendPasswordResetEmail(to: string, resetToken: string) {
 }
 
 
-function buildVerificationHtml(verifyUrl: string) {
+function buildVerificationCodeHtml(code: string) {
   return `
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Verify Your Email</title>
+  <title>Your Verification Code</title>
 </head>
 <body style="margin:0;padding:0;background-color:#010313;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#010313;min-height:100vh;">
@@ -90,17 +88,17 @@ function buildVerificationHtml(verifyUrl: string) {
           <tr>
             <td style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:20px;padding:44px 36px;">
               <h1 style="margin:0 0 8px;color:#ffffff;font-size:26px;font-weight:700;text-align:center;line-height:1.3;">
-                Verify your email
+                Your verification code
               </h1>
               <p style="margin:0 0 28px;color:#64748b;font-size:14px;text-align:center;line-height:1.6;">
-                Click the button below to verify your email address. This link expires in 24 hours.
+                Enter this code to verify your email address. It expires in 15 minutes.
               </p>
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
                 <tr>
                   <td align="center">
-                    <a href="${verifyUrl}" style="display:inline-block;background:#7c3aed;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:14px 40px;border-radius:12px;letter-spacing:0.3px;">
-                      Verify Email &rarr;
-                    </a>
+                    <div style="display:inline-block;background:rgba(124,58,237,0.08);border:2px solid rgba(124,58,237,0.3);border-radius:16px;padding:20px 48px;">
+                      <span style="color:#ffffff;font-size:36px;font-weight:800;letter-spacing:12px;font-family:monospace;">${code}</span>
+                    </div>
                   </td>
                 </tr>
               </table>

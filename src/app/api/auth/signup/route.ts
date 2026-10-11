@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createUser } from "@/lib/users";
-import { sendVerificationEmail } from "@/lib/email";
+import { sendVerificationCode } from "@/lib/email";
 import { prisma } from "@/lib/prisma";
-import { randomUUID } from "crypto";
+
+function generateCode(): string {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -24,18 +27,20 @@ export async function POST(req: NextRequest) {
 
     const user = await createUser(email, password);
 
-    // Create verification token (24h expiry)
-    const token = randomUUID();
+    // Create 6-digit verification code (15 min expiry)
+    const code = generateCode();
     await prisma.emailVerification.create({
       data: {
-        token,
+        token: code,
         userId: user.id,
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000),
       },
     });
 
-    // Send verification email (fire and forget)
-    sendVerificationEmail(user.email, token).catch(() => {});
+    // Send verification code email
+    sendVerificationCode(user.email, code).catch((err) => {
+      console.error("Failed to send verification code:", err);
+    });
 
     return NextResponse.json({
       id: user.id,

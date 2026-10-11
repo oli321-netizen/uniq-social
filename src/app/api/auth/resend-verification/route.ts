@@ -3,15 +3,21 @@ import { getServerSession } from "next-auth";
 import { getToken } from "next-auth/jwt";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { sendVerificationEmail } from "@/lib/email";
-import { randomUUID } from "crypto";
+import { sendVerificationCode } from "@/lib/email";
+
+function generateCode(): string {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
 
 export async function POST(req: NextRequest) {
   let userId: string | undefined;
+  let userEmail: string | undefined;
 
+  // Try to get user from session or JWT
   const session = await getServerSession(authOptions);
   if (session?.user) {
     userId = (session.user as { id?: string }).id;
+    userEmail = session.user.email ?? undefined;
   }
 
   if (!userId) {
@@ -21,10 +27,25 @@ export async function POST(req: NextRequest) {
     });
     if (token?.id) {
       userId = token.id as string;
+      userEmail = token.email ?? undefined;
     }
   }
 
+  // Also accept email in body (for pre-login resend from signup screen)
   if (!userId) {
+    try {
+      const body = await req.json();
+      if (body.email) {
+        const user = await prisma.user.findUnique({ where: { email: body.email } });
+        if (user) {
+          userId = user.id;
+          userEmail = user.email;
+        }
+      }
+    } catch {}
+  }
+
+  if (!userId || !userEmail) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -40,17 +61,17 @@ export async function POST(req: NextRequest) {
   // Delete old tokens
   await prisma.emailVerification.deleteMany({ where: { userId } });
 
-  // Create new token
-  const token = randomUUID();
+  // Create new 6-digit code (15 min expiry)
+  const code = generateCode();
   await prisma.emailVerification.create({
     data: {
-      token,
+      token: code,
       userId,
-      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000),
     },
   });
 
-  await sendVerificationEmail(user.email, token);
+  await sendVerificationCode(user.email, code);
 
   return NextResponse.json({ success: true });
 }
