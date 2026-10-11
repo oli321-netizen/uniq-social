@@ -60,7 +60,7 @@ model Transaction {
 model EmailVerification {
   id           String   @id @default(uuid())
   token        String
-  email        String
+  email        String   @default("")
   passwordHash String?
   userId       String?
   user         User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
