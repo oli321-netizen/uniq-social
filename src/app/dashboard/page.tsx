@@ -69,6 +69,7 @@ export default function Dashboard() {
   const [isProcessing, setIsProcessing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [credits, setCredits] = useState(0);
+  const [creditsLoaded, setCreditsLoaded] = useState(false);
   const [emailVerified, setEmailVerified] = useState(true);
   const [resendingVerification, setResendingVerification] = useState(false);
   const [showTopUp, setShowTopUp] = useState(false);
@@ -118,6 +119,7 @@ export default function Dashboard() {
         .then((d) => {
           setCredits(d.credits ?? 0);
           setPlan(d.plan ?? "free");
+          setCreditsLoaded(true);
           setEmailVerified(d.emailVerified !== false);
         })
         .catch(() => {});
@@ -126,11 +128,11 @@ export default function Dashboard() {
 
   // Show low-credits popup when balance gets low (once per session)
   useEffect(() => {
-    if (credits <= 2 && credits >= 0 && !lowCreditsShownRef.current && plan === "free") {
+    if (creditsLoaded && credits <= 20 && credits >= 0 && !lowCreditsShownRef.current) {
       lowCreditsShownRef.current = true;
       setShowLowCredits(true);
     }
-  }, [credits, plan]);
+  }, [credits, creditsLoaded]);
 
   if (status === "loading") {
     return (
