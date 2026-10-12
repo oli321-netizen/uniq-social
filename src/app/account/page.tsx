@@ -31,7 +31,6 @@ import {
   Lock,
   Key,
   Copy,
-  Eye,
   Users,
   UserPlus,
   UserMinus,
