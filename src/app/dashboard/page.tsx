@@ -45,9 +45,68 @@ type VideoFile = {
   progress: number;
   outputUrl?: string;
   outputs?: VideoOutput[];
+  completedCopies?: number;
 };
 
+const PROCESSING_STEPS = [
+  "Analysing video",
+  "Applying cuts",
+  "Adjusting zoom",
+  "Mirroring frames",
+  "Adding grain",
+  "Sharpening",
+  "Injecting metadata",
+  "Encoding output",
+  "Finalising",
+];
+
 type MetadataProfile = "capcut" | "snapchat" | "iphone" | "random";
+
+function ProcessingStepText({ progress }: { progress: number }) {
+  const [dotCount, setDotCount] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setDotCount((d) => (d + 1) % 4), 400);
+    return () => clearInterval(t);
+  }, []);
+  const stepIndex = Math.min(
+    Math.floor((progress / 100) * PROCESSING_STEPS.length),
+    PROCESSING_STEPS.length - 1
+  );
+  return (
+    <span className="text-purple-400/80 text-[11px] font-medium tracking-wide uppercase">
+      {PROCESSING_STEPS[stepIndex]}{".".repeat(dotCount)}
+    </span>
+  );
+}
+
+function CircularProgress({ progress, size = 44 }: { progress: number; size?: number }) {
+  const strokeWidth = 3;
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (progress / 100) * circumference;
+  return (
+    <svg width={size} height={size} className="transform -rotate-90">
+      <circle
+        cx={size / 2} cy={size / 2} r={radius}
+        stroke="currentColor" className="text-white/5"
+        strokeWidth={strokeWidth} fill="none"
+      />
+      <circle
+        cx={size / 2} cy={size / 2} r={radius}
+        stroke="url(#progressGrad)" strokeWidth={strokeWidth} fill="none"
+        strokeLinecap="round"
+        strokeDasharray={circumference} strokeDashoffset={offset}
+        className="transition-all duration-700 ease-out"
+      />
+      <defs>
+        <linearGradient id="progressGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#a855f7" />
+          <stop offset="100%" stopColor="#6366f1" />
+        </linearGradient>
+      </defs>
+    </svg>
+  );
+}
 
 const METADATA_PROFILES: { value: MetadataProfile; label: string; desc: string }[] = [
   { value: "capcut", label: "CapCut", desc: "Video edited with CapCut" },
@@ -266,7 +325,7 @@ export default function Dashboard() {
         setVideos((prev) =>
           prev.map((v) =>
             v.id === vid.id
-              ? { ...v, progress: Math.round((completedCopies / copies) * 90) + 10 }
+              ? { ...v, progress: Math.round((completedCopies / copies) * 90) + 10, completedCopies }
               : v
           )
         );
@@ -560,36 +619,58 @@ export default function Dashboard() {
                 {videos.map((vid) => (
                   <div
                     key={vid.id}
-                    className="flex items-center gap-4 p-4 rounded-xl border border-white/5 bg-white/[0.02]"
+                    className={`relative flex items-center gap-4 p-4 rounded-xl border transition-all duration-500 ${
+                      vid.status === "processing"
+                        ? "border-purple-500/30 bg-purple-500/[0.04] shadow-[0_0_20px_rgba(168,85,247,0.08)]"
+                        : vid.status === "done"
+                        ? "border-green-500/20 bg-green-500/[0.02]"
+                        : vid.status === "error"
+                        ? "border-red-500/20 bg-red-500/[0.02]"
+                        : "border-white/5 bg-white/[0.02]"
+                    }`}
                   >
-                    <div
-                      className={`flex h-10 w-10 items-center justify-center rounded-lg flex-shrink-0 ${
-                        vid.status === "done"
-                          ? "bg-green-500/10 border border-green-500/20"
-                          : vid.status === "processing"
-                          ? "bg-purple-500/10 border border-purple-500/20"
-                          : "bg-white/5 border border-white/10"
-                      }`}
-                    >
-                      {vid.status === "done" ? (
-                        <Check className="h-4 w-4 text-green-400" />
-                      ) : vid.status === "processing" ? (
-                        <div className="relative flex items-center justify-center">
-                          <div className="absolute h-8 w-8 rounded-full border-2 border-purple-500/30 animate-ping" />
-                          <Loader2 className="h-4 w-4 text-purple-400 animate-spin" />
+                    {/* Icon / Progress ring */}
+                    <div className="relative flex items-center justify-center flex-shrink-0">
+                      {vid.status === "processing" ? (
+                        <div className="relative">
+                          <CircularProgress progress={vid.progress} />
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <span className="text-[10px] font-bold text-purple-400">{vid.progress}%</span>
+                          </div>
+                        </div>
+                      ) : vid.status === "done" ? (
+                        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-green-500/10 border border-green-500/20">
+                          <Check className="h-5 w-5 text-green-400" />
+                        </div>
+                      ) : vid.status === "error" ? (
+                        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-red-500/10 border border-red-500/20">
+                          <X className="h-5 w-5 text-red-400" />
                         </div>
                       ) : (
-                        <FileVideo className="h-4 w-4 text-slate-500" />
+                        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/5 border border-white/10">
+                          <FileVideo className="h-5 w-5 text-slate-500" />
+                        </div>
                       )}
                     </div>
 
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{vid.name}</p>
-                      <p className="text-xs text-slate-600">{vid.size}</p>
+                      {vid.status === "processing" ? (
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <ProcessingStepText progress={vid.progress} />
+                          {vid.completedCopies !== undefined && (
+                            <span className="text-[11px] text-slate-600">
+                              · {vid.completedCopies}/{copies} clips
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-slate-600">{vid.size}</p>
+                      )}
                       {vid.status === "processing" && (
-                        <div className="mt-2 h-1.5 rounded-full bg-white/5 overflow-hidden">
+                        <div className="mt-2 h-1 rounded-full bg-white/5 overflow-hidden">
                           <div
-                            className="h-full rounded-full transition-all duration-500 ease-out relative overflow-hidden bg-gradient-to-r from-purple-600 via-purple-400 to-purple-600 bg-[length:200%_100%] animate-[shimmer_2s_linear_infinite]"
+                            className="h-full rounded-full transition-all duration-700 ease-out bg-gradient-to-r from-purple-600 via-fuchsia-500 to-purple-600 bg-[length:200%_100%] animate-shimmer shadow-[0_0_8px_rgba(168,85,247,0.5)]"
                             style={{ width: `${vid.progress}%` }}
                           />
                         </div>
@@ -910,35 +991,48 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Overall progress bar during processing */}
-            {isProcessing && (
-              <div className="space-y-3 p-4 rounded-xl border border-purple-500/20 bg-purple-500/[0.03]">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-400 flex items-center gap-2">
-                    <span className="relative flex h-2 w-2">
-                      <span className="absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75 animate-ping" />
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500" />
-                    </span>
-                    Processing
-                  </span>
-                  <span className="text-purple-400 font-medium">
-                    {videos.filter((v) => v.status === "done").length} / {videos.filter((v) => v.status !== "error").length} videos
-                  </span>
+            {/* Overall progress during processing */}
+            {isProcessing && (() => {
+              const done = videos.filter((v) => v.status === "done").length;
+              const total = videos.filter((v) => v.status !== "error").length;
+              const pct = Math.round((done / Math.max(1, total)) * 100);
+              return (
+                <div className="relative rounded-2xl overflow-hidden">
+                  {/* Animated gradient border */}
+                  <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-purple-600 via-fuchsia-500 to-indigo-600 bg-[length:300%_100%] animate-shimmer opacity-40" />
+                  <div className="relative m-[1px] rounded-2xl bg-[#0a0a1a] p-5 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="relative">
+                          <div className="h-10 w-10 rounded-xl bg-purple-500/10 flex items-center justify-center">
+                            <Zap className="h-5 w-5 text-purple-400" />
+                          </div>
+                          <span className="absolute -top-0.5 -right-0.5 flex h-3 w-3">
+                            <span className="absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75 animate-ping" />
+                            <span className="relative inline-flex rounded-full h-3 w-3 bg-purple-500" />
+                          </span>
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-white">Processing videos</p>
+                          <p className="text-xs text-slate-500">{done} of {total} complete</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-fuchsia-400 bg-clip-text text-transparent">
+                          {pct}%
+                        </p>
+                      </div>
+                    </div>
+                    <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-700 ease-out bg-gradient-to-r from-purple-600 via-fuchsia-500 to-purple-600 bg-[length:200%_100%] animate-shimmer shadow-[0_0_16px_rgba(168,85,247,0.5)]"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div className="h-2.5 rounded-full bg-white/5 overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-all duration-700 ease-out relative overflow-hidden bg-gradient-to-r from-purple-600 via-purple-400 to-purple-600 bg-[length:200%_100%] animate-[shimmer_2s_linear_infinite] shadow-[0_0_12px_rgba(168,85,247,0.4)]"
-                    style={{
-                      width: `${Math.round(
-                        (videos.filter((v) => v.status === "done").length /
-                          Math.max(1, videos.filter((v) => v.status !== "error").length)) *
-                          100
-                      )}%`,
-                    }}
-                  />
-                </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Process button */}
             <button
@@ -951,10 +1045,13 @@ export default function Dashboard() {
               }`}
             >
               {isProcessing ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span className="animate-pulse">Processing...</span>
-                </>
+                <div className="flex items-center gap-3">
+                  <div className="relative h-5 w-5">
+                    <div className="absolute inset-0 rounded-full border-2 border-purple-400/30" />
+                    <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-purple-400 animate-spin" />
+                  </div>
+                  <span className="text-slate-400">Processing — do not close this tab</span>
+                </div>
               ) : (
                 <>
                   <Zap className="h-4 w-4" />
