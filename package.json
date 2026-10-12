@@ -21,7 +21,6 @@
     "react": "^18",
     "react-dom": "^18",
     "resend": "^6.32.1",
-    "stripe": "^23.0.0",
     "uuid": "^14.0.3"
   },
   "prisma": {
