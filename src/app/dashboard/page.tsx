@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import { useTheme } from "@/components/ThemeProvider";
 import {
   Upload,
   Fingerprint,
@@ -93,7 +94,7 @@ export default function Dashboard() {
   const [usageData, setUsageData] = useState<any>(null);
   const [referralData, setReferralData] = useState<any>(null);
   const [referralCopied, setReferralCopied] = useState(false);
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const { theme, toggleTheme } = useTheme();
   const [previewVid, setPreviewVid] = useState<VideoFile | null>(null);
 
   // Edit parameter ranges
@@ -381,12 +382,7 @@ export default function Dashboard() {
               Buy Credits
             </button>
             <button
-              onClick={() => {
-                const next = theme === "dark" ? "light" : "dark";
-                setTheme(next);
-                document.documentElement.classList.toggle("dark", next === "dark");
-                document.documentElement.classList.toggle("light", next === "light");
-              }}
+              onClick={toggleTheme}
               className="text-slate-500 hover:text-white transition-colors"
               title="Toggle theme"
             >

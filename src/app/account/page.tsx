@@ -24,7 +24,10 @@ import {
   Rocket,
   Building2,
   Star,
+  Sun,
+  Moon,
 } from "lucide-react";
+import { useTheme } from "@/components/ThemeProvider";
 
 const TOP_UP_PACKS = [
   { credits: 20, price: "5.20" },
@@ -115,6 +118,7 @@ const PLAN_CONFIG: Record<
 export default function AccountPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const { theme, toggleTheme } = useTheme();
   const [credits, setCredits] = useState(0);
   const [plan, setPlan] = useState<PlanName>("free");
   const [showTopUp, setShowTopUp] = useState(false);
@@ -212,6 +216,13 @@ export default function AccountPage() {
           </div>
 
           <div className="flex items-center gap-3">
+            <button
+              onClick={toggleTheme}
+              className="text-slate-500 hover:text-white transition-colors"
+              title="Toggle theme"
+            >
+              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </button>
             <a
               href="/dashboard"
               className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-white transition-colors"
