@@ -82,6 +82,7 @@ export default function Dashboard() {
   const [resendingVerification, setResendingVerification] = useState(false);
   const [showTopUp, setShowTopUp] = useState(false);
   const [plan, setPlan] = useState("free");
+  const [isTeamMember, setIsTeamMember] = useState(false);
   const [showPlans, setShowPlans] = useState(false);
   const [showLowCredits, setShowLowCredits] = useState(false);
   const lowCreditsShownRef = useRef(false);
@@ -136,6 +137,7 @@ export default function Dashboard() {
         setPlan(d.plan ?? "free");
         setCreditsLoaded(true);
         setEmailVerified(d.emailVerified !== false);
+        if (d.teamRole === "member") setIsTeamMember(true);
       })
       .catch(() => {});
   }, []);
@@ -439,8 +441,8 @@ export default function Dashboard() {
       )}
 
 
-      {/* Upgrade banner for free users */}
-      {plan === "free" && (
+      {/* Upgrade banner for free users — hidden for team members */}
+      {plan === "free" && !isTeamMember && (
         <div className="mx-auto max-w-6xl px-3 sm:px-6 pt-4 sm:pt-6">
           <div className="rounded-2xl border border-purple-500/20 bg-gradient-to-r from-purple-500/[0.08] to-purple-600/[0.04] p-4 sm:p-5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -572,7 +574,10 @@ export default function Dashboard() {
                       {vid.status === "done" ? (
                         <Check className="h-4 w-4 text-green-400" />
                       ) : vid.status === "processing" ? (
-                        <Loader2 className="h-4 w-4 text-purple-400 animate-spin" />
+                        <div className="relative flex items-center justify-center">
+                          <div className="absolute h-8 w-8 rounded-full border-2 border-purple-500/30 animate-ping" />
+                          <Loader2 className="h-4 w-4 text-purple-400 animate-spin" />
+                        </div>
                       ) : (
                         <FileVideo className="h-4 w-4 text-slate-500" />
                       )}
@@ -582,9 +587,9 @@ export default function Dashboard() {
                       <p className="text-sm font-medium truncate">{vid.name}</p>
                       <p className="text-xs text-slate-600">{vid.size}</p>
                       {vid.status === "processing" && (
-                        <div className="mt-2 h-1 rounded-full bg-white/5 overflow-hidden">
+                        <div className="mt-2 h-1.5 rounded-full bg-white/5 overflow-hidden">
                           <div
-                            className="h-full bg-purple-500 rounded-full transition-all duration-300"
+                            className="h-full rounded-full transition-all duration-500 ease-out relative overflow-hidden bg-gradient-to-r from-purple-600 via-purple-400 to-purple-600 bg-[length:200%_100%] animate-[shimmer_2s_linear_infinite]"
                             style={{ width: `${vid.progress}%` }}
                           />
                         </div>
@@ -907,16 +912,22 @@ export default function Dashboard() {
 
             {/* Overall progress bar during processing */}
             {isProcessing && (
-              <div className="space-y-2">
+              <div className="space-y-3 p-4 rounded-xl border border-purple-500/20 bg-purple-500/[0.03]">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-500">Overall progress</span>
+                  <span className="text-slate-400 flex items-center gap-2">
+                    <span className="relative flex h-2 w-2">
+                      <span className="absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75 animate-ping" />
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500" />
+                    </span>
+                    Processing
+                  </span>
                   <span className="text-purple-400 font-medium">
                     {videos.filter((v) => v.status === "done").length} / {videos.filter((v) => v.status !== "error").length} videos
                   </span>
                 </div>
-                <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+                <div className="h-2.5 rounded-full bg-white/5 overflow-hidden">
                   <div
-                    className="h-full bg-gradient-to-r from-purple-600 to-purple-400 rounded-full transition-all duration-500 ease-out"
+                    className="h-full rounded-full transition-all duration-700 ease-out relative overflow-hidden bg-gradient-to-r from-purple-600 via-purple-400 to-purple-600 bg-[length:200%_100%] animate-[shimmer_2s_linear_infinite] shadow-[0_0_12px_rgba(168,85,247,0.4)]"
                     style={{
                       width: `${Math.round(
                         (videos.filter((v) => v.status === "done").length /
@@ -942,7 +953,7 @@ export default function Dashboard() {
               {isProcessing ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Processing...
+                  <span className="animate-pulse">Processing...</span>
                 </>
               ) : (
                 <>
@@ -1185,16 +1196,18 @@ export default function Dashboard() {
             <div className="flex gap-3">
               <button
                 onClick={() => { setShowLowCredits(false); setShowTopUp(true); }}
-                className="flex-1 py-3 rounded-xl text-sm font-medium bg-white/5 hover:bg-white/10 text-white border border-white/10 transition-all"
+                className={`${isTeamMember ? "w-full" : "flex-1"} py-3 rounded-xl text-sm font-medium bg-white/5 hover:bg-white/10 text-white border border-white/10 transition-all`}
               >
                 Top Up Credits
               </button>
+              {!isTeamMember && (
               <button
                 onClick={() => { setShowLowCredits(false); setShowPlans(true); }}
                 className="flex-1 py-3 rounded-xl text-sm font-medium bg-purple-600 hover:bg-purple-700 text-white transition-all"
               >
                 View Plans
               </button>
+              )}
             </div>
           </div>
         </div>
@@ -1349,23 +1362,27 @@ export default function Dashboard() {
               ))}
             </div>
 
+            {!isTeamMember && (
             <p className="text-[11px] text-slate-600 text-center mb-4">
               All top-ups at 26p per credit. Save more with a plan — from 5p/credit on higher tiers.
             </p>
+            )}
 
             <div className="flex gap-3">
               <button
                 onClick={() => setShowTopUp(false)}
-                className="flex-1 py-3 rounded-xl text-sm font-medium bg-white/5 hover:bg-white/10 text-white border border-white/10 transition-all"
+                className={`${isTeamMember ? "w-full" : "flex-1"} py-3 rounded-xl text-sm font-medium bg-white/5 hover:bg-white/10 text-white border border-white/10 transition-all`}
               >
                 Cancel
               </button>
+              {!isTeamMember && (
               <a
                 href="/account"
                 className="flex-1 py-3 rounded-xl text-sm font-medium bg-purple-600 hover:bg-purple-700 text-white text-center transition-all hover:shadow-lg hover:shadow-purple-500/20"
               >
                 View Plans
               </a>
+              )}
             </div>
           </div>
         </div>
