@@ -26,7 +26,7 @@ const NAV_LINKS = [
 function Navbar() {
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-[#010313]/80 backdrop-blur-xl">
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
         <a href="/" className="flex items-center gap-2.5">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-500/10 border border-purple-500/20">
             <Fingerprint className="h-4 w-4 text-purple-400" />
@@ -533,9 +533,9 @@ function Footer() {
             </span>
           </div>
           <div className="flex items-center gap-6 text-sm text-slate-500">
-            <a href="#" className="hover:text-white transition-colors">Terms</a>
-            <a href="#" className="hover:text-white transition-colors">Privacy</a>
-            <a href="#" className="hover:text-white transition-colors">Contact</a>
+            <a href="/terms" className="hover:text-white transition-colors">Terms</a>
+            <a href="/privacy" className="hover:text-white transition-colors">Privacy</a>
+            <a href="mailto:support@uniqsocial.com" className="hover:text-white transition-colors">Contact</a>
           </div>
           <p className="text-xs text-slate-600">
             &copy; 2026 Uniq Social. All rights reserved.

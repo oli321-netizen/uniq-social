@@ -4,6 +4,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "@/components/ThemeProvider";
+import { useToast } from "@/components/Toast";
 import {
   Upload,
   Fingerprint,
@@ -95,6 +96,7 @@ export default function Dashboard() {
   const [referralData, setReferralData] = useState<any>(null);
   const [referralCopied, setReferralCopied] = useState(false);
   const { theme, toggleTheme } = useTheme();
+  const { addToast } = useToast();
   const [previewVid, setPreviewVid] = useState<VideoFile | null>(null);
 
   // Edit parameter ranges
@@ -278,7 +280,7 @@ export default function Dashboard() {
     const totalNeeded = pendingVids.length * copies;
 
     if (credits < totalNeeded) {
-      alert(`Not enough credits. You need ${totalNeeded} but only have ${credits}.`);
+      addToast(`Not enough credits. You need ${totalNeeded} but only have ${credits}.`, "error");
       return;
     }
 
@@ -334,8 +336,16 @@ export default function Dashboard() {
     // Refresh credits from server
     refreshCredits();
 
-    // Send completion email notification
+    // Show completion toast & send email notification
     const completedCount = videos.filter((v) => v.status === "done").length;
+    const failedCount = videos.filter((v) => v.status === "error").length;
+    if (completedCount > 0 && failedCount === 0) {
+      addToast(`All ${completedCount * copies} video${completedCount * copies !== 1 ? "s" : ""} processed successfully!`, "success", 5000);
+    } else if (completedCount > 0 && failedCount > 0) {
+      addToast(`${completedCount * copies} video${completedCount * copies !== 1 ? "s" : ""} done, ${failedCount} failed`, "warning", 5000);
+    } else if (failedCount > 0) {
+      addToast("Processing failed. Please try again.", "error", 5000);
+    }
     if (completedCount > 0) {
       fetch("/api/notify-complete", {
         method: "POST",
@@ -354,32 +364,32 @@ export default function Dashboard() {
     <div className="min-h-screen bg-[#010313]">
       {/* Top bar */}
       <header className="border-b border-white/5 bg-[#010313]/80 backdrop-blur-xl sticky top-0 z-50">
-        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-6">
-          <div className="flex items-center gap-6">
+        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-3 sm:px-6">
+          <div className="flex items-center gap-3 sm:gap-6">
             <a href="/" className="flex items-center gap-2">
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-purple-500/10 border border-purple-500/20">
                 <Fingerprint className="h-3.5 w-3.5 text-purple-400" />
               </div>
-              <span className="text-sm font-semibold tracking-tight">
+              <span className="text-sm font-semibold tracking-tight hidden sm:inline">
                 Uniq<span className="text-purple-400">Social</span>
               </span>
             </a>
-            <span className="text-xs text-slate-600">Dashboard</span>
+            <span className="text-xs text-slate-600 hidden sm:inline">Dashboard</span>
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-purple-500/10 border border-purple-500/20">
+          <div className="flex items-center gap-2 sm:gap-4">
+            <div className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg bg-purple-500/10 border border-purple-500/20">
               <Zap className="h-3.5 w-3.5 text-purple-400" />
-              <span className="text-sm font-medium text-purple-300">
-                {credits} credits
+              <span className="text-xs sm:text-sm font-medium text-purple-300">
+                {credits}
               </span>
             </div>
             <button
               onClick={() => setShowTopUp(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium transition-all hover:shadow-lg hover:shadow-purple-500/20"
+              className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium transition-all hover:shadow-lg hover:shadow-purple-500/20"
             >
               <Plus className="h-3 w-3" />
-              Buy Credits
+              <span className="hidden sm:inline">Buy Credits</span>
             </button>
             <button
               onClick={toggleTheme}
@@ -404,11 +414,11 @@ export default function Dashboard() {
       {/* Email verification banner */}
       {!emailVerified && (
         <div className="bg-amber-500/10 border-b border-amber-500/20">
-          <div className="mx-auto max-w-7xl px-6 py-3 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Mail className="h-4 w-4 text-amber-400" />
-              <p className="text-sm text-amber-200">
-                Please verify your email address to keep your account secure.
+          <div className="mx-auto max-w-7xl px-3 sm:px-6 py-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <Mail className="h-4 w-4 text-amber-400 shrink-0" />
+              <p className="text-xs sm:text-sm text-amber-200 truncate">
+                Please verify your email to keep your account secure.
               </p>
             </div>
             <button
@@ -431,30 +441,30 @@ export default function Dashboard() {
 
       {/* Upgrade banner for free users */}
       {plan === "free" && (
-        <div className="mx-auto max-w-6xl px-6 pt-6">
-          <div className="rounded-2xl border border-purple-500/20 bg-gradient-to-r from-purple-500/[0.08] to-purple-600/[0.04] p-5">
-            <div className="flex items-center justify-between flex-wrap gap-4">
-              <div className="flex items-center gap-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-500/10 border border-purple-500/20">
+        <div className="mx-auto max-w-6xl px-3 sm:px-6 pt-4 sm:pt-6">
+          <div className="rounded-2xl border border-purple-500/20 bg-gradient-to-r from-purple-500/[0.08] to-purple-600/[0.04] p-4 sm:p-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3 sm:gap-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-500/10 border border-purple-500/20 shrink-0">
                   <Crown className="h-5 w-5 text-purple-400" />
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-white">Upgrade your plan</h3>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Get monthly credits from £24/mo — save up to 80% vs top-ups
+                    Get monthly credits from £24/mo
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => setShowTopUp(true)}
-                  className="px-4 py-2 rounded-xl text-xs font-medium bg-white/5 hover:bg-white/10 text-white border border-white/10 transition-all"
+                  className="flex-1 sm:flex-none px-4 py-2 rounded-xl text-xs font-medium bg-white/5 hover:bg-white/10 text-white border border-white/10 transition-all text-center"
                 >
-                  Top Up Credits
+                  Top Up
                 </button>
                 <button
                   onClick={() => setShowPlans(true)}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium bg-purple-600 hover:bg-purple-700 text-white transition-all hover:shadow-lg hover:shadow-purple-500/20"
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium bg-purple-600 hover:bg-purple-700 text-white transition-all hover:shadow-lg hover:shadow-purple-500/20"
                 >
                   View Plans
                   <ArrowRight className="h-3 w-3" />
@@ -465,8 +475,8 @@ export default function Dashboard() {
         </div>
       )}
       {/* Tab bar */}
-      <div className="mx-auto max-w-6xl px-6 pt-6">
-        <div className="flex gap-1 p-1 rounded-xl bg-white/[0.03] border border-white/5 w-fit">
+      <div className="mx-auto max-w-6xl px-3 sm:px-6 pt-4 sm:pt-6">
+        <div className="flex gap-1 p-1 rounded-xl bg-white/[0.03] border border-white/5 w-full sm:w-fit overflow-x-auto">
           {([
             { key: "process", label: "Process", icon: "Zap" },
             { key: "history", label: "History", icon: "History" },
@@ -493,16 +503,16 @@ export default function Dashboard() {
       </div>
 
       {activeTab === "process" && (
-      <div className="mx-auto max-w-6xl px-6 py-8">
-        <div className="grid lg:grid-cols-[1fr_320px] gap-8">
+      <div className="mx-auto max-w-6xl px-3 sm:px-6 py-4 sm:py-8">
+        <div className="grid lg:grid-cols-[1fr_320px] gap-4 sm:gap-8">
           {/* Main area */}
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-6">
             {/* Upload zone */}
             <div
               onDrop={onDrop}
               onDragOver={(e) => e.preventDefault()}
               onClick={() => fileInputRef.current?.click()}
-              className="group cursor-pointer rounded-2xl border-2 border-dashed border-white/10 hover:border-purple-500/30 bg-white/[0.01] hover:bg-purple-500/[0.02] transition-all duration-300 p-12 text-center"
+              className="group cursor-pointer rounded-2xl border-2 border-dashed border-white/10 hover:border-purple-500/30 bg-white/[0.01] hover:bg-purple-500/[0.02] transition-all duration-300 p-6 sm:p-12 text-center"
             >
               <input
                 ref={fileInputRef}
@@ -895,6 +905,30 @@ export default function Dashboard() {
               </div>
             </div>
 
+            {/* Overall progress bar during processing */}
+            {isProcessing && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-500">Overall progress</span>
+                  <span className="text-purple-400 font-medium">
+                    {videos.filter((v) => v.status === "done").length} / {videos.filter((v) => v.status !== "error").length} videos
+                  </span>
+                </div>
+                <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-purple-600 to-purple-400 rounded-full transition-all duration-500 ease-out"
+                    style={{
+                      width: `${Math.round(
+                        (videos.filter((v) => v.status === "done").length /
+                          Math.max(1, videos.filter((v) => v.status !== "error").length)) *
+                          100
+                      )}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
             {/* Process button */}
             <button
               onClick={processAll}
@@ -1168,7 +1202,7 @@ export default function Dashboard() {
 
       {showPlans && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-          <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#010313] p-8 relative max-h-[90vh] overflow-y-auto">
+          <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#010313] p-4 sm:p-8 relative max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => setShowPlans(false)}
               className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors"
@@ -1210,11 +1244,11 @@ export default function Dashboard() {
                       if (data.url) {
                         window.location.href = data.url;
                       } else {
-                        alert(data.error || "Failed to start checkout");
+                        addToast(data.error || "Failed to start checkout", "error");
                         setSubscribingPlan(null);
                       }
                     } catch {
-                      alert("Failed to connect to payment service");
+                      addToast("Failed to connect to payment service", "error");
                       setSubscribingPlan(null);
                     }
                   }}
@@ -1254,7 +1288,7 @@ export default function Dashboard() {
       {/* Top-up credits modal */}
       {showTopUp && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-          <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#010313] p-8 relative">
+          <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#010313] p-4 sm:p-8 relative max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => setShowTopUp(false)}
               className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors"
@@ -1296,11 +1330,11 @@ export default function Dashboard() {
                       if (data.url) {
                         window.location.href = data.url;
                       } else {
-                        alert(data.error || "Failed to start checkout");
+                        addToast(data.error || "Failed to start checkout", "error");
                       }
                     } catch (err) {
                       console.error("Checkout error:", err);
-                      alert("Failed to connect to payment service");
+                      addToast("Failed to connect to payment service", "error");
                     }
                   }}
                   className="group p-4 rounded-xl border border-white/10 bg-white/[0.02] hover:border-purple-500/30 hover:bg-purple-500/[0.03] transition-all text-left cursor-pointer relative z-10"

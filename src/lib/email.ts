@@ -341,6 +341,55 @@ function buildWelcomeHtml(email: string) {
 }
 
 
+export async function sendTeamInviteEmail(to: string, teamName: string, inviterEmail: string) {
+  try {
+    const resend = getResendClient();
+    const baseUrl = process.env.NEXTAUTH_URL || "https://uniqsocial.com";
+    await resend.emails.send({
+      from: FROM_EMAIL,
+      to,
+      subject: `You've been invited to join ${teamName} on UniqSocial`,
+      html: `
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
+<body style="margin:0;padding:0;background-color:#010313;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#010313;min-height:100vh;">
+    <tr>
+      <td align="center" style="padding:40px 20px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;">
+          <tr>
+            <td align="center" style="padding-bottom:32px;">
+              <span style="color:#ffffff;font-size:20px;font-weight:700;">Uniq</span><span style="color:#a78bfa;font-size:20px;font-weight:700;">Social</span>
+            </td>
+          </tr>
+          <tr>
+            <td style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:20px;padding:44px 36px;text-align:center;">
+              <h1 style="margin:0 0 8px;color:#ffffff;font-size:24px;font-weight:700;">Team Invitation</h1>
+              <p style="margin:0 0 24px;color:#64748b;font-size:14px;line-height:1.6;">
+                <strong style="color:#ffffff;">${inviterEmail}</strong> has invited you to join
+                <strong style="color:#a78bfa;">${teamName}</strong> on UniqSocial.
+              </p>
+              <p style="margin:0 0 24px;color:#64748b;font-size:13px;line-height:1.6;">
+                As a team member, you&rsquo;ll share a credit pool and can process videos using the team&rsquo;s balance.
+              </p>
+              <a href="${baseUrl}/dashboard" style="display:inline-block;background:#7c3aed;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:14px 40px;border-radius:12px;">
+                View Invitation &rarr;
+              </a>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`,
+    });
+  } catch (err) {
+    console.error("Failed to send team invite email:", err);
+  }
+}
+
 export async function sendBatchCompleteEmail(to: string, totalVideos: number, totalCopies: number) {
   try {
     const resend = getResendClient();

@@ -89,14 +89,30 @@ export async function verifyPassword(user: { password: string }, password: strin
 
 export async function deductCredits(userId: string, amount: number): Promise<boolean> {
   const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user || user.credits < amount) return false;
+  if (!user) return false;
 
-  await prisma.user.update({
-    where: { id: userId },
-    data: { credits: { decrement: amount } },
-  });
+  // Try user's own credits first
+  if (user.credits >= amount) {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { credits: { decrement: amount } },
+    });
+    return true;
+  }
 
-  return true;
+  // Fall back to team pool if user is on a team
+  if (user.teamId) {
+    const team = await prisma.team.findUnique({ where: { id: user.teamId } });
+    if (team && team.credits >= amount) {
+      await prisma.team.update({
+        where: { id: team.id },
+        data: { credits: { decrement: amount } },
+      });
+      return true;
+    }
+  }
+
+  return false;
 }
 
 export async function getCredits(userId: string): Promise<number> {

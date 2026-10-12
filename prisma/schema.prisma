@@ -22,6 +22,10 @@ model User {
   currentPeriodEnd      DateTime?
   createdAt             DateTime       @default(now())
   updatedAt             DateTime       @updatedAt
+  teamId                String?
+  teamRole              String?    // "owner" | "member"
+  team                  Team?      @relation(fields: [teamId], references: [id])
+  apiKeys               ApiKey[]
   passwordResets        PasswordReset[]
   transactions          Transaction[]
   emailVerifications    EmailVerification[]
@@ -38,6 +42,38 @@ model PasswordReset {
   expiresAt DateTime
   used      Boolean  @default(false)
   createdAt DateTime @default(now())
+}
+
+model ApiKey {
+  id        String   @id @default(uuid())
+  name      String
+  key       String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastUsed  DateTime?
+  createdAt DateTime @default(now())
+}
+
+model Team {
+  id          String       @id @default(uuid())
+  name        String
+  credits     Int          @default(0)
+  ownerId     String
+  members     User[]
+  invites     TeamInvite[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model TeamInvite {
+  id        String   @id @default(uuid())
+  email     String
+  teamId    String
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  status    String   @default("pending") // "pending" | "accepted" | "declined"
+  createdAt DateTime @default(now())
+
+  @@unique([email, teamId])
 }
 
 model PromoCode {

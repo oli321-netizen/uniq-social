@@ -110,6 +110,22 @@ export async function POST(req: NextRequest) {
       if (token?.id) userId = token.id as string;
     }
 
+    // Try API key auth as third fallback
+    if (!userId) {
+      const authHeader = req.headers.get("authorization");
+      if (authHeader?.startsWith("Bearer us_")) {
+        const apiKey = await prisma.apiKey.findUnique({
+          where: { key: authHeader.slice(7) },
+          select: { userId: true, id: true },
+        });
+        if (apiKey) {
+          userId = apiKey.userId;
+          // Update last used timestamp (fire and forget)
+          prisma.apiKey.update({ where: { id: apiKey.id }, data: { lastUsed: new Date() } }).catch(() => {});
+        }
+      }
+    }
+
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
