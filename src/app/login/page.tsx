@@ -1,11 +1,19 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, Suspense } from "react";
 import { signIn } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import { Fingerprint, Loader2, Mail, Lock, ArrowRight, ShieldCheck, Gift, X, Users } from "lucide-react";
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#010313] flex items-center justify-center"><Loader2 className="h-8 w-8 text-purple-400 animate-spin" /></div>}>
+      <LoginContent />
+    </Suspense>
+  );
+}
+
+function LoginContent() {
   const searchParams = useSearchParams();
   const inviteEmail = searchParams.get("email") || "";
   const inviteId = searchParams.get("invite") || "";
