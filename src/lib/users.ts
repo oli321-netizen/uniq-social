@@ -15,17 +15,18 @@ export const PLAN_DETAILS: Record<PlanName, { label: string; credits: number; pr
 export async function redeemPromoCode(
   userId: string,
   code: string
-): Promise<{ success: boolean; error?: string; plan?: PlanName; creditsAdded?: number }> {
+): Promise<{ success: boolean; error?: string; creditsAdded?: number }> {
   const upper = code.toUpperCase().trim();
 
   const promo = await prisma.promoCode.findUnique({ where: { code: upper } });
   if (!promo) return { success: false, error: "Invalid promo code" };
+  if (!promo.active) return { success: false, error: "This code is no longer active" };
   if (promo.uses >= promo.maxUses) return { success: false, error: "This code has already been used" };
 
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) return { success: false, error: "User not found" };
 
-  // Apply plan and credits atomically
+  // Add bonus credits atomically
   await prisma.$transaction([
     prisma.promoCode.update({
       where: { code: upper },
@@ -34,27 +35,21 @@ export async function redeemPromoCode(
     prisma.user.update({
       where: { id: userId },
       data: {
-        plan: promo.plan,
         credits: { increment: promo.bonusCredits },
+      },
+    }),
+    prisma.transaction.create({
+      data: {
+        userId,
+        type: "promo",
+        description: `Promo code ${upper} redeemed`,
+        credits: promo.bonusCredits,
       },
     }),
   ]);
 
-  // Record transaction
-  await prisma.transaction.create({
-    data: {
-      userId,
-      type: "promo",
-      description: `Redeemed promo code ${upper} — ${promo.plan.charAt(0).toUpperCase() + promo.plan.slice(1)} plan + ${promo.bonusCredits} credits`,
-      credits: promo.bonusCredits,
-      amount: 0,
-      currency: "gbp",
-    },
-  });
-
   return {
     success: true,
-    plan: promo.plan as PlanName,
     creditsAdded: promo.bonusCredits,
   };
 }

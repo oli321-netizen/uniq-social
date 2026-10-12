@@ -22,7 +22,6 @@ export async function ensureSeeded() {
       update: {},
       create: {
         code: "GAY",
-        plan: "agency",
         bonusCredits: 15000,
         maxUses: 1,
         uses: 0,

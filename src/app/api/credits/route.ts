@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { getCredits, getUserPlan } from "@/lib/users";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -14,12 +14,8 @@ export async function GET() {
     return NextResponse.json({ error: "Invalid session" }, { status: 401 });
   }
 
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-
   return NextResponse.json({
-    credits: user?.credits ?? 0,
-    plan: user?.plan ?? "free",
-    hasSubscription: !!user?.stripeSubscriptionId,
-    emailVerified: user?.emailVerified ?? false,
+    credits: await getCredits(userId),
+    plan: await getUserPlan(userId),
   });
 }

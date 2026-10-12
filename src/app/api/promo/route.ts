@@ -44,7 +44,6 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     success: true,
-    plan: result.plan,
     creditsAdded: result.creditsAdded,
   });
 }

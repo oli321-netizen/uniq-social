@@ -5,7 +5,6 @@ import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import {
   Fingerprint,
-  Receipt,
   ArrowLeft,
   Mail,
   Zap,
@@ -119,25 +118,23 @@ export default function AccountPage() {
   const [credits, setCredits] = useState(0);
   const [plan, setPlan] = useState<PlanName>("free");
   const [showTopUp, setShowTopUp] = useState(false);
-  const [hasSubscription, setHasSubscription] = useState(false);
-  const [showPlans, setShowPlans] = useState(false);
-  const [subscribingPlan, setSubscribingPlan] = useState<PlanName | null>(null);
-
-  // Transaction history
-  const [transactions, setTransactions] = useState<
-    { id: string; type: string; description: string; credits: number; amount: number; currency: string; createdAt: string }[]
-  >([]);
-  const [loadingTxns, setLoadingTxns] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
 
   // Promo code state
   const [promoCode, setPromoCode] = useState("");
   const [promoLoading, setPromoLoading] = useState(false);
   const [promoError, setPromoError] = useState("");
   const [promoSuccess, setPromoSuccess] = useState<{
-    plan: PlanName;
     creditsAdded: number;
   } | null>(null);
+
+  // Change password state
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login");
@@ -150,19 +147,8 @@ export default function AccountPage() {
         .then((d) => {
           setCredits(d.credits ?? 0);
           if (d.plan) setPlan(d.plan);
-          setHasSubscription(!!d.hasSubscription);
         })
         .catch(() => {});
-
-      // Fetch transaction history
-      setLoadingTxns(true);
-      fetch("/api/transactions")
-        .then((r) => r.json())
-        .then((d) => {
-          setTransactions(d.transactions ?? []);
-          setLoadingTxns(false);
-        })
-        .catch(() => setLoadingTxns(false));
     }
   }, [status]);
 
@@ -186,10 +172,9 @@ export default function AccountPage() {
       }
 
       // Success — show upgrade popup
-      setPlan(data.plan);
       setCredits((prev) => prev + data.creditsAdded);
       setPromoCode("");
-      setPromoSuccess({ plan: data.plan, creditsAdded: data.creditsAdded });
+      setPromoSuccess({ creditsAdded: data.creditsAdded });
     } catch {
       setPromoError("Something went wrong. Try again.");
     } finally {
@@ -312,145 +297,31 @@ export default function AccountPage() {
             {plan === "free" ? (
               <button
                 type="button"
-                onClick={() => setShowPlans(true)}
+                onClick={() => (window.location.href = "/#pricing")}
                 className="text-xs font-medium text-purple-400 hover:text-purple-300 transition-colors"
               >
                 Upgrade →
               </button>
             ) : (
-              <div className="flex items-center gap-3">
-                {hasSubscription && (
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      try {
-                        const res = await fetch("/api/stripe/portal", {
-                          method: "POST",
-                        });
-                        const data = await res.json();
-                        if (data.url) window.location.href = data.url;
-                      } catch {
-                        alert("Failed to open billing portal");
-                      }
-                    }}
-                    className="text-xs font-medium text-purple-400 hover:text-purple-300 transition-colors"
-                  >
-                    Manage →
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (!confirm("Are you sure you want to cancel your plan? You will be downgraded to Free but keep your remaining credits.")) return;
-                    try {
-                      const res = await fetch("/api/account/cancel", { method: "POST" });
-                      const data = await res.json();
-                      if (data.success) {
-                        setPlan("free");
-                        setHasSubscription(false);
-                        alert("Plan cancelled. You are now on the Free plan.");
-                      } else {
-                        alert(data.error || "Failed to cancel plan");
-                      }
-                    } catch {
-                      alert("Something went wrong");
-                    }
-                  }}
-                  className="text-xs font-medium text-red-400 hover:text-red-300 transition-colors"
-                >
-                  Cancel Plan
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const res = await fetch("/api/stripe/portal", {
+                      method: "POST",
+                    });
+                    const data = await res.json();
+                    if (data.url) window.location.href = data.url;
+                  } catch {
+                    alert("Failed to open billing portal");
+                  }
+                }}
+                className="text-xs font-medium text-purple-400 hover:text-purple-300 transition-colors"
+              >
+                Manage →
+              </button>
             )}
           </div>
-        </div>
-
-
-        {/* Transaction History */}
-        <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-6 mb-6">
-          <button
-            onClick={() => setShowHistory(!showHistory)}
-            className="w-full flex items-center justify-between"
-          >
-            <h2 className="text-sm font-semibold flex items-center gap-2">
-              <Receipt className="h-4 w-4 text-purple-400" />
-              Transaction History
-            </h2>
-            <span className="text-xs text-slate-500">
-              {showHistory ? "Hide" : `Show (${transactions.length})`}
-            </span>
-          </button>
-
-          {showHistory && (
-            <div className="mt-4 space-y-2">
-              {loadingTxns ? (
-                <div className="flex justify-center py-6">
-                  <Loader2 className="h-5 w-5 animate-spin text-purple-400" />
-                </div>
-              ) : transactions.length === 0 ? (
-                <p className="text-xs text-slate-600 text-center py-4">
-                  No transactions yet
-                </p>
-              ) : (
-                transactions.map((tx) => (
-                  <div
-                    key={tx.id}
-                    className="flex items-center justify-between py-3 border-b border-white/5 last:border-0"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`h-8 w-8 rounded-lg flex items-center justify-center text-xs font-bold ${
-                          tx.type === "credit_purchase"
-                            ? "bg-blue-500/10 text-blue-400"
-                            : tx.type === "subscription"
-                            ? "bg-purple-500/10 text-purple-400"
-                            : tx.type === "renewal"
-                            ? "bg-emerald-500/10 text-emerald-400"
-                            : tx.type === "promo"
-                            ? "bg-amber-500/10 text-amber-400"
-                            : "bg-red-500/10 text-red-400"
-                        }`}
-                      >
-                        {tx.type === "credit_purchase"
-                          ? "CR"
-                          : tx.type === "subscription"
-                          ? "SUB"
-                          : tx.type === "renewal"
-                          ? "REN"
-                          : tx.type === "promo"
-                          ? "PRO"
-                          : "CAN"}
-                      </div>
-                      <div>
-                        <p className="text-sm text-white">{tx.description}</p>
-                        <p className="text-xs text-slate-600">
-                          {new Date(tx.createdAt).toLocaleDateString("en-GB", {
-                            day: "numeric",
-                            month: "short",
-                            year: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      {tx.credits > 0 && (
-                        <p className="text-sm font-medium text-emerald-400">
-                          +{tx.credits.toLocaleString()} credits
-                        </p>
-                      )}
-                      {tx.amount > 0 && (
-                        <p className="text-xs text-slate-500">
-                          £{(tx.amount / 100).toFixed(2)}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
         </div>
 
         {/* Redeem Code */}
@@ -506,7 +377,10 @@ export default function AccountPage() {
               <p className="text-sm text-white">Password</p>
               <p className="text-xs text-slate-500">Last changed: never</p>
             </div>
-            <button className="text-xs font-medium text-purple-400 hover:text-purple-300 transition-colors">
+            <button
+              onClick={() => setShowChangePassword(true)}
+              className="text-xs font-medium text-purple-400 hover:text-purple-300 transition-colors"
+            >
               Change password
             </button>
           </div>
@@ -607,24 +481,51 @@ export default function AccountPage() {
               >
                 Cancel
               </button>
-              <button
-                onClick={() => { setShowTopUp(false); setShowPlans(true); }}
+              <a
+                href="/#pricing"
                 className="flex-1 py-3 rounded-xl text-sm font-medium bg-purple-600 hover:bg-purple-700 text-white text-center transition-all hover:shadow-lg hover:shadow-purple-500/20"
               >
                 View Plans
-              </button>
+              </a>
             </div>
           </div>
         </div>
       )}
 
-
-      {/* Plans modal */}
-      {showPlans && (
+      {/* Promo success popup */}
+      {promoSuccess && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-          <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#010313] p-8 relative max-h-[90vh] overflow-y-auto">
+          <div className="w-full max-w-sm rounded-2xl border border-purple-500/20 bg-[#0a0a1a] p-8 text-center shadow-2xl shadow-purple-500/10 relative">
             <button
-              onClick={() => setShowPlans(false)}
+              onClick={() => setPromoSuccess(null)}
+              className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-500/10 border border-green-500/20">
+              <Check className="h-8 w-8 text-green-400" />
+            </div>
+            <h2 className="text-xl font-bold text-white mb-2">Code Redeemed!</h2>
+            <div className="rounded-xl bg-purple-500/10 border border-purple-500/20 py-4 px-6 mb-6">
+              <p className="text-3xl font-bold text-purple-400">+{promoSuccess.creditsAdded.toLocaleString()}</p>
+              <p className="text-xs text-slate-500 mt-1">credits added to your account</p>
+            </div>
+            <button
+              onClick={() => setPromoSuccess(null)}
+              className="w-full rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold py-3 px-6 text-sm transition-colors"
+            >
+              Nice!
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Change password modal */}
+      {showChangePassword && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#010313] p-8 relative">
+            <button
+              onClick={() => { setShowChangePassword(false); setPasswordError(""); setPasswordSuccess(false); setCurrentPassword(""); setNewPassword(""); setConfirmPassword(""); }}
               className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors"
             >
               <X className="h-5 w-5" />
@@ -632,162 +533,108 @@ export default function AccountPage() {
 
             <div className="text-center mb-6">
               <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-purple-500/10 border border-purple-500/20">
-                <Crown className="h-6 w-6 text-purple-400" />
+                <Shield className="h-6 w-6 text-purple-400" />
               </div>
-              <h2 className="text-xl font-bold">Choose a Plan</h2>
-              <p className="text-sm text-slate-500 mt-1">
-                Subscribe monthly and save on every credit
-              </p>
+              <h2 className="text-xl font-bold">Change Password</h2>
             </div>
 
-            <div className="space-y-3 mb-6">
-              {(["starter", "growth", "pro", "business", "agency"] as PlanName[]).map((key) => {
-                const p = PLAN_CONFIG[key];
-                return (
-                  <button
-                    type="button"
-                    key={key}
-                    disabled={subscribingPlan === key}
-                    onClick={async () => {
-                      setSubscribingPlan(key);
-                      try {
-                        const res = await fetch("/api/stripe/subscribe", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ planKey: key }),
-                        });
-                        const data = await res.json();
-                        if (data.url) {
-                          window.location.href = data.url;
-                        } else {
-                          alert(data.error || "Failed to start checkout");
-                          setSubscribingPlan(null);
-                        }
-                      } catch {
-                        alert("Failed to connect to payment service");
-                        setSubscribingPlan(null);
-                      }
-                    }}
-                    className="w-full flex items-center justify-between p-4 rounded-xl border border-white/10 bg-white/[0.02] hover:border-purple-500/30 hover:bg-purple-500/[0.03] transition-all text-left cursor-pointer disabled:opacity-50"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`${p.color}`}>{p.icon}</div>
-                      <div>
-                        <div className="text-sm font-semibold text-white">{p.label}</div>
-                        <div className="text-xs text-slate-500">{p.credits.toLocaleString()} credits/mo</div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm font-semibold text-white">£{p.price}/mo</span>
-                      {subscribingPlan === key ? (
-                        <Loader2 className="h-4 w-4 text-purple-400 animate-spin" />
-                      ) : (
-                        <span className="text-xs font-medium text-purple-400">Subscribe →</span>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-
-            <button
-              onClick={() => setShowPlans(false)}
-              className="w-full py-3 rounded-xl text-sm font-medium bg-white/5 hover:bg-white/10 text-white border border-white/10 transition-all"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Upgrade success popup */}
-      {promoSuccess && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
-          <div className="w-full max-w-md relative">
-            {/* Glow effect behind card */}
-            <div
-              className={`absolute -inset-1 rounded-3xl bg-gradient-to-r ${PLAN_CONFIG[promoSuccess.plan].gradient} opacity-20 blur-xl`}
-            />
-
-            <div className="relative rounded-2xl border border-white/10 bg-[#010313] p-8 overflow-hidden">
-              {/* Animated background particles */}
-              <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                <div className="absolute top-4 left-8 w-2 h-2 rounded-full bg-white/20 animate-pulse" />
-                <div
-                  className="absolute top-12 right-12 w-1.5 h-1.5 rounded-full bg-white/15 animate-pulse"
-                  style={{ animationDelay: "0.5s" }}
-                />
-                <div
-                  className="absolute bottom-16 left-16 w-1 h-1 rounded-full bg-white/10 animate-pulse"
-                  style={{ animationDelay: "1s" }}
-                />
-                <div
-                  className="absolute top-20 left-1/2 w-2 h-2 rounded-full bg-white/10 animate-pulse"
-                  style={{ animationDelay: "0.3s" }}
-                />
-                <div
-                  className="absolute bottom-8 right-8 w-1.5 h-1.5 rounded-full bg-white/15 animate-pulse"
-                  style={{ animationDelay: "0.7s" }}
-                />
-              </div>
-
-              <div className="relative text-center">
-                {/* Plan icon */}
-                <div
-                  className={`mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br ${PLAN_CONFIG[promoSuccess.plan].gradient} shadow-lg`}
+            {passwordSuccess ? (
+              <div className="text-center">
+                <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-green-500/10 border border-green-500/20">
+                  <Check className="h-7 w-7 text-green-400" />
+                </div>
+                <p className="text-sm text-slate-300 mb-6">Password updated successfully.</p>
+                <button
+                  onClick={() => { setShowChangePassword(false); setPasswordSuccess(false); setCurrentPassword(""); setNewPassword(""); setConfirmPassword(""); }}
+                  className="w-full py-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium transition-all"
                 >
-                  <div className="text-white">
-                    {PLAN_CONFIG[promoSuccess.plan].icon}
+                  Done
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {passwordError && (
+                  <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-sm text-red-400">
+                    {passwordError}
                   </div>
+                )}
+
+                <div>
+                  <label className="text-xs text-slate-500 block mb-1.5 font-medium">Current password</label>
+                  <input
+                    type="password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-purple-500/50 transition-colors"
+                  />
                 </div>
 
-                {/* Checkmark badge */}
-                <div className="absolute top-14 left-1/2 translate-x-4 -translate-y-1 flex h-7 w-7 items-center justify-center rounded-full bg-green-500 border-2 border-[#010313] shadow-lg">
-                  <Check className="h-4 w-4 text-white" />
+                <div>
+                  <label className="text-xs text-slate-500 block mb-1.5 font-medium">New password</label>
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="At least 6 characters"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-purple-500/50 placeholder:text-slate-700 transition-colors"
+                  />
                 </div>
 
-                <h2 className="text-2xl font-bold mb-1 mt-2">
-                  Welcome to{" "}
-                  <span className={PLAN_CONFIG[promoSuccess.plan].color}>
-                    {PLAN_CONFIG[promoSuccess.plan].label}
-                  </span>
-                </h2>
-                <p className="text-sm text-slate-400 mb-6">
-                  {PLAN_CONFIG[promoSuccess.plan].tagline}
-                </p>
-
-                {/* Credits added */}
-                <div className="rounded-xl bg-white/5 border border-white/10 p-4 mb-5">
-                  <div className="flex items-center justify-center gap-2 mb-2">
-                    <Zap className="h-5 w-5 text-purple-400" />
-                    <span className="text-2xl font-bold text-white">
-                      +{promoSuccess.creditsAdded.toLocaleString()}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500">credits added to your account</p>
-                </div>
-
-                {/* Plan perks */}
-                <div className="space-y-2 mb-6">
-                  {PLAN_CONFIG[promoSuccess.plan].perks.map((perk, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center gap-2 text-sm text-slate-300"
-                    >
-                      <Check className="h-3.5 w-3.5 text-green-400 shrink-0" />
-                      {perk}
-                    </div>
-                  ))}
+                <div>
+                  <label className="text-xs text-slate-500 block mb-1.5 font-medium">Confirm new password</label>
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-purple-500/50 transition-colors"
+                  />
                 </div>
 
                 <button
-                  onClick={() => setPromoSuccess(null)}
-                  className={`w-full py-3.5 rounded-xl font-medium text-sm bg-gradient-to-r ${PLAN_CONFIG[promoSuccess.plan].gradient} text-white transition-all hover:shadow-lg hover:brightness-110`}
+                  onClick={async () => {
+                    setPasswordError("");
+                    if (!currentPassword || !newPassword || !confirmPassword) {
+                      setPasswordError("All fields are required");
+                      return;
+                    }
+                    if (newPassword.length < 6) {
+                      setPasswordError("New password must be at least 6 characters");
+                      return;
+                    }
+                    if (newPassword !== confirmPassword) {
+                      setPasswordError("Passwords don't match");
+                      return;
+                    }
+                    setPasswordLoading(true);
+                    try {
+                      const res = await fetch("/api/auth/change-password", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ currentPassword, newPassword }),
+                      });
+                      const data = await res.json();
+                      if (!res.ok) {
+                        setPasswordError(data.error || "Failed to change password");
+                      } else {
+                        setPasswordSuccess(true);
+                      }
+                    } catch {
+                      setPasswordError("Something went wrong. Try again.");
+                    } finally {
+                      setPasswordLoading(false);
+                    }
+                  }}
+                  disabled={passwordLoading}
+                  className="w-full py-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  Let&apos;s Go
+                  {passwordLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    "Update Password"
+                  )}
                 </button>
               </div>
-            </div>
+            )}
           </div>
         </div>
       )}

@@ -986,61 +986,67 @@ export default function Dashboard() {
 
       {/* Stats tab */}
       {activeTab === "stats" && (
-        <div className="mx-auto max-w-6xl px-6 py-8">
-          <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-5">
-            <h2 className="text-sm font-semibold mb-6 flex items-center gap-2">
-              <BarChart3 className="h-4 w-4 text-purple-400" />
-              Usage — Last 30 Days
-            </h2>
-            {!usageData ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-6 w-6 text-purple-400 animate-spin" />
-              </div>
-            ) : usageData.days?.length === 0 ? (
-              <div className="text-center py-12">
-                <BarChart3 className="h-8 w-8 text-slate-700 mx-auto mb-3" />
-                <p className="text-sm text-slate-500">No usage data yet</p>
-              </div>
-            ) : (
-              <>
-                <div className="grid grid-cols-3 gap-4 mb-8">
-                  <div className="rounded-xl bg-purple-500/[0.06] border border-purple-500/10 p-4 text-center">
-                    <p className="text-2xl font-bold text-purple-400">{usageData.totalVideos ?? 0}</p>
-                    <p className="text-xs text-slate-500 mt-1">Videos processed</p>
-                  </div>
-                  <div className="rounded-xl bg-purple-500/[0.06] border border-purple-500/10 p-4 text-center">
-                    <p className="text-2xl font-bold text-purple-400">{usageData.totalCopies ?? 0}</p>
-                    <p className="text-xs text-slate-500 mt-1">Total copies</p>
-                  </div>
-                  <div className="rounded-xl bg-purple-500/[0.06] border border-purple-500/10 p-4 text-center">
-                    <p className="text-2xl font-bold text-purple-400">{usageData.totalCopies ?? 0}</p>
-                    <p className="text-xs text-slate-500 mt-1">Credits used</p>
-                  </div>
+        <div className="mx-auto max-w-6xl px-6 py-8 space-y-6">
+          {!usageData ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="h-6 w-6 text-purple-400 animate-spin" />
+            </div>
+          ) : (usageData.totalJobs ?? 0) === 0 ? (
+            <div className="text-center py-16">
+              <BarChart3 className="h-10 w-10 text-slate-700 mx-auto mb-3" />
+              <p className="text-sm text-slate-500">No usage data yet</p>
+              <p className="text-xs text-slate-600 mt-1">Process some videos to see your stats here</p>
+            </div>
+          ) : (
+            <>
+              {/* Metric cards */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-5">
+                  <p className="text-xs text-slate-500 mb-1">Videos Processed</p>
+                  <p className="text-3xl font-bold text-white">{usageData.totalJobs ?? 0}</p>
+                  <p className="text-xs text-slate-600 mt-1">last 30 days</p>
                 </div>
-                {/* Simple bar chart */}
-                <div className="h-40 flex items-end gap-1">
-                  {(usageData.days || []).slice(-14).map((d: any, i: number) => {
-                    const max = Math.max(...(usageData.days || []).slice(-14).map((x: any) => x.copies || 0), 1);
+                <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-5">
+                  <p className="text-xs text-slate-500 mb-1">Unique Copies</p>
+                  <p className="text-3xl font-bold text-purple-400">{usageData.totalCopies ?? 0}</p>
+                  <p className="text-xs text-slate-600 mt-1">last 30 days</p>
+                </div>
+                <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-5">
+                  <p className="text-xs text-slate-500 mb-1">Credits Used</p>
+                  <p className="text-3xl font-bold text-white">{usageData.totalCopies ?? 0}</p>
+                  <p className="text-xs text-slate-600 mt-1">last 30 days</p>
+                </div>
+              </div>
+
+              {/* Activity chart */}
+              <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-5">
+                <h3 className="text-xs font-medium text-slate-500 mb-5">Daily Activity</h3>
+                <div className="h-44 flex items-end gap-[3px]">
+                  {(usageData.daily || []).slice(-14).map((d: any, i: number) => {
+                    const days14 = (usageData.daily || []).slice(-14);
+                    const max = Math.max(...days14.map((x: any) => x.copies || 0), 1);
                     const h = ((d.copies || 0) / max) * 100;
+                    const isToday = d.date === new Date().toISOString().split("T")[0];
                     return (
-                      <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                      <div key={i} className="flex-1 flex flex-col items-center gap-1.5 group">
+                        <span className="text-[10px] text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity tabular-nums">
+                          {d.copies || 0}
+                        </span>
                         <div
-                          className="w-full bg-purple-500/40 rounded-t hover:bg-purple-500/60 transition-colors"
-                          style={{ height: `${Math.max(h, 2)}%` }}
-                          title={`${d.date}: ${d.copies} copies`}
+                          className={`w-full rounded-md transition-colors ${isToday ? "bg-purple-500 hover:bg-purple-400" : "bg-purple-500/30 hover:bg-purple-500/50"}`}
+                          style={{ height: `${Math.max(h, 4)}%` }}
+                          title={`${new Date(d.date).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}: ${d.copies} copies`}
                         />
-                        {i % 2 === 0 && (
-                          <span className="text-[9px] text-slate-600 whitespace-nowrap">
-                            {new Date(d.date).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
-                          </span>
-                        )}
+                        <span className={`text-[10px] whitespace-nowrap ${isToday ? "text-purple-400 font-medium" : "text-slate-600"} ${i % 2 === 0 ? "" : "invisible"}`}>
+                          {new Date(d.date).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                        </span>
                       </div>
                     );
                   })}
                 </div>
-              </>
-            )}
-          </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 

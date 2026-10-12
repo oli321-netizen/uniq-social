@@ -1,7 +1,6 @@
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { getUserByEmail, verifyPassword } from "./users";
-import { prisma } from "./prisma";
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -23,7 +22,6 @@ export const authOptions: NextAuthOptions = {
         return {
           id: user.id,
           email: user.email,
-          emailVerified: user.emailVerified,
         };
       },
     }),
@@ -39,21 +37,12 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
-        token.emailVerified = (user as { emailVerified?: boolean }).emailVerified;
-      }
-      // Refresh emailVerified status from DB periodically
-      if (token.id && !token.emailVerified) {
-        const dbUser = await prisma.user.findUnique({ where: { id: token.id as string } });
-        if (dbUser?.emailVerified) {
-          token.emailVerified = true;
-        }
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
-        (session.user as { id?: string; emailVerified?: boolean }).id = token.id as string;
-        (session.user as { id?: string; emailVerified?: boolean }).emailVerified = token.emailVerified as boolean;
+        (session.user as { id?: string }).id = token.id as string;
       }
       return session;
     },

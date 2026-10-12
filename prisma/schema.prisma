@@ -41,12 +41,13 @@ model PasswordReset {
 }
 
 model PromoCode {
-  id           String @id @default(uuid())
-  code         String @unique
-  plan         String
+  id           String   @id @default(uuid())
+  code         String   @unique
   bonusCredits Int
-  maxUses      Int    @default(1)
-  uses         Int    @default(0)
+  maxUses      Int      @default(100)
+  uses         Int      @default(0)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
 }
 
 model Transaction {
@@ -67,6 +68,7 @@ model EmailVerification {
   email        String   @default("")
   passwordHash String?
   referralCode String?
+  promoCode    String?
   userId       String?
   user         User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   expiresAt    DateTime

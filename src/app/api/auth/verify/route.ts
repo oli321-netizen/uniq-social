@@ -72,9 +72,14 @@ export async function POST(req: NextRequest) {
     });
 
     // Apply referral code if provided during signup
+    let referralApplied = false;
+    let bonusCredits = 0;
+    let referrerEmail = "";
+
     if (verification.referralCode) {
       const referral = await prisma.referral.findUnique({
         where: { code: verification.referralCode },
+        include: { referrer: { select: { email: true } } },
       });
       if (referral && !referral.referredId) {
         await prisma.$transaction([
@@ -91,6 +96,11 @@ export async function POST(req: NextRequest) {
             data: { credits: { increment: 50 } },
           }),
         ]);
+        referralApplied = true;
+        bonusCredits = 50;
+        // Mask email for privacy: show first 3 chars + ***
+        const re = referral.referrer.email;
+        referrerEmail = re.length > 3 ? re.slice(0, 3) + "***" : re;
       }
     }
 
@@ -105,6 +115,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       email: user.email,
+      referralApplied,
+      bonusCredits,
+      referrerEmail,
     });
   } catch {
     return NextResponse.json({ error: "Verification failed" }, { status: 500 });
