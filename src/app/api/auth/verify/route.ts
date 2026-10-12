@@ -104,6 +104,34 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Auto-accept team invite if this signup came from an invite
+    let inviteAccepted = false;
+    let teamName = "";
+    if (verification.inviteId) {
+      const invite = await prisma.teamInvite.findFirst({
+        where: { id: verification.inviteId, email: normalised, status: "pending" },
+        include: { team: { select: { name: true } } },
+      });
+      if (invite) {
+        await prisma.$transaction([
+          prisma.teamInvite.update({
+            where: { id: invite.id },
+            data: { status: "accepted" },
+          }),
+          prisma.user.update({
+            where: { id: user.id },
+            data: {
+              teamId: invite.teamId,
+              teamRole: "member",
+              credits: invite.credits > 0 ? invite.credits : 0,
+            },
+          }),
+        ]);
+        inviteAccepted = true;
+        teamName = invite.team.name;
+      }
+    }
+
     // Clean up verification record
     await prisma.emailVerification.deleteMany({
       where: { email: normalised, userId: null },
@@ -118,6 +146,8 @@ export async function POST(req: NextRequest) {
       referralApplied,
       bonusCredits,
       referrerEmail,
+      inviteAccepted,
+      teamName,
     });
   } catch {
     return NextResponse.json({ error: "Verification failed" }, { status: 500 });

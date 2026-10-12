@@ -341,7 +341,7 @@ function buildWelcomeHtml(email: string) {
 }
 
 
-export async function sendTeamInviteEmail(to: string, teamName: string, inviterEmail: string) {
+export async function sendTeamInviteEmail(to: string, teamName: string, inviterEmail: string, inviteId: string) {
   try {
     const resend = getResendClient();
     const baseUrl = process.env.NEXTAUTH_URL || "https://uniqsocial.com";
@@ -373,8 +373,8 @@ export async function sendTeamInviteEmail(to: string, teamName: string, inviterE
               <p style="margin:0 0 24px;color:#64748b;font-size:13px;line-height:1.6;">
                 As a team member, you&rsquo;ll share a credit pool and can process videos using the team&rsquo;s balance.
               </p>
-              <a href="${baseUrl}/dashboard" style="display:inline-block;background:#7c3aed;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:14px 40px;border-radius:12px;">
-                View Invitation &rarr;
+              <a href="${baseUrl}/invite/${inviteId}" style="display:inline-block;background:#7c3aed;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:14px 40px;border-radius:12px;">
+                Accept Invitation &rarr;
               </a>
             </td>
           </tr>

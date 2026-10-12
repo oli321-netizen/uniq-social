@@ -15,9 +15,9 @@ export async function GET() {
     return NextResponse.json({ error: "Invalid session" }, { status: 401 });
   }
 
-  // Check for team credits
+  // Check for team credits and role
   let teamCredits = 0;
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { teamId: true } });
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { teamId: true, teamRole: true } });
   if (user?.teamId) {
     const team = await prisma.team.findUnique({ where: { id: user.teamId }, select: { credits: true } });
     teamCredits = team?.credits ?? 0;
@@ -27,5 +27,6 @@ export async function GET() {
     credits: await getCredits(userId),
     teamCredits,
     plan: await getUserPlan(userId),
+    teamRole: user?.teamRole || null,
   });
 }

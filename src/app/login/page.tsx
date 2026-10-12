@@ -1,12 +1,19 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { signIn } from "next-auth/react";
-import { Fingerprint, Loader2, Mail, Lock, ArrowRight, ShieldCheck, Gift, X } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { Fingerprint, Loader2, Mail, Lock, ArrowRight, ShieldCheck, Gift, X, Users } from "lucide-react";
 
 export default function LoginPage() {
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [email, setEmail] = useState("");
+  const searchParams = useSearchParams();
+  const inviteEmail = searchParams.get("email") || "";
+  const inviteId = searchParams.get("invite") || "";
+  const startAsSignUp = searchParams.get("signup") === "true";
+  const isInviteFlow = !!(inviteEmail && inviteId);
+
+  const [isSignUp, setIsSignUp] = useState(startAsSignUp || isInviteFlow);
+  const [email, setEmail] = useState(inviteEmail);
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -17,7 +24,15 @@ export default function LoginPage() {
   const [referralCode, setReferralCode] = useState("");
   const [showReferralPopup, setShowReferralPopup] = useState(false);
   const [referralBonus, setReferralBonus] = useState({ credits: 0, referrer: "" });
+  const [showInviteSuccess, setShowInviteSuccess] = useState(false);
+  const [inviteTeamName, setInviteTeamName] = useState("");
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  // Set email from invite params on mount
+  useEffect(() => {
+    if (inviteEmail) setEmail(inviteEmail);
+    if (startAsSignUp || isInviteFlow) setIsSignUp(true);
+  }, [inviteEmail, startAsSignUp, isInviteFlow]);
 
   const handleCodeChange = (index: number, value: string) => {
     if (!/^\d*$/.test(value)) return;
@@ -87,6 +102,14 @@ export default function LoginPage() {
         return;
       }
 
+      // Show invite success popup if they joined via invite
+      if (data.inviteAccepted && data.teamName) {
+        setInviteTeamName(data.teamName);
+        setShowInviteSuccess(true);
+        setVerifying(false);
+        return;
+      }
+
       // Show referral welcome popup if they used a referral code
       if (data.referralApplied && data.bonusCredits > 0) {
         setReferralBonus({ credits: data.bonusCredits, referrer: data.referrerEmail || "a friend" });
@@ -127,7 +150,12 @@ export default function LoginPage() {
         const res = await fetch("/api/auth/signup", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password, referralCode: referralCode.trim() || undefined }),
+          body: JSON.stringify({
+            email,
+            password,
+            referralCode: referralCode.trim() || undefined,
+            inviteId: inviteId || undefined,
+          }),
         });
 
         const data = await res.json();
@@ -198,6 +226,33 @@ export default function LoginPage() {
         </div>
       )}
 
+      {/* Invite accepted popup */}
+      {showInviteSuccess && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+          <div className="w-full max-w-sm rounded-2xl border border-purple-500/20 bg-[#0a0a1a] p-8 text-center shadow-2xl shadow-purple-500/10 relative">
+            <button
+              onClick={() => { setShowInviteSuccess(false); window.location.href = "/dashboard"; }}
+              className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-500/10 border border-green-500/20">
+              <Users className="h-8 w-8 text-green-400" />
+            </div>
+            <h2 className="text-xl font-bold text-white mb-2">You&apos;re on the team!</h2>
+            <p className="text-slate-400 text-sm mb-6">
+              You&apos;ve successfully joined <span className="text-purple-400 font-medium">{inviteTeamName}</span>
+            </p>
+            <button
+              onClick={() => { window.location.href = "/dashboard"; }}
+              className="w-full rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold py-3 px-6 text-sm transition-colors"
+            >
+              Go to Dashboard
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="w-full max-w-md relative z-10">
         <div className="text-center mb-8">
           <a href="/" className="inline-flex items-center gap-2 mb-6">
@@ -209,11 +264,13 @@ export default function LoginPage() {
             </span>
           </a>
           <h1 className="text-2xl font-bold mb-2">
-            {showCodeEntry ? "Enter your code" : isSignUp ? "Create your account" : "Welcome back"}
+            {showCodeEntry ? "Enter your code" : isInviteFlow ? "Set up your account" : isSignUp ? "Create your account" : "Welcome back"}
           </h1>
           <p className="text-sm text-slate-500">
             {showCodeEntry
               ? <>Enter the 6-digit code we emailed to <span className="text-white">{email}</span></>
+              : isInviteFlow
+              ? "Just set a password to get started"
               : isSignUp
               ? "Get 5 free credits to start processing"
               : "Sign in to your dashboard"}
@@ -309,8 +366,9 @@ export default function LoginPage() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  readOnly={isInviteFlow}
                   placeholder="you@example.com"
-                  className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-purple-500/50 placeholder:text-slate-700 transition-colors"
+                  className={`w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-purple-500/50 placeholder:text-slate-700 transition-colors ${isInviteFlow ? "opacity-60 cursor-not-allowed" : ""}`}
                 />
               </div>
             </div>
@@ -333,7 +391,7 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {isSignUp && (
+            {isSignUp && !isInviteFlow && (
               <div>
                 <label className="text-xs text-slate-500 block mb-1.5">Referral Code (optional)</label>
                 <input
@@ -373,6 +431,7 @@ export default function LoginPage() {
             </button>
           </form>
 
+          {!isInviteFlow && (
           <div className="mt-6 text-center">
             <button
               onClick={() => {
@@ -386,6 +445,7 @@ export default function LoginPage() {
                 : "Don't have an account? Sign up"}
             </button>
           </div>
+          )}
           </>
           )}
         </div>

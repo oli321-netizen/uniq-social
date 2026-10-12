@@ -82,6 +82,7 @@ export default function Dashboard() {
   const [resendingVerification, setResendingVerification] = useState(false);
   const [showTopUp, setShowTopUp] = useState(false);
   const [plan, setPlan] = useState("free");
+  const [isTeamMember, setIsTeamMember] = useState(false);
   const [showPlans, setShowPlans] = useState(false);
   const [showLowCredits, setShowLowCredits] = useState(false);
   const lowCreditsShownRef = useRef(false);
@@ -136,6 +137,7 @@ export default function Dashboard() {
         setPlan(d.plan ?? "free");
         setCreditsLoaded(true);
         setEmailVerified(d.emailVerified !== false);
+        if (d.teamRole === "member") setIsTeamMember(true);
       })
       .catch(() => {});
   }, []);
@@ -439,8 +441,8 @@ export default function Dashboard() {
       )}
 
 
-      {/* Upgrade banner for free users */}
-      {plan === "free" && (
+      {/* Upgrade banner for free users — hidden for team members */}
+      {plan === "free" && !isTeamMember && (
         <div className="mx-auto max-w-6xl px-3 sm:px-6 pt-4 sm:pt-6">
           <div className="rounded-2xl border border-purple-500/20 bg-gradient-to-r from-purple-500/[0.08] to-purple-600/[0.04] p-4 sm:p-5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1185,16 +1187,18 @@ export default function Dashboard() {
             <div className="flex gap-3">
               <button
                 onClick={() => { setShowLowCredits(false); setShowTopUp(true); }}
-                className="flex-1 py-3 rounded-xl text-sm font-medium bg-white/5 hover:bg-white/10 text-white border border-white/10 transition-all"
+                className={`${isTeamMember ? "w-full" : "flex-1"} py-3 rounded-xl text-sm font-medium bg-white/5 hover:bg-white/10 text-white border border-white/10 transition-all`}
               >
                 Top Up Credits
               </button>
+              {!isTeamMember && (
               <button
                 onClick={() => { setShowLowCredits(false); setShowPlans(true); }}
                 className="flex-1 py-3 rounded-xl text-sm font-medium bg-purple-600 hover:bg-purple-700 text-white transition-all"
               >
                 View Plans
               </button>
+              )}
             </div>
           </div>
         </div>
@@ -1349,23 +1353,27 @@ export default function Dashboard() {
               ))}
             </div>
 
+            {!isTeamMember && (
             <p className="text-[11px] text-slate-600 text-center mb-4">
               All top-ups at 26p per credit. Save more with a plan — from 5p/credit on higher tiers.
             </p>
+            )}
 
             <div className="flex gap-3">
               <button
                 onClick={() => setShowTopUp(false)}
-                className="flex-1 py-3 rounded-xl text-sm font-medium bg-white/5 hover:bg-white/10 text-white border border-white/10 transition-all"
+                className={`${isTeamMember ? "w-full" : "flex-1"} py-3 rounded-xl text-sm font-medium bg-white/5 hover:bg-white/10 text-white border border-white/10 transition-all`}
               >
                 Cancel
               </button>
+              {!isTeamMember && (
               <a
                 href="/account"
                 className="flex-1 py-3 rounded-xl text-sm font-medium bg-purple-600 hover:bg-purple-700 text-white text-center transition-all hover:shadow-lg hover:shadow-purple-500/20"
               >
                 View Plans
               </a>
+              )}
             </div>
           </div>
         </div>

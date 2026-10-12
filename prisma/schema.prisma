@@ -71,6 +71,7 @@ model TeamInvite {
   teamId    String
   team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
   status    String   @default("pending") // "pending" | "accepted" | "declined"
+  credits   Int      @default(0)         // credits owner assigns to the invited user
   createdAt DateTime @default(now())
 
   @@unique([email, teamId])
@@ -105,6 +106,7 @@ model EmailVerification {
   passwordHash String?
   referralCode String?
   promoCode    String?
+  inviteId     String?
   userId       String?
   user         User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   expiresAt    DateTime

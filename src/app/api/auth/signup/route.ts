@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
   const rl = rateLimit(`signup:${ip}`, 3600000, 5);
   if (!rl.ok) return NextResponse.json({ error: "Too many attempts. Try again later." }, { status: 429 });
   try {
-    const { email, password, referralCode } = await req.json();
+    const { email, password, referralCode, inviteId } = await req.json();
 
     if (!email || !password) {
       return NextResponse.json(
@@ -49,6 +49,14 @@ export async function POST(req: NextRequest) {
       where: { email: normalised, userId: null },
     });
 
+    // If signing up via invite, validate the invite exists and matches email
+    if (inviteId) {
+      const invite = await prisma.teamInvite.findUnique({ where: { id: inviteId } });
+      if (!invite || invite.status !== "pending" || invite.email !== normalised) {
+        return NextResponse.json({ error: "Invalid or expired invite" }, { status: 400 });
+      }
+    }
+
     // Create verification code (15 min expiry) — no user created yet
     const code = generateCode();
     await prisma.emailVerification.create({
@@ -57,6 +65,7 @@ export async function POST(req: NextRequest) {
         email: normalised,
         passwordHash,
         referralCode: referralCode?.trim() || null,
+        inviteId: inviteId || null,
         expiresAt: new Date(Date.now() + 15 * 60 * 1000),
       },
     });

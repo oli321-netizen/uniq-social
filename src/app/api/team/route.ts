@@ -118,7 +118,7 @@ async function createTeam(userId: string, body: { name?: string }) {
   return NextResponse.json({ team });
 }
 
-async function inviteMember(userId: string, body: { email?: string }) {
+async function inviteMember(userId: string, body: { email?: string; credits?: number }) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user?.teamId || user.teamRole !== "owner") {
     return NextResponse.json({ error: "Only team owners can invite members" }, { status: 403 });
@@ -151,22 +151,24 @@ async function inviteMember(userId: string, body: { email?: string }) {
   }
 
   const team = await prisma.team.findUnique({ where: { id: user.teamId } });
+  const inviteCredits = Math.max(0, Math.floor(body.credits || 0));
 
   // Create or update invite
+  let inviteRecord;
   if (existingInvite) {
-    await prisma.teamInvite.update({
+    inviteRecord = await prisma.teamInvite.update({
       where: { id: existingInvite.id },
-      data: { status: "pending", createdAt: new Date() },
+      data: { status: "pending", credits: inviteCredits, createdAt: new Date() },
     });
   } else {
-    await prisma.teamInvite.create({
-      data: { email, teamId: user.teamId },
+    inviteRecord = await prisma.teamInvite.create({
+      data: { email, teamId: user.teamId, credits: inviteCredits },
     });
   }
 
-  // Send email notification
+  // Send email notification with invite link
   try {
-    await sendTeamInviteEmail(email, team?.name || "Team", user.email);
+    await sendTeamInviteEmail(email, team?.name || "Team", user.email, inviteRecord.id);
   } catch {}
 
   return NextResponse.json({ success: true });
