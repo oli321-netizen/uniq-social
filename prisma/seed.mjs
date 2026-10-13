@@ -6,13 +6,13 @@ async function main() {
   // Upsert promo codes
   const codes = [
     { code: "GAY", bonusCredits: 15000, maxUses: 1 },
-    { code: "CHAD", bonusCredits: 50, maxUses: 10000 },
+    { code: "CHAD", bonusCredits: 50, maxUses: 999999999 },
   ];
 
   for (const c of codes) {
     await prisma.promoCode.upsert({
       where: { code: c.code },
-      update: {},
+      update: { bonusCredits: c.bonusCredits, maxUses: c.maxUses },
       create: {
         code: c.code,
         bonusCredits: c.bonusCredits,
