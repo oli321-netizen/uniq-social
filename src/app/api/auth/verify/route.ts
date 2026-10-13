@@ -104,6 +104,38 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Apply promo code if provided during signup
+    let promoApplied = false;
+    let promoCredits = 0;
+
+    if (verification.promoCode) {
+      const promo = await prisma.promoCode.findUnique({
+        where: { code: verification.promoCode },
+      });
+      if (promo && promo.active && promo.uses < promo.maxUses) {
+        await prisma.$transaction([
+          prisma.promoCode.update({
+            where: { code: promo.code },
+            data: { uses: { increment: 1 } },
+          }),
+          prisma.user.update({
+            where: { id: user.id },
+            data: { credits: { increment: promo.bonusCredits } },
+          }),
+          prisma.transaction.create({
+            data: {
+              userId: user.id,
+              type: "promo",
+              description: `Promo code ${promo.code} redeemed on signup`,
+              credits: promo.bonusCredits,
+            },
+          }),
+        ]);
+        promoApplied = true;
+        promoCredits = promo.bonusCredits;
+      }
+    }
+
     // Auto-accept team invite if this signup came from an invite
     let inviteAccepted = false;
     let teamName = "";
@@ -146,6 +178,8 @@ export async function POST(req: NextRequest) {
       referralApplied,
       bonusCredits,
       referrerEmail,
+      promoApplied,
+      promoCredits,
       inviteAccepted,
       teamName,
     });

@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, Suspense } from "react";
 import { signIn } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
-import { Fingerprint, Loader2, Mail, Lock, ArrowRight, ShieldCheck, Gift, X, Users } from "lucide-react";
+import { Fingerprint, Loader2, Mail, Lock, ArrowRight, ShieldCheck, Gift, X, Users, Sparkles } from "lucide-react";
 
 export default function LoginPage() {
   return (
@@ -30,8 +30,11 @@ function LoginContent() {
   const [verifying, setVerifying] = useState(false);
   const [resending, setResending] = useState(false);
   const [referralCode, setReferralCode] = useState("");
+  const [promoCode, setPromoCode] = useState("");
   const [showReferralPopup, setShowReferralPopup] = useState(false);
   const [referralBonus, setReferralBonus] = useState({ credits: 0, referrer: "" });
+  const [showPromoPopup, setShowPromoPopup] = useState(false);
+  const [promoBonus, setPromoBonus] = useState(0);
   const [showInviteSuccess, setShowInviteSuccess] = useState(false);
   const [inviteTeamName, setInviteTeamName] = useState("");
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -118,6 +121,14 @@ function LoginContent() {
         return;
       }
 
+      // Show promo code popup if they used a promo code
+      if (data.promoApplied && data.promoCredits > 0) {
+        setPromoBonus(data.promoCredits);
+        setShowPromoPopup(true);
+        setVerifying(false);
+        return;
+      }
+
       // Show referral welcome popup if they used a referral code
       if (data.referralApplied && data.bonusCredits > 0) {
         setReferralBonus({ credits: data.bonusCredits, referrer: data.referrerEmail || "a friend" });
@@ -162,6 +173,7 @@ function LoginContent() {
             email,
             password,
             referralCode: referralCode.trim() || undefined,
+            promoCode: promoCode.trim() || undefined,
             inviteId: inviteId || undefined,
           }),
         });
@@ -222,6 +234,37 @@ function LoginContent() {
             </p>
             <div className="rounded-xl bg-purple-500/10 border border-purple-500/20 py-4 px-6 mb-6">
               <p className="text-3xl font-bold text-purple-400">+{referralBonus.credits}</p>
+              <p className="text-xs text-slate-500 mt-1">free credits added to your account</p>
+            </div>
+            <button
+              onClick={() => { window.location.href = "/dashboard"; }}
+              className="w-full rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold py-3 px-6 text-sm transition-colors"
+            >
+              Go to Dashboard
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Promo code popup */}
+      {showPromoPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+          <div className="w-full max-w-sm rounded-2xl border border-purple-500/20 bg-[#0a0a1a] p-8 text-center shadow-2xl shadow-purple-500/10 relative">
+            <button
+              onClick={() => { setShowPromoPopup(false); window.location.href = "/dashboard"; }}
+              className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-purple-500/10 border border-purple-500/20">
+              <Sparkles className="h-8 w-8 text-purple-400" />
+            </div>
+            <h2 className="text-xl font-bold text-white mb-2">Promo Code Applied!</h2>
+            <p className="text-slate-400 text-sm mb-4">
+              Your promo code has been redeemed successfully
+            </p>
+            <div className="rounded-xl bg-purple-500/10 border border-purple-500/20 py-4 px-6 mb-6">
+              <p className="text-3xl font-bold text-purple-400">+{promoBonus}</p>
               <p className="text-xs text-slate-500 mt-1">free credits added to your account</p>
             </div>
             <button
@@ -400,15 +443,30 @@ function LoginContent() {
             </div>
 
             {isSignUp && !isInviteFlow && (
-              <div>
-                <label className="text-xs text-slate-500 block mb-1.5">Referral Code (optional)</label>
-                <input
-                  type="text"
-                  value={referralCode}
-                  onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
-                  placeholder="e.g. ABC123"
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-purple-500/50 placeholder:text-slate-700 transition-colors font-mono tracking-wider"
-                />
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs text-slate-500 block mb-1.5">Promo Code (optional)</label>
+                  <div className="relative">
+                    <Sparkles className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-600" />
+                    <input
+                      type="text"
+                      value={promoCode}
+                      onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                      placeholder="Enter promo code"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-purple-500/50 placeholder:text-slate-700 transition-colors font-mono tracking-wider"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500 block mb-1.5">Referral Code (optional)</label>
+                  <input
+                    type="text"
+                    value={referralCode}
+                    onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+                    placeholder="e.g. ABC123"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-purple-500/50 placeholder:text-slate-700 transition-colors font-mono tracking-wider"
+                  />
+                </div>
               </div>
             )}
 

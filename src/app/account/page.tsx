@@ -164,6 +164,7 @@ export default function AccountPage() {
   const [pendingInvites, setPendingInvites] = useState<{ id: string; team: { id: string; name: string; credits: number; _count: { members: number } } }[]>([]);
   const [teamName, setTeamName] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteCredits, setInviteCredits] = useState("");
   const [teamCreditsToAdd, setTeamCreditsToAdd] = useState("");
   const [teamLoading, setTeamLoading] = useState(false);
   const [teamError, setTeamError] = useState("");
@@ -178,6 +179,8 @@ export default function AccountPage() {
     if (status === "unauthenticated") router.push("/login");
   }, [status, router]);
 
+  const [isTeamMember, setIsTeamMember] = useState(false);
+
   useEffect(() => {
     if (status === "authenticated") {
       fetch("/api/credits")
@@ -185,6 +188,7 @@ export default function AccountPage() {
         .then((d) => {
           setCredits(d.credits ?? 0);
           if (d.plan) setPlan(d.plan);
+          if (d.teamRole === "member") setIsTeamMember(true);
         })
         .catch(() => {});
     }
@@ -348,6 +352,7 @@ export default function AccountPage() {
               Top Up
             </button>
           </div>
+          {!isTeamMember && (
           <div className="flex items-center justify-between py-3">
             <div className="flex items-center gap-3">
               <div className={currentPlan.color}>
@@ -392,9 +397,11 @@ export default function AccountPage() {
               </button>
             )}
           </div>
+          )}
         </div>
 
-        {/* Redeem Code */}
+        {/* Redeem Code — hidden for team members */}
+        {!isTeamMember && (
         <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-6 mb-6">
           <h2 className="text-sm font-semibold mb-4 flex items-center gap-2">
             <Gift className="h-4 w-4 text-purple-400" />
@@ -435,6 +442,7 @@ export default function AccountPage() {
             </button>
           </div>
         </div>
+        )}
 
         {/* Security */}
         <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-6 mb-6">
@@ -787,30 +795,41 @@ export default function AccountPage() {
 
               {/* Invite member (owner only) */}
               {teamRole === "owner" && (
-                <div className="flex gap-2">
-                  <input
-                    type="email"
-                    placeholder="Invite by email"
-                    value={inviteEmail}
-                    onChange={(e) => setInviteEmail(e.target.value)}
-                    className="flex-1 rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-purple-500/50"
-                  />
-                  <button
-                    onClick={async () => {
-                      if (!inviteEmail.trim()) return;
-                      setTeamLoading(true);
-                      const res = await fetch("/api/team", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "invite", email: inviteEmail.trim() }) });
-                      const data = await res.json();
-                      setTeamLoading(false);
-                      if (res.ok) { addToast("Invite sent!", "success"); setInviteEmail(""); loadTeamData(); }
-                      else addToast(data.error || "Failed to send invite", "error");
-                    }}
-                    disabled={teamLoading}
-                    className="px-4 py-2 text-sm font-medium rounded-lg bg-purple-600 hover:bg-purple-500 text-white transition-colors disabled:opacity-50 flex items-center gap-1.5"
-                  >
-                    {teamLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserPlus className="h-3.5 w-3.5" />}
-                    Invite
-                  </button>
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <input
+                      type="email"
+                      placeholder="Invite by email"
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                      className="flex-1 rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-purple-500/50"
+                    />
+                    <input
+                      type="number"
+                      placeholder="Credits"
+                      value={inviteCredits}
+                      onChange={(e) => setInviteCredits(e.target.value.replace(/^0+(?=\d)/, ""))}
+                      min="0"
+                      className="w-20 rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-purple-500/50"
+                    />
+                    <button
+                      onClick={async () => {
+                        if (!inviteEmail.trim()) return;
+                        setTeamLoading(true);
+                        const res = await fetch("/api/team", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "invite", email: inviteEmail.trim(), credits: parseInt(inviteCredits) || 0 }) });
+                        const data = await res.json();
+                        setTeamLoading(false);
+                        if (res.ok) { addToast("Invite sent!", "success"); setInviteEmail(""); setInviteCredits(""); loadTeamData(); }
+                        else addToast(data.error || "Failed to send invite", "error");
+                      }}
+                      disabled={teamLoading}
+                      className="px-4 py-2 text-sm font-medium rounded-lg bg-purple-600 hover:bg-purple-500 text-white transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                    >
+                      {teamLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserPlus className="h-3.5 w-3.5" />}
+                      Invite
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-600">Set starting credits for the invited user (optional)</p>
                 </div>
               )}
 
@@ -949,24 +968,28 @@ export default function AccountPage() {
               ))}
             </div>
 
+            {!isTeamMember && (
             <p className="text-[11px] text-slate-600 text-center mb-4">
               All top-ups at 26p per credit. Save more with a plan — from
               5p/credit on higher tiers.
             </p>
+            )}
 
             <div className="flex gap-3">
               <button
                 onClick={() => setShowTopUp(false)}
-                className="flex-1 py-3 rounded-xl text-sm font-medium bg-white/5 hover:bg-white/10 text-white border border-white/10 transition-all"
+                className={`${isTeamMember ? "w-full" : "flex-1"} py-3 rounded-xl text-sm font-medium bg-white/5 hover:bg-white/10 text-white border border-white/10 transition-all`}
               >
                 Cancel
               </button>
+              {!isTeamMember && (
               <a
                 href="/#pricing"
                 className="flex-1 py-3 rounded-xl text-sm font-medium bg-purple-600 hover:bg-purple-700 text-white text-center transition-all hover:shadow-lg hover:shadow-purple-500/20"
               >
                 View Plans
               </a>
+              )}
             </div>
           </div>
         </div>

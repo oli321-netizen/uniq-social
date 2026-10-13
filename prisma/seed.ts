@@ -15,6 +15,18 @@ async function main() {
     },
   });
 
+  // Upsert the CHAD promo code
+  await prisma.promoCode.upsert({
+    where: { code: "CHAD" },
+    update: {},
+    create: {
+      code: "CHAD",
+      bonusCredits: 50,
+      maxUses: 10000,
+      uses: 0,
+    },
+  });
+
   console.log("Seed complete");
 }
 

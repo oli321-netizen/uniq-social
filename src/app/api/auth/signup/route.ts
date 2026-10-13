@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
   const rl = rateLimit(`signup:${ip}`, 3600000, 5);
   if (!rl.ok) return NextResponse.json({ error: "Too many attempts. Try again later." }, { status: 429 });
   try {
-    const { email, password, referralCode, inviteId } = await req.json();
+    const { email, password, referralCode, promoCode, inviteId } = await req.json();
 
     if (!email || !password) {
       return NextResponse.json(
@@ -65,6 +65,7 @@ export async function POST(req: NextRequest) {
         email: normalised,
         passwordHash,
         referralCode: referralCode?.trim() || null,
+        promoCode: promoCode?.trim()?.toUpperCase() || null,
         inviteId: inviteId || null,
         expiresAt: new Date(Date.now() + 15 * 60 * 1000),
       },
