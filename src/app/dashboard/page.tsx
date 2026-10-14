@@ -30,6 +30,7 @@ import {
   Copy,
 } from "lucide-react";
 import JSZip from "jszip";
+import InstallButton from "@/components/InstallButton";
 
 type VideoOutput = {
   url: string;
@@ -452,6 +453,7 @@ export default function Dashboard() {
               <Plus className="h-3 w-3" />
               <span className="hidden sm:inline">Buy Credits</span>
             </button>
+            <InstallButton />
             <button
               onClick={toggleTheme}
               className="text-slate-500 hover:text-white transition-colors"
