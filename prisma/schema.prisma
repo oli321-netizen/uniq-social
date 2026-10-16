@@ -30,6 +30,7 @@ model User {
   transactions          Transaction[]
   emailVerifications    EmailVerification[]
   processingJobs        ProcessingJob[]
+  processingHistory     ProcessingHistory[]
   referralsGiven        Referral[] @relation("ReferralsGiven")
   referredBy            Referral?  @relation("ReferredBy")
 }
@@ -121,6 +122,27 @@ model ProcessingJob {
   copies     Int      @default(1)
   status     String   @default("completed")
   createdAt  DateTime @default(now())
+}
+
+model ProcessingHistory {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceHash      String   // SHA-256 of source video to identify same video across uploads
+  fileName        String
+  // All random parameters used for this copy
+  startTrim       Float
+  zoomPct         Float
+  cutPoints       String   // JSON array of cut positions
+  mirror          Boolean
+  grainEnabled    Boolean
+  grainIntensity  Float
+  sharpenEnabled  Boolean
+  sharpenAmount   Float
+  metadataProfile String
+  createdAt       DateTime @default(now())
+
+  @@index([userId, sourceHash])
 }
 
 model Referral {
