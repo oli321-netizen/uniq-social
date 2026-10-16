@@ -13,7 +13,6 @@ import {
   Loader2,
   FileVideo,
   Check,
-  Sparkles,
   Settings,
   LogOut,
   Zap,
@@ -28,7 +27,7 @@ import {
   Gift,
   History,
   Copy,
-  Image,
+  ImageIcon,
   Smartphone,
   Shuffle,
   Scissors,
@@ -113,15 +112,6 @@ function CircularProgress({ progress, size = 44 }: { progress: number; size?: nu
     </svg>
   );
 }
-
-const METADATA_PROFILES: { value: MetadataProfile; label: string; desc: string }[] = [
-  { value: "capcut", label: "CapCut", desc: "Video edited with CapCut" },
-  { value: "snapchat", label: "Snapchat", desc: "Recorded via Snapchat" },
-  { value: "iphone", label: "iPhone Camera", desc: "Shot on iPhone" },
-  { value: "random", label: "Random", desc: "Randomly selected per video" },
-];
-
-const STACKABLE_PROFILES: MetadataProfile[] = ["capcut", "snapchat", "iphone"];
 
 function genId() {
   return Math.random().toString(36).slice(2, 10);
@@ -928,7 +918,7 @@ export default function Dashboard() {
                     <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
                       editSettings.thumbnailRandomise ? "bg-purple-500/20" : "bg-white/5"
                     }`}>
-                      <Image className={`h-3.5 w-3.5 ${editSettings.thumbnailRandomise ? "text-purple-400" : "text-slate-500"}`} />
+                      <ImageIcon className={`h-3.5 w-3.5 ${editSettings.thumbnailRandomise ? "text-purple-400" : "text-slate-500"}`} />
                     </div>
                     <div className="text-left">
                       <span className={`font-medium block ${editSettings.thumbnailRandomise ? "text-[--text-primary]" : "text-[--text-secondary]"}`}>
