@@ -789,12 +789,7 @@ export default function Dashboard() {
                 >
                   <div className="flex items-center gap-2 mb-1.5">
                     <div className="w-7 h-7 rounded-lg bg-black flex items-center justify-center border border-white/10 overflow-hidden">
-                      <svg viewBox="0 0 1024 1024" className="w-5 h-5">
-                        <path d="M182.5 462.5c48.7-48.6 113.4-75.4 182.3-75.4 68.8 0 133.6 26.8 182.3 75.4L364.8 644.8 182.5 462.5z" fill="#00d1ed"/>
-                        <path d="M841.5 462.5c-48.7-48.6-113.4-75.4-182.3-75.4-68.8 0-133.6 26.8-182.3 75.4L659.2 644.8l182.3-182.3z" fill="#00d1ed"/>
-                        <circle cx="364.8" cy="387.1" r="80" fill="#00d1ed"/>
-                        <circle cx="659.2" cy="387.1" r="80" fill="#00d1ed"/>
-                      </svg>
+                      <img src="/capcut-logo.svg" alt="" className="w-5 h-5" />
                     </div>
                     <span className="text-sm font-semibold text-[--text-primary]">CapCut</span>
                   </div>
@@ -828,9 +823,7 @@ export default function Dashboard() {
                 >
                   <div className="flex items-center gap-2 mb-1.5">
                     <div className="w-7 h-7 rounded-lg bg-[#FFFC00] flex items-center justify-center overflow-hidden">
-                      <svg viewBox="0 0 24 24" className="w-5 h-5" fill="black">
-                        <path d="M12 2C8.5 2 6 4.7 6 7.5v3c-.7.3-2 .8-2.3 1.2-.3.4-.1.8.3 1 .5.2 1.5.3 2.3.6-.2.8-.5 1.7-1.3 2.7-.3.4-.1.8.3.9.6.2 1.7.3 2.6-.1.3.5.8 1.2 1.6 1.7.8.5 1.6.6 2.5.6s1.7-.1 2.5-.6c.8-.5 1.3-1.2 1.6-1.7.9.4 2 .3 2.6.1.4-.1.6-.5.3-.9-.8-1-1.1-1.9-1.3-2.7.8-.3 1.8-.4 2.3-.6.4-.2.6-.6.3-1-.3-.4-1.6-.9-2.3-1.2v-3C18 4.7 15.5 2 12 2zm-1.5 5.5a1 1 0 110 2 1 1 0 010-2zm3 0a1 1 0 110 2 1 1 0 010-2z"/>
-                      </svg>
+                      <img src="/snapchat-logo.svg" alt="" className="w-5 h-5" />
                     </div>
                     <span className="text-sm font-semibold text-[--text-primary]">Snapchat</span>
                   </div>
