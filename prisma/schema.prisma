@@ -140,6 +140,13 @@ model ProcessingHistory {
   sharpenEnabled  Boolean
   sharpenAmount   Float
   metadataProfile String
+  // Fingerprint-breaking params
+  speedFactor     Float    @default(1.0)
+  brightnessDelta Float    @default(0.0)
+  contrastDelta   Float    @default(1.0)
+  saturationDelta Float    @default(1.0)
+  crfValue        Int      @default(18)
+  gopSize         Int      @default(48)
   createdAt       DateTime @default(now())
 
   @@index([userId, sourceHash])

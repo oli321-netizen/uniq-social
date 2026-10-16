@@ -28,6 +28,11 @@ import {
   Gift,
   History,
   Copy,
+  Image,
+  Smartphone,
+  Shuffle,
+  Scissors,
+  Camera,
 } from "lucide-react";
 import JSZip from "jszip";
 import InstallButton from "@/components/InstallButton";
@@ -173,6 +178,7 @@ export default function Dashboard() {
     sharpen: true,
     sharpenAmount: 0.3,
     mirror: true,
+    thumbnailRandomise: false,
   });
 
   const onDrop = useCallback((e: React.DragEvent) => {
@@ -767,58 +773,178 @@ export default function Dashboard() {
 
           {/* Sidebar — settings */}
           <div className="space-y-6">
-            {/* Metadata profile */}
+            {/* Metadata profile — redesigned with logos */}
             <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-5">
-              <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-purple-400" />
-                Metadata Profile
+              <h3 className="text-sm font-semibold mb-1 flex items-center gap-2">
+                <Fingerprint className="h-4 w-4 text-purple-400" />
+                Video Identity
               </h3>
-              <p className="text-[11px] text-slate-600 mb-3">Select multiple to stack metadata together</p>
-              <div className="space-y-2">
-                {METADATA_PROFILES.map((profile) => {
-                  const isSelected = metadata.includes(profile.value);
-                  const isStackable = STACKABLE_PROFILES.includes(profile.value);
+              <p className="text-[11px] text-[--text-muted] mb-4">Choose how your video appears to platforms</p>
 
-                  return (
-                    <button
-                      key={profile.value}
-                      onClick={() => {
-                        if (profile.value === "random") {
-                          setMetadata(["random"]);
-                        } else {
-                          let next: MetadataProfile[];
-                          if (isSelected) {
-                            next = metadata.filter((m) => m !== profile.value);
-                            if (next.length === 0) next = ["random"];
-                          } else {
-                            next = [...metadata.filter((m) => m !== "random"), profile.value];
-                          }
-                          setMetadata(next);
-                        }
-                      }}
-                      className={`w-full text-left p-3 rounded-xl border text-sm transition-all ${
-                        isSelected
-                          ? "border-purple-500/30 bg-purple-500/10 text-white"
-                          : "border-white/5 bg-white/[0.01] text-slate-400 hover:border-white/10"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium">{profile.label}</span>
-                        {isSelected && isStackable && metadata.length > 1 && (
-                          <span className="text-[10px] font-medium text-purple-400 bg-purple-500/10 px-1.5 py-0.5 rounded">
-                            STACKED
-                          </span>
-                        )}
-                        {isSelected && (
-                          <Check className="h-3.5 w-3.5 text-purple-400" />
-                        )}
-                      </div>
-                      <span className="text-xs text-slate-600 block mt-0.5">
-                        {profile.desc}
+              {/* Profile cards grid */}
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                {/* CapCut */}
+                <button
+                  onClick={() => {
+                    const isSelected = metadata.includes("capcut");
+                    if (isSelected) {
+                      const next = metadata.filter((m) => m !== "capcut");
+                      setMetadata(next.length === 0 ? ["random"] : next);
+                    } else {
+                      setMetadata([...metadata.filter((m) => m !== "random"), "capcut"]);
+                    }
+                  }}
+                  className={`relative p-3 rounded-xl border text-left transition-all ${
+                    metadata.includes("capcut")
+                      ? "border-[#00d1ed]/40 bg-[#00d1ed]/10 ring-1 ring-[#00d1ed]/20"
+                      : "border-white/5 bg-white/[0.01] hover:border-white/10"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <div className="w-7 h-7 rounded-lg bg-black flex items-center justify-center border border-white/10">
+                      <Scissors className="h-3.5 w-3.5 text-[#00d1ed]" />
+                    </div>
+                    <span className="text-sm font-semibold text-[--text-primary]">CapCut</span>
+                  </div>
+                  <span className="text-[10px] text-[--text-muted] leading-tight block">Edited with CapCut</span>
+                  {metadata.includes("capcut") && (
+                    <div className="absolute top-2 right-2">
+                      <Check className="h-3.5 w-3.5 text-[#00d1ed]" />
+                    </div>
+                  )}
+                  {metadata.includes("capcut") && metadata.length > 1 && !metadata.includes("random") && (
+                    <span className="absolute bottom-2 right-2 text-[9px] font-bold text-[#00d1ed]/80 bg-[#00d1ed]/10 px-1.5 py-0.5 rounded">STACKED</span>
+                  )}
+                </button>
+
+                {/* Snapchat */}
+                <button
+                  onClick={() => {
+                    const isSelected = metadata.includes("snapchat");
+                    if (isSelected) {
+                      const next = metadata.filter((m) => m !== "snapchat");
+                      setMetadata(next.length === 0 ? ["random"] : next);
+                    } else {
+                      setMetadata([...metadata.filter((m) => m !== "random"), "snapchat"]);
+                    }
+                  }}
+                  className={`relative p-3 rounded-xl border text-left transition-all ${
+                    metadata.includes("snapchat")
+                      ? "border-[#FFFC00]/40 bg-[#FFFC00]/10 ring-1 ring-[#FFFC00]/20"
+                      : "border-white/5 bg-white/[0.01] hover:border-white/10"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <div className="w-7 h-7 rounded-lg bg-[#FFFC00] flex items-center justify-center">
+                      <Camera className="h-3.5 w-3.5 text-black" />
+                    </div>
+                    <span className="text-sm font-semibold text-[--text-primary]">Snapchat</span>
+                  </div>
+                  <span className="text-[10px] text-[--text-muted] leading-tight block">Recorded via Snap</span>
+                  {metadata.includes("snapchat") && (
+                    <div className="absolute top-2 right-2">
+                      <Check className="h-3.5 w-3.5 text-[#FFFC00]" />
+                    </div>
+                  )}
+                  {metadata.includes("snapchat") && metadata.length > 1 && !metadata.includes("random") && (
+                    <span className="absolute bottom-2 right-2 text-[9px] font-bold text-[#FFFC00]/80 bg-[#FFFC00]/10 px-1.5 py-0.5 rounded">STACKED</span>
+                  )}
+                </button>
+
+                {/* iPhone */}
+                <button
+                  onClick={() => {
+                    const isSelected = metadata.includes("iphone");
+                    if (isSelected) {
+                      const next = metadata.filter((m) => m !== "iphone");
+                      setMetadata(next.length === 0 ? ["random"] : next);
+                    } else {
+                      setMetadata([...metadata.filter((m) => m !== "random"), "iphone"]);
+                    }
+                  }}
+                  className={`relative p-3 rounded-xl border text-left transition-all ${
+                    metadata.includes("iphone")
+                      ? "border-[#a3a3a3]/40 bg-[#a3a3a3]/10 ring-1 ring-[#a3a3a3]/20"
+                      : "border-white/5 bg-white/[0.01] hover:border-white/10"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <div className="w-7 h-7 rounded-lg bg-gradient-to-b from-[#555] to-[#333] flex items-center justify-center border border-white/10">
+                      <Smartphone className="h-3.5 w-3.5 text-white" />
+                    </div>
+                    <span className="text-sm font-semibold text-[--text-primary]">iPhone</span>
+                  </div>
+                  <span className="text-[10px] text-[--text-muted] leading-tight block">Shot on iPhone</span>
+                  {metadata.includes("iphone") && (
+                    <div className="absolute top-2 right-2">
+                      <Check className="h-3.5 w-3.5 text-[#a3a3a3]" />
+                    </div>
+                  )}
+                  {metadata.includes("iphone") && metadata.length > 1 && !metadata.includes("random") && (
+                    <span className="absolute bottom-2 right-2 text-[9px] font-bold text-[#a3a3a3]/80 bg-[#a3a3a3]/10 px-1.5 py-0.5 rounded">STACKED</span>
+                  )}
+                </button>
+
+                {/* Random */}
+                <button
+                  onClick={() => setMetadata(["random"])}
+                  className={`relative p-3 rounded-xl border text-left transition-all ${
+                    metadata.includes("random")
+                      ? "border-purple-500/40 bg-purple-500/10 ring-1 ring-purple-500/20"
+                      : "border-white/5 bg-white/[0.01] hover:border-white/10"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center">
+                      <Shuffle className="h-3.5 w-3.5 text-white" />
+                    </div>
+                    <span className="text-sm font-semibold text-[--text-primary]">Random</span>
+                  </div>
+                  <span className="text-[10px] text-[--text-muted] leading-tight block">Auto-selected per copy</span>
+                  {metadata.includes("random") && (
+                    <div className="absolute top-2 right-2">
+                      <Check className="h-3.5 w-3.5 text-purple-400" />
+                    </div>
+                  )}
+                </button>
+              </div>
+
+              {/* Thumbnail randomisation toggle */}
+              <div className="mt-4 pt-4 border-t border-white/5">
+                <button
+                  onClick={() =>
+                    setEditSettings({
+                      ...editSettings,
+                      thumbnailRandomise: !editSettings.thumbnailRandomise,
+                    })
+                  }
+                  className={`w-full flex items-center justify-between p-3 rounded-xl border text-sm transition-all ${
+                    editSettings.thumbnailRandomise
+                      ? "border-purple-500/30 bg-purple-500/10"
+                      : "border-white/5 bg-white/[0.01] hover:border-white/10"
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+                      editSettings.thumbnailRandomise ? "bg-purple-500/20" : "bg-white/5"
+                    }`}>
+                      <Image className={`h-3.5 w-3.5 ${editSettings.thumbnailRandomise ? "text-purple-400" : "text-slate-500"}`} />
+                    </div>
+                    <div className="text-left">
+                      <span className={`font-medium block ${editSettings.thumbnailRandomise ? "text-[--text-primary]" : "text-[--text-secondary]"}`}>
+                        Randomise Thumbnail
                       </span>
-                    </button>
-                  );
-                })}
+                      <span className="text-[10px] text-[--text-muted] block">Unique first-frame fingerprint</span>
+                    </div>
+                  </div>
+                  <div className={`w-9 h-5 rounded-full transition-all relative ${
+                    editSettings.thumbnailRandomise ? "bg-purple-500" : "bg-white/10"
+                  }`}>
+                    <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-0.5 transition-all ${
+                      editSettings.thumbnailRandomise ? "left-[18px]" : "left-[3px]"
+                    }`} />
+                  </div>
+                </button>
               </div>
             </div>
 
