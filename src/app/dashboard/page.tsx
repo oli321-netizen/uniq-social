@@ -28,10 +28,7 @@ import {
   History,
   Copy,
   ImageIcon,
-  Smartphone,
   Shuffle,
-  Scissors,
-  Camera,
 } from "lucide-react";
 import JSZip from "jszip";
 import InstallButton from "@/components/InstallButton";
@@ -791,8 +788,13 @@ export default function Dashboard() {
                   }`}
                 >
                   <div className="flex items-center gap-2 mb-1.5">
-                    <div className="w-7 h-7 rounded-lg bg-black flex items-center justify-center border border-white/10">
-                      <Scissors className="h-3.5 w-3.5 text-[#00d1ed]" />
+                    <div className="w-7 h-7 rounded-lg bg-black flex items-center justify-center border border-white/10 overflow-hidden">
+                      <svg viewBox="0 0 1024 1024" className="w-5 h-5">
+                        <path d="M182.5 462.5c48.7-48.6 113.4-75.4 182.3-75.4 68.8 0 133.6 26.8 182.3 75.4L364.8 644.8 182.5 462.5z" fill="#00d1ed"/>
+                        <path d="M841.5 462.5c-48.7-48.6-113.4-75.4-182.3-75.4-68.8 0-133.6 26.8-182.3 75.4L659.2 644.8l182.3-182.3z" fill="#00d1ed"/>
+                        <circle cx="364.8" cy="387.1" r="80" fill="#00d1ed"/>
+                        <circle cx="659.2" cy="387.1" r="80" fill="#00d1ed"/>
+                      </svg>
                     </div>
                     <span className="text-sm font-semibold text-[--text-primary]">CapCut</span>
                   </div>
@@ -825,8 +827,10 @@ export default function Dashboard() {
                   }`}
                 >
                   <div className="flex items-center gap-2 mb-1.5">
-                    <div className="w-7 h-7 rounded-lg bg-[#FFFC00] flex items-center justify-center">
-                      <Camera className="h-3.5 w-3.5 text-black" />
+                    <div className="w-7 h-7 rounded-lg bg-[#FFFC00] flex items-center justify-center overflow-hidden">
+                      <svg viewBox="0 0 24 24" className="w-5 h-5" fill="black">
+                        <path d="M12 2C8.5 2 6 4.7 6 7.5v3c-.7.3-2 .8-2.3 1.2-.3.4-.1.8.3 1 .5.2 1.5.3 2.3.6-.2.8-.5 1.7-1.3 2.7-.3.4-.1.8.3.9.6.2 1.7.3 2.6-.1.3.5.8 1.2 1.6 1.7.8.5 1.6.6 2.5.6s1.7-.1 2.5-.6c.8-.5 1.3-1.2 1.6-1.7.9.4 2 .3 2.6.1.4-.1.6-.5.3-.9-.8-1-1.1-1.9-1.3-2.7.8-.3 1.8-.4 2.3-.6.4-.2.6-.6.3-1-.3-.4-1.6-.9-2.3-1.2v-3C18 4.7 15.5 2 12 2zm-1.5 5.5a1 1 0 110 2 1 1 0 010-2zm3 0a1 1 0 110 2 1 1 0 010-2z"/>
+                      </svg>
                     </div>
                     <span className="text-sm font-semibold text-[--text-primary]">Snapchat</span>
                   </div>
@@ -859,8 +863,10 @@ export default function Dashboard() {
                   }`}
                 >
                   <div className="flex items-center gap-2 mb-1.5">
-                    <div className="w-7 h-7 rounded-lg bg-gradient-to-b from-[#555] to-[#333] flex items-center justify-center border border-white/10">
-                      <Smartphone className="h-3.5 w-3.5 text-white" />
+                    <div className="w-7 h-7 rounded-lg bg-gradient-to-b from-[#555] to-[#333] flex items-center justify-center border border-white/10 overflow-hidden">
+                      <svg viewBox="0 0 24 24" className="w-4 h-4" fill="white">
+                        <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
+                      </svg>
                     </div>
                     <span className="text-sm font-semibold text-[--text-primary]">iPhone</span>
                   </div>
