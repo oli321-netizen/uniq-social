@@ -31,8 +31,12 @@ interface ProcessingConfig {
   sharpenAmount: number;
   mirror: boolean;
   metadata: MetadataProfile | MetadataProfile[];
-  // New fingerprint-breaking options
+  // Fingerprint-breaking options
   thumbnailRandomise: boolean;
+  // New aggressive anti-detection options
+  colourGrading: boolean;    // random hue/tone shift per copy
+  introFrames: boolean;      // inject unique fade-in frames at start
+  cropOffset: boolean;       // shift crop window off-centre randomly
 }
 
 // Realistic Lavf version strings (CapCut uses ffmpeg internally)
@@ -263,6 +267,9 @@ export async function POST(req: NextRequest) {
           mirror: true,
           metadata: "random",
           thumbnailRandomise: false,
+          colourGrading: true,
+          introFrames: true,
+          cropOffset: true,
         };
 
     const jobId = randomUUID();
@@ -295,16 +302,42 @@ export async function POST(req: NextRequest) {
     // === Hash source video for history tracking ===
     const sourceHash = createHash("sha256").update(buffer).digest("hex");
 
-    // === Fingerprint-breaking randomisation (imperceptible to viewers) ===
-    const speedFactor = parseFloat(rand(0.98, 1.02).toFixed(4));       // ±2% audio speed
-    const brightnessDelta = parseFloat(rand(-0.03, 0.03).toFixed(4));  // ±3% brightness
-    const contrastDelta = parseFloat(rand(0.98, 1.02).toFixed(4));     // ±2% contrast
-    const saturationDelta = parseFloat(rand(0.97, 1.03).toFixed(4));   // ±3% saturation
-    const crfValue = Math.floor(rand(17, 21));                         // CRF 17-20
+    // === AGGRESSIVE fingerprint-breaking randomisation ===
+    // Based on Meta's PDQ/TMK+PDQF research: hash uses 16x16 DCT grid of luminance.
+    // We need to change the STRUCTURE of what lands in that grid, not just tweak values.
+
+    // --- Audio fingerprinting evasion ---
+    const speedFactor = parseFloat(rand(0.96, 1.04).toFixed(4));       // ±4% speed (wider range)
+    const pitchShift = parseFloat(rand(-1.0, 1.0).toFixed(2));         // ±1.0 semitones (doubled)
+
+    // --- Visual: colour/luminance shifts (target the DCT luminance grid) ---
+    const brightnessDelta = parseFloat(rand(-0.06, 0.06).toFixed(4));  // ±6% brightness (doubled)
+    const contrastDelta = parseFloat(rand(0.95, 1.05).toFixed(4));     // ±5% contrast (wider)
+    const saturationDelta = parseFloat(rand(0.92, 1.08).toFixed(4));   // ±8% saturation (wider)
+
+    // --- Encoding fingerprint ---
+    const crfValue = Math.floor(rand(16, 23));                         // CRF 16-22 (wider)
     const gopSize = Math.floor(rand(24, 72));                          // Keyframe interval
-    const pitchShift = parseFloat(rand(-0.5, 0.5).toFixed(2));        // ±0.5 semitones
-    // Pixel padding: add 1-2px to random edges then crop back — changes pixel grid
-    const padPx = Math.floor(rand(1, 3));                              // 1-2px padding
+
+    // --- Colour grading: hue rotation changes the colour channels ---
+    // PDQ works on luminance but TMK+PDQF frame features capture more
+    const hueRotation = config.colourGrading ? parseFloat(rand(-15, 15).toFixed(1)) : 0;  // ±15° hue rotation
+    const gammaShift = config.colourGrading ? parseFloat(rand(0.92, 1.08).toFixed(3)) : 1.0; // gamma curve shift
+
+    // --- Crop offset: shift crop window off-centre to change the 16x16 grid layout ---
+    // This is THE most effective change — it shifts which pixels land in which grid cell
+    const cropOffsetX = config.cropOffset ? Math.floor(rand(-15, 15)) : 0;  // ±15px horizontal shift
+    const cropOffsetY = config.cropOffset ? Math.floor(rand(-15, 15)) : 0;  // ±15px vertical shift
+
+    // --- Intro frames: 0.3-0.8s fade-in from a random colour ---
+    // Research shows adding a "title screen" causes a "large drop" in TMK+PDQF matches
+    const introFadeDuration = config.introFrames ? parseFloat(rand(0.3, 0.8).toFixed(2)) : 0;
+    const introR = Math.floor(rand(0, 40));   // dark colour so it looks like a natural fade
+    const introG = Math.floor(rand(0, 40));
+    const introB = Math.floor(rand(0, 40));
+
+    // Pixel padding: add 2-4px to random edges then crop back
+    const padPx = Math.floor(rand(2, 5));                              // 2-4px padding (increased)
 
     // Random parameters
     const startTrim = parseFloat(rand(config.trimMin, config.trimMax).toFixed(3));
@@ -336,23 +369,29 @@ export async function POST(req: NextRequest) {
       segments.push([prev, parseFloat((effectiveDuration - msTrim).toFixed(3))]);
     }
 
-    // Zoom crop values
+    // Zoom crop values — with random offset to shift which pixels land in each hash grid cell
     const zoomFactor = 1 + zoomPct / 100;
     let cropW = Math.floor(origW / zoomFactor);
     let cropH = Math.floor(origH / zoomFactor);
     cropW = cropW - (cropW % 2);
     cropH = cropH - (cropH % 2);
-    const cropX = Math.floor((origW - cropW) / 2);
-    const cropY = Math.floor((origH - cropH) / 2);
+    // Apply crop offset — clamped to stay in bounds
+    let cropX = Math.floor((origW - cropW) / 2) + cropOffsetX;
+    let cropY = Math.floor((origH - cropH) / 2) + cropOffsetY;
+    cropX = Math.max(0, Math.min(cropX, origW - cropW));
+    cropY = Math.max(0, Math.min(cropY, origH - cropH));
 
-    // Build filter chain
+    // Build filter chain — each filter targets a different layer of detection
     let vf = `crop=${cropW}:${cropH}:${cropX}:${cropY},scale=${origW}:${origH}`;
     if (config.mirror) vf += ",hflip";
     if (config.grain) vf += `,noise=alls=${config.grainIntensity}:allf=t`;
     if (config.sharpen) vf += `,unsharp=3:3:${config.sharpenAmount}:3:3:0.0`;
-    // Fingerprint-breaking: brightness/contrast/saturation shift
+    // Brightness/contrast/saturation — targets luminance-based hash
     vf += `,eq=brightness=${brightnessDelta}:contrast=${contrastDelta}:saturation=${saturationDelta}`;
-    // Pixel padding: pad then crop back — changes the pixel grid without visible change
+    // Hue rotation + gamma — changes colour channels and luminance curve
+    if (hueRotation !== 0) vf += `,hue=h=${hueRotation}`;
+    if (gammaShift !== 1.0) vf += `,eq=gamma=${gammaShift}`;
+    // Pixel padding: pad then crop back — shifts the pixel grid alignment
     vf += `,pad=iw+${padPx * 2}:ih+${padPx * 2}:${padPx}:${padPx}:black,crop=iw-${padPx * 2}:ih-${padPx * 2}:${padPx}:${padPx}`;
 
     // === SPEED OPTIMISATION 1: Process segments in PARALLEL (3 at a time) ===
@@ -406,12 +445,41 @@ export async function POST(req: NextRequest) {
     const pitchedRate = Math.round(sampleRate * Math.pow(2, pitchShift / 12));
     const af = `atempo=${speedFactor},asetrate=${pitchedRate},aresample=${sampleRate}`;
 
-    await execAsync(
-      `ffmpeg -y -f concat -safe 0 -i "${concatPath}" ` +
-        `-c:v copy -af "${af}" -c:a aac -b:a 128k ` +
-        `${quotedMetadataArgs.join(" ")} -brand ${brand} -movflags +faststart "${outputPath}"`,
-      EXEC_OPTIONS
-    );
+    // === INTRO FRAME INJECTION ===
+    // Research: adding unique frames at the start causes "a large drop" in TMK+PDQF video hash matches
+    // because TMK resamples to 15fps and builds time-weighted averages — different start = different average
+    if (config.introFrames && introFadeDuration > 0) {
+      // Step 1: Create a short solid-colour clip that fades to the video's first frame
+      const introClipPath = path.join(tmpDir, "intro_clip.mp4");
+      // Generate intro: solid colour → fade to transparent, overlaid on first frame
+      // This looks like a natural "fade in" but completely changes the temporal hash
+      await execAsync(
+        `ffmpeg -y -f lavfi -i "color=c=0x${introR.toString(16).padStart(2,'0')}${introG.toString(16).padStart(2,'0')}${introB.toString(16).padStart(2,'0')}:s=${origW}x${origH}:r=30:d=${introFadeDuration}" ` +
+          `-vf "fade=t=out:st=0:d=${introFadeDuration}" ` +
+          `-c:v libx264 -preset ultrafast -crf ${crfValue} -pix_fmt yuv420p ` +
+          `-f lavfi -i "anullsrc=channel_layout=stereo:sample_rate=${sampleRate}" -t ${introFadeDuration} ` +
+          `-c:a aac -b:a 128k -shortest "${introClipPath}"`,
+        EXEC_OPTIONS
+      );
+
+      // Step 2: Concat intro + main segments, then overlay so intro fades into content
+      const introConcat = path.join(tmpDir, "intro_concat.txt");
+      await writeFile(introConcat, `file '${introClipPath}'\n${concatContent}`);
+
+      await execAsync(
+        `ffmpeg -y -f concat -safe 0 -i "${introConcat}" ` +
+          `-c:v copy -af "${af}" -c:a aac -b:a 128k ` +
+          `${quotedMetadataArgs.join(" ")} -brand ${brand} -movflags +faststart "${outputPath}"`,
+        EXEC_OPTIONS
+      );
+    } else {
+      await execAsync(
+        `ffmpeg -y -f concat -safe 0 -i "${concatPath}" ` +
+          `-c:v copy -af "${af}" -c:a aac -b:a 128k ` +
+          `${quotedMetadataArgs.join(" ")} -brand ${brand} -movflags +faststart "${outputPath}"`,
+        EXEC_OPTIONS
+      );
+    }
 
     // === Optional thumbnail randomisation ===
     // Adds a very short (0.04s) unique colour flash at frame 1 then removes it,
@@ -462,6 +530,11 @@ export async function POST(req: NextRequest) {
             saturationDelta,
             crfValue,
             gopSize,
+            hueRotation,
+            gammaShift,
+            cropOffsetX,
+            cropOffsetY,
+            introFadeDuration,
           },
         }),
       ]);

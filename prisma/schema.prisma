@@ -147,6 +147,11 @@ model ProcessingHistory {
   saturationDelta Float    @default(1.0)
   crfValue        Int      @default(18)
   gopSize         Int      @default(48)
+  hueRotation     Float    @default(0.0)
+  gammaShift      Float    @default(1.0)
+  cropOffsetX     Int      @default(0)
+  cropOffsetY     Int      @default(0)
+  introFadeDuration Float  @default(0.0)
   createdAt       DateTime @default(now())
 
   @@index([userId, sourceHash])
