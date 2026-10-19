@@ -455,10 +455,10 @@ export async function POST(req: NextRequest) {
       // This looks like a natural "fade in" but completely changes the temporal hash
       await execAsync(
         `ffmpeg -y -f lavfi -i "color=c=0x${introR.toString(16).padStart(2,'0')}${introG.toString(16).padStart(2,'0')}${introB.toString(16).padStart(2,'0')}:s=${origW}x${origH}:r=30:d=${introFadeDuration}" ` +
+          `-f lavfi -i "anullsrc=channel_layout=stereo:sample_rate=${sampleRate}" ` +
           `-vf "fade=t=out:st=0:d=${introFadeDuration}" ` +
           `-c:v libx264 -preset ultrafast -crf ${crfValue} -pix_fmt yuv420p ` +
-          `-f lavfi -i "anullsrc=channel_layout=stereo:sample_rate=${sampleRate}" -t ${introFadeDuration} ` +
-          `-c:a aac -b:a 128k -shortest "${introClipPath}"`,
+          `-t ${introFadeDuration} -c:a aac -b:a 128k -shortest "${introClipPath}"`,
         EXEC_OPTIONS
       );
 
