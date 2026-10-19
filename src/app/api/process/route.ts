@@ -309,7 +309,7 @@ export async function POST(req: NextRequest) {
     // --- Audio fingerprinting evasion ---
     // Re-encoding audio with different bitrate/codec params is enough to break audio hashes
     // Do NOT change speed or pitch — causes A/V desync since video is stream-copied
-    const speedFactor = 1.0;  // no speed change
+    const speedFactor = 1.0;  // no speed change (kept for DB record)
 
     // --- Visual: subtle colour/luminance shifts (target the DCT luminance grid) ---
     const brightnessDelta = parseFloat(rand(-0.02, 0.02).toFixed(4));   // ±2% brightness — invisible
