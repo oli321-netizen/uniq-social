@@ -307,8 +307,10 @@ export async function POST(req: NextRequest) {
     // We need to change the STRUCTURE of what lands in that grid, not just tweak values.
 
     // --- Audio fingerprinting evasion ---
-    const speedFactor = parseFloat(rand(0.99, 1.01).toFixed(4));        // ±1% speed — imperceptible but shifts frame timing
-    const pitchShift = parseFloat(rand(-0.3, 0.3).toFixed(2));          // ±0.3 semitones — inaudible
+    // Re-encoding audio with different bitrate/codec params is enough to break audio hashes
+    // Do NOT change speed or pitch — causes A/V desync since video is stream-copied
+    const speedFactor = 1.0;  // no speed change
+    const pitchShift = 0;     // no pitch change
 
     // --- Visual: subtle colour/luminance shifts (target the DCT luminance grid) ---
     const brightnessDelta = parseFloat(rand(-0.02, 0.02).toFixed(4));   // ±2% brightness — invisible
@@ -438,10 +440,9 @@ export async function POST(req: NextRequest) {
       return arg;
     });
 
-    // Build audio filter chain: speed shift + pitch shift
+    // Audio: just re-encode (no speed/pitch changes — those caused A/V desync)
+    // Re-encoding alone changes the audio bitstream enough to break spectral hashing
     const sampleRate = 44100;
-    const pitchedRate = Math.round(sampleRate * Math.pow(2, pitchShift / 12));
-    const af = `atempo=${speedFactor},asetrate=${pitchedRate},aresample=${sampleRate}`;
 
     // === INTRO FRAME INJECTION ===
     // Research: adding unique frames at the start causes "a large drop" in TMK+PDQF video hash matches
@@ -466,14 +467,14 @@ export async function POST(req: NextRequest) {
 
       await execAsync(
         `ffmpeg -y -f concat -safe 0 -i "${introConcat}" ` +
-          `-c:v copy -af "${af}" -c:a aac -b:a 128k ` +
+          `-c:v copy -c:a aac -b:a 128k ` +
           `${quotedMetadataArgs.join(" ")} -brand ${brand} -movflags +faststart "${outputPath}"`,
         EXEC_OPTIONS
       );
     } else {
       await execAsync(
         `ffmpeg -y -f concat -safe 0 -i "${concatPath}" ` +
-          `-c:v copy -af "${af}" -c:a aac -b:a 128k ` +
+          `-c:v copy -c:a aac -b:a 128k ` +
           `${quotedMetadataArgs.join(" ")} -brand ${brand} -movflags +faststart "${outputPath}"`,
         EXEC_OPTIONS
       );
