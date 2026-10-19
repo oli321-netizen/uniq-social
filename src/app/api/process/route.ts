@@ -31,12 +31,7 @@ interface ProcessingConfig {
   sharpenAmount: number;
   mirror: boolean;
   metadata: MetadataProfile | MetadataProfile[];
-  // Fingerprint-breaking options
   thumbnailRandomise: boolean;
-  // New aggressive anti-detection options
-  colourGrading: boolean;    // random hue/tone shift per copy
-  introFrames: boolean;      // inject unique fade-in frames at start
-  cropOffset: boolean;       // shift crop window off-centre randomly
 }
 
 // Realistic Lavf version strings (CapCut uses ffmpeg internally)
@@ -267,9 +262,6 @@ export async function POST(req: NextRequest) {
           mirror: true,
           metadata: "random",
           thumbnailRandomise: false,
-          colourGrading: true,
-          introFrames: true,
-          cropOffset: true,
         };
 
     const jobId = randomUUID();
@@ -302,41 +294,21 @@ export async function POST(req: NextRequest) {
     // === Hash source video for history tracking ===
     const sourceHash = createHash("sha256").update(buffer).digest("hex");
 
-    // === AGGRESSIVE fingerprint-breaking randomisation ===
-    // Based on Meta's PDQ/TMK+PDQF research: hash uses 16x16 DCT grid of luminance.
-    // We need to change the STRUCTURE of what lands in that grid, not just tweak values.
-
-    // --- Audio fingerprinting evasion ---
-    // Re-encoding audio with different bitrate/codec params is enough to break audio hashes
-    // Do NOT change speed or pitch — causes A/V desync since video is stream-copied
-    const speedFactor = 1.0;  // no speed change (kept for DB record)
-
-    // --- Visual: subtle colour/luminance shifts (target the DCT luminance grid) ---
-    const brightnessDelta = parseFloat(rand(-0.02, 0.02).toFixed(4));   // ±2% brightness — invisible
-    const contrastDelta = parseFloat(rand(0.98, 1.02).toFixed(4));      // ±2% contrast — invisible
-    const saturationDelta = parseFloat(rand(0.97, 1.03).toFixed(4));    // ±3% saturation — invisible
-
-    // --- Encoding fingerprint ---
-    const crfValue = Math.floor(rand(17, 21));                          // CRF 17-20 — quality stays high
-    const gopSize = Math.floor(rand(24, 72));                           // Keyframe interval
-
-    // --- Colour grading: subtle hue/gamma tweaks ---
-    const hueRotation = config.colourGrading ? parseFloat(rand(-3, 3).toFixed(1)) : 0;    // ±3° hue — invisible
-    const gammaShift = config.colourGrading ? parseFloat(rand(0.97, 1.03).toFixed(3)) : 1.0; // subtle gamma
-
-    // --- Crop offset: small shift to change which pixels land in each hash grid cell ---
-    const cropOffsetX = config.cropOffset ? Math.floor(rand(-4, 4)) : 0;   // ±4px — invisible
-    const cropOffsetY = config.cropOffset ? Math.floor(rand(-4, 4)) : 0;   // ±4px — invisible
-
-    // --- Intro frames: very short fade-in (3-6 frames) from near-black ---
-    // Just enough to shift TMK+PDQF time-weighted averages without being visible
-    const introFadeDuration = config.introFrames ? parseFloat(rand(0.1, 0.2).toFixed(2)) : 0;
-    const introR = Math.floor(rand(5, 20));    // very dark — looks like natural video start
-    const introG = Math.floor(rand(5, 20));
-    const introB = Math.floor(rand(5, 20));
-
-    // Pixel padding: tiny pad+crop to shift pixel grid alignment
-    const padPx = Math.floor(rand(1, 3));                               // 1-2px — invisible
+    // === Fingerprint-breaking: re-encode with different params ===
+    // Re-encoding alone completely changes the video bitstream.
+    // Tiny invisible tweaks to brightness/contrast/saturation shift the DCT hash.
+    // NO speed changes, NO intro frames, NO pixel padding — just clean re-encode.
+    const speedFactor = 1.0;
+    const brightnessDelta = parseFloat(rand(-0.01, 0.01).toFixed(4));
+    const contrastDelta = parseFloat(rand(0.99, 1.01).toFixed(4));
+    const saturationDelta = parseFloat(rand(0.98, 1.02).toFixed(4));
+    const crfValue = Math.floor(rand(18, 22));
+    const gopSize = Math.floor(rand(24, 72));
+    const hueRotation = 0;
+    const gammaShift = 1.0;
+    const cropOffsetX = 0;
+    const cropOffsetY = 0;
+    const introFadeDuration = 0;
 
     // Random parameters
     const startTrim = parseFloat(rand(config.trimMin, config.trimMax).toFixed(3));
@@ -368,30 +340,21 @@ export async function POST(req: NextRequest) {
       segments.push([prev, parseFloat((effectiveDuration - msTrim).toFixed(3))]);
     }
 
-    // Zoom crop values — with random offset to shift which pixels land in each hash grid cell
+    // Zoom crop values
     const zoomFactor = 1 + zoomPct / 100;
     let cropW = Math.floor(origW / zoomFactor);
     let cropH = Math.floor(origH / zoomFactor);
     cropW = cropW - (cropW % 2);
     cropH = cropH - (cropH % 2);
-    // Apply crop offset — clamped to stay in bounds
-    let cropX = Math.floor((origW - cropW) / 2) + cropOffsetX;
-    let cropY = Math.floor((origH - cropH) / 2) + cropOffsetY;
-    cropX = Math.max(0, Math.min(cropX, origW - cropW));
-    cropY = Math.max(0, Math.min(cropY, origH - cropH));
+    const cropX = Math.floor((origW - cropW) / 2);
+    const cropY = Math.floor((origH - cropH) / 2);
 
-    // Build filter chain — each filter targets a different layer of detection
+    // Build filter chain
     let vf = `crop=${cropW}:${cropH}:${cropX}:${cropY},scale=${origW}:${origH}`;
     if (config.mirror) vf += ",hflip";
     if (config.grain) vf += `,noise=alls=${config.grainIntensity}:allf=t`;
     if (config.sharpen) vf += `,unsharp=3:3:${config.sharpenAmount}:3:3:0.0`;
-    // Brightness/contrast/saturation — targets luminance-based hash
     vf += `,eq=brightness=${brightnessDelta}:contrast=${contrastDelta}:saturation=${saturationDelta}`;
-    // Hue rotation + gamma — changes colour channels and luminance curve
-    if (hueRotation !== 0) vf += `,hue=h=${hueRotation}`;
-    if (gammaShift !== 1.0) vf += `,eq=gamma=${gammaShift}`;
-    // Pixel padding: pad then crop back — shifts the pixel grid alignment
-    vf += `,pad=iw+${padPx * 2}:ih+${padPx * 2}:${padPx}:${padPx}:black,crop=iw-${padPx * 2}:ih-${padPx * 2}:${padPx}:${padPx}`;
 
     // === SPEED OPTIMISATION 1: Process segments in PARALLEL (3 at a time) ===
     const segFiles: string[] = new Array(segments.length);
@@ -439,45 +402,13 @@ export async function POST(req: NextRequest) {
       return arg;
     });
 
-    // Audio: just re-encode (no speed/pitch changes — those caused A/V desync)
-    // Re-encoding alone changes the audio bitstream enough to break spectral hashing
-    const sampleRate = 44100;
-
-    // === INTRO FRAME INJECTION ===
-    // Research: adding unique frames at the start causes "a large drop" in TMK+PDQF video hash matches
-    // because TMK resamples to 15fps and builds time-weighted averages — different start = different average
-    if (config.introFrames && introFadeDuration > 0) {
-      // Step 1: Create a short solid-colour clip that fades to the video's first frame
-      const introClipPath = path.join(tmpDir, "intro_clip.mp4");
-      // Generate intro: solid colour → fade to transparent, overlaid on first frame
-      // This looks like a natural "fade in" but completely changes the temporal hash
-      await execAsync(
-        `ffmpeg -y -f lavfi -i "color=c=0x${introR.toString(16).padStart(2,'0')}${introG.toString(16).padStart(2,'0')}${introB.toString(16).padStart(2,'0')}:s=${origW}x${origH}:r=30:d=${introFadeDuration}" ` +
-          `-f lavfi -i "anullsrc=channel_layout=stereo:sample_rate=${sampleRate}" ` +
-          `-vf "fade=t=out:st=0:d=${introFadeDuration}" ` +
-          `-c:v libx264 -preset ultrafast -crf ${crfValue} -pix_fmt yuv420p ` +
-          `-t ${introFadeDuration} -c:a aac -b:a 128k -shortest "${introClipPath}"`,
-        EXEC_OPTIONS
-      );
-
-      // Step 2: Concat intro + main segments, then overlay so intro fades into content
-      const introConcat = path.join(tmpDir, "intro_concat.txt");
-      await writeFile(introConcat, `file '${introClipPath}'\n${concatContent}`);
-
-      await execAsync(
-        `ffmpeg -y -f concat -safe 0 -i "${introConcat}" ` +
-          `-c copy ` +
-          `${quotedMetadataArgs.join(" ")} -brand ${brand} -movflags +faststart "${outputPath}"`,
-        EXEC_OPTIONS
-      );
-    } else {
-      await execAsync(
-        `ffmpeg -y -f concat -safe 0 -i "${concatPath}" ` +
-          `-c copy ` +
-          `${quotedMetadataArgs.join(" ")} -brand ${brand} -movflags +faststart "${outputPath}"`,
-        EXEC_OPTIONS
-      );
-    }
+    // Concat segments with stream copy + metadata
+    await execAsync(
+      `ffmpeg -y -f concat -safe 0 -i "${concatPath}" ` +
+        `-c copy ` +
+        `${quotedMetadataArgs.join(" ")} -brand ${brand} -movflags +faststart "${outputPath}"`,
+      EXEC_OPTIONS
+    );
 
     // === Optional thumbnail randomisation ===
     // Adds a very short (0.04s) unique colour flash at frame 1 then removes it,

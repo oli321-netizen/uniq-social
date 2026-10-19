@@ -29,10 +29,6 @@ import {
   Copy,
   ImageIcon,
   Shuffle,
-  Shield,
-  Palette,
-  Move,
-  Film,
 } from "lucide-react";
 import JSZip from "jszip";
 import InstallButton from "@/components/InstallButton";
@@ -170,9 +166,6 @@ export default function Dashboard() {
     sharpenAmount: 0.3,
     mirror: true,
     thumbnailRandomise: false,
-    colourGrading: true,
-    introFrames: true,
-    cropOffset: true,
   });
 
   const onDrop = useCallback((e: React.DragEvent) => {
@@ -943,122 +936,6 @@ export default function Dashboard() {
                 </button>
               </div>
 
-              {/* Anti-Detection Toggles */}
-              <div className="mt-4 pt-4 border-t border-white/5">
-                <div className="flex items-center gap-2 mb-3">
-                  <Shield className="h-3.5 w-3.5 text-cyan-400" />
-                  <span className="text-xs font-semibold text-[--text-primary] uppercase tracking-wider">Anti-Detection</span>
-                </div>
-                <div className="space-y-2">
-                  {/* Colour Grading toggle */}
-                  <button
-                    onClick={() =>
-                      setEditSettings({
-                        ...editSettings,
-                        colourGrading: !editSettings.colourGrading,
-                      })
-                    }
-                    className={`w-full flex items-center justify-between p-3 rounded-xl border text-sm transition-all ${
-                      editSettings.colourGrading
-                        ? "border-cyan-500/30 bg-cyan-500/10"
-                        : "border-white/5 bg-white/[0.01] hover:border-white/10"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
-                        editSettings.colourGrading ? "bg-cyan-500/20" : "bg-white/5"
-                      }`}>
-                        <Palette className={`h-3.5 w-3.5 ${editSettings.colourGrading ? "text-cyan-400" : "text-slate-500"}`} />
-                      </div>
-                      <div className="text-left">
-                        <span className={`font-medium block ${editSettings.colourGrading ? "text-[--text-primary]" : "text-[--text-secondary]"}`}>
-                          Colour Grading
-                        </span>
-                        <span className="text-[10px] text-[--text-muted] block">Shifts hue & gamma per copy</span>
-                      </div>
-                    </div>
-                    <div className={`w-9 h-5 rounded-full transition-all relative ${
-                      editSettings.colourGrading ? "bg-cyan-500" : "bg-white/10"
-                    }`}>
-                      <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-0.5 transition-all ${
-                        editSettings.colourGrading ? "left-[18px]" : "left-[3px]"
-                      }`} />
-                    </div>
-                  </button>
-
-                  {/* Intro Frames toggle */}
-                  <button
-                    onClick={() =>
-                      setEditSettings({
-                        ...editSettings,
-                        introFrames: !editSettings.introFrames,
-                      })
-                    }
-                    className={`w-full flex items-center justify-between p-3 rounded-xl border text-sm transition-all ${
-                      editSettings.introFrames
-                        ? "border-cyan-500/30 bg-cyan-500/10"
-                        : "border-white/5 bg-white/[0.01] hover:border-white/10"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
-                        editSettings.introFrames ? "bg-cyan-500/20" : "bg-white/5"
-                      }`}>
-                        <Film className={`h-3.5 w-3.5 ${editSettings.introFrames ? "text-cyan-400" : "text-slate-500"}`} />
-                      </div>
-                      <div className="text-left">
-                        <span className={`font-medium block ${editSettings.introFrames ? "text-[--text-primary]" : "text-[--text-secondary]"}`}>
-                          Intro Frames
-                        </span>
-                        <span className="text-[10px] text-[--text-muted] block">Unique fade-in breaks video hash</span>
-                      </div>
-                    </div>
-                    <div className={`w-9 h-5 rounded-full transition-all relative ${
-                      editSettings.introFrames ? "bg-cyan-500" : "bg-white/10"
-                    }`}>
-                      <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-0.5 transition-all ${
-                        editSettings.introFrames ? "left-[18px]" : "left-[3px]"
-                      }`} />
-                    </div>
-                  </button>
-
-                  {/* Crop Offset toggle */}
-                  <button
-                    onClick={() =>
-                      setEditSettings({
-                        ...editSettings,
-                        cropOffset: !editSettings.cropOffset,
-                      })
-                    }
-                    className={`w-full flex items-center justify-between p-3 rounded-xl border text-sm transition-all ${
-                      editSettings.cropOffset
-                        ? "border-cyan-500/30 bg-cyan-500/10"
-                        : "border-white/5 bg-white/[0.01] hover:border-white/10"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
-                        editSettings.cropOffset ? "bg-cyan-500/20" : "bg-white/5"
-                      }`}>
-                        <Move className={`h-3.5 w-3.5 ${editSettings.cropOffset ? "text-cyan-400" : "text-slate-500"}`} />
-                      </div>
-                      <div className="text-left">
-                        <span className={`font-medium block ${editSettings.cropOffset ? "text-[--text-primary]" : "text-[--text-secondary]"}`}>
-                          Crop Offset
-                        </span>
-                        <span className="text-[10px] text-[--text-muted] block">Random frame position per copy</span>
-                      </div>
-                    </div>
-                    <div className={`w-9 h-5 rounded-full transition-all relative ${
-                      editSettings.cropOffset ? "bg-cyan-500" : "bg-white/10"
-                    }`}>
-                      <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-0.5 transition-all ${
-                        editSettings.cropOffset ? "left-[18px]" : "left-[3px]"
-                      }`} />
-                    </div>
-                  </button>
-                </div>
-              </div>
             </div>
 
             {/* Edit settings */}
