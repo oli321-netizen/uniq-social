@@ -307,37 +307,35 @@ export async function POST(req: NextRequest) {
     // We need to change the STRUCTURE of what lands in that grid, not just tweak values.
 
     // --- Audio fingerprinting evasion ---
-    const speedFactor = parseFloat(rand(0.96, 1.04).toFixed(4));       // ±4% speed (wider range)
-    const pitchShift = parseFloat(rand(-1.0, 1.0).toFixed(2));         // ±1.0 semitones (doubled)
+    const speedFactor = parseFloat(rand(0.99, 1.01).toFixed(4));        // ±1% speed — imperceptible but shifts frame timing
+    const pitchShift = parseFloat(rand(-0.3, 0.3).toFixed(2));          // ±0.3 semitones — inaudible
 
-    // --- Visual: colour/luminance shifts (target the DCT luminance grid) ---
-    const brightnessDelta = parseFloat(rand(-0.06, 0.06).toFixed(4));  // ±6% brightness (doubled)
-    const contrastDelta = parseFloat(rand(0.95, 1.05).toFixed(4));     // ±5% contrast (wider)
-    const saturationDelta = parseFloat(rand(0.92, 1.08).toFixed(4));   // ±8% saturation (wider)
+    // --- Visual: subtle colour/luminance shifts (target the DCT luminance grid) ---
+    const brightnessDelta = parseFloat(rand(-0.02, 0.02).toFixed(4));   // ±2% brightness — invisible
+    const contrastDelta = parseFloat(rand(0.98, 1.02).toFixed(4));      // ±2% contrast — invisible
+    const saturationDelta = parseFloat(rand(0.97, 1.03).toFixed(4));    // ±3% saturation — invisible
 
     // --- Encoding fingerprint ---
-    const crfValue = Math.floor(rand(16, 23));                         // CRF 16-22 (wider)
-    const gopSize = Math.floor(rand(24, 72));                          // Keyframe interval
+    const crfValue = Math.floor(rand(17, 21));                          // CRF 17-20 — quality stays high
+    const gopSize = Math.floor(rand(24, 72));                           // Keyframe interval
 
-    // --- Colour grading: hue rotation changes the colour channels ---
-    // PDQ works on luminance but TMK+PDQF frame features capture more
-    const hueRotation = config.colourGrading ? parseFloat(rand(-15, 15).toFixed(1)) : 0;  // ±15° hue rotation
-    const gammaShift = config.colourGrading ? parseFloat(rand(0.92, 1.08).toFixed(3)) : 1.0; // gamma curve shift
+    // --- Colour grading: subtle hue/gamma tweaks ---
+    const hueRotation = config.colourGrading ? parseFloat(rand(-3, 3).toFixed(1)) : 0;    // ±3° hue — invisible
+    const gammaShift = config.colourGrading ? parseFloat(rand(0.97, 1.03).toFixed(3)) : 1.0; // subtle gamma
 
-    // --- Crop offset: shift crop window off-centre to change the 16x16 grid layout ---
-    // This is THE most effective change — it shifts which pixels land in which grid cell
-    const cropOffsetX = config.cropOffset ? Math.floor(rand(-15, 15)) : 0;  // ±15px horizontal shift
-    const cropOffsetY = config.cropOffset ? Math.floor(rand(-15, 15)) : 0;  // ±15px vertical shift
+    // --- Crop offset: small shift to change which pixels land in each hash grid cell ---
+    const cropOffsetX = config.cropOffset ? Math.floor(rand(-4, 4)) : 0;   // ±4px — invisible
+    const cropOffsetY = config.cropOffset ? Math.floor(rand(-4, 4)) : 0;   // ±4px — invisible
 
-    // --- Intro frames: 0.3-0.8s fade-in from a random colour ---
-    // Research shows adding a "title screen" causes a "large drop" in TMK+PDQF matches
-    const introFadeDuration = config.introFrames ? parseFloat(rand(0.3, 0.8).toFixed(2)) : 0;
-    const introR = Math.floor(rand(0, 40));   // dark colour so it looks like a natural fade
-    const introG = Math.floor(rand(0, 40));
-    const introB = Math.floor(rand(0, 40));
+    // --- Intro frames: very short fade-in (3-6 frames) from near-black ---
+    // Just enough to shift TMK+PDQF time-weighted averages without being visible
+    const introFadeDuration = config.introFrames ? parseFloat(rand(0.1, 0.2).toFixed(2)) : 0;
+    const introR = Math.floor(rand(5, 20));    // very dark — looks like natural video start
+    const introG = Math.floor(rand(5, 20));
+    const introB = Math.floor(rand(5, 20));
 
-    // Pixel padding: add 2-4px to random edges then crop back
-    const padPx = Math.floor(rand(2, 5));                              // 2-4px padding (increased)
+    // Pixel padding: tiny pad+crop to shift pixel grid alignment
+    const padPx = Math.floor(rand(1, 3));                               // 1-2px — invisible
 
     // Random parameters
     const startTrim = parseFloat(rand(config.trimMin, config.trimMax).toFixed(3));
