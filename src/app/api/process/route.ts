@@ -466,14 +466,14 @@ export async function POST(req: NextRequest) {
 
       await execAsync(
         `ffmpeg -y -f concat -safe 0 -i "${introConcat}" ` +
-          `-c:v copy -c:a aac -b:a 128k ` +
+          `-c copy ` +
           `${quotedMetadataArgs.join(" ")} -brand ${brand} -movflags +faststart "${outputPath}"`,
         EXEC_OPTIONS
       );
     } else {
       await execAsync(
         `ffmpeg -y -f concat -safe 0 -i "${concatPath}" ` +
-          `-c:v copy -c:a aac -b:a 128k ` +
+          `-c copy ` +
           `${quotedMetadataArgs.join(" ")} -brand ${brand} -movflags +faststart "${outputPath}"`,
         EXEC_OPTIONS
       );
