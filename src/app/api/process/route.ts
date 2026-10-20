@@ -3,7 +3,7 @@ import { writeFile, readFile, mkdir, rm } from "fs/promises";
 import { exec } from "child_process";
 import { promisify } from "util";
 import path from "path";
-import { randomUUID, createHash } from "crypto";
+import { randomUUID } from "crypto";
 import { getServerSession } from "next-auth";
 import { getToken } from "next-auth/jwt";
 import { authOptions } from "@/lib/auth";
@@ -31,151 +31,54 @@ interface ProcessingConfig {
   sharpenAmount: number;
   mirror: boolean;
   metadata: MetadataProfile | MetadataProfile[];
-  thumbnailRandomise: boolean;
 }
 
-// Realistic Lavf version strings (CapCut uses ffmpeg internally)
-const LAVF_VERSIONS = [
-  "Lavf60.16.100", "Lavf60.3.100", "Lavf59.27.100", "Lavf60.10.100",
-  "Lavf61.1.100", "Lavf59.16.100", "Lavf60.22.100", "Lavf61.3.100",
-];
-
-// iPhone models for realistic Apple metadata
-const IPHONE_MODELS = [
-  "iPhone 13", "iPhone 13 Pro", "iPhone 13 Pro Max",
-  "iPhone 14", "iPhone 14 Pro", "iPhone 14 Pro Max",
-  "iPhone 15", "iPhone 15 Pro", "iPhone 15 Pro Max",
-  "iPhone 16", "iPhone 16 Pro", "iPhone 16 Pro Max",
-];
-
-const IOS_VERSIONS = ["17.5.1", "17.6", "17.6.1", "18.0", "18.0.1", "18.1", "18.2"];
-
-// Generate a random ISO timestamp within the last N days
-function randomRecentTimestamp(maxDaysAgo: number = 7): string {
-  const now = Date.now();
-  const offset = Math.floor(Math.random() * maxDaysAgo * 24 * 60 * 60 * 1000);
-  const date = new Date(now - offset);
-  date.setHours(Math.floor(Math.random() * 14) + 8); // 8am-10pm
-  date.setMinutes(Math.floor(Math.random() * 60));
-  date.setSeconds(Math.floor(Math.random() * 60));
-  return date.toISOString().replace(/\.\d{3}Z$/, ".000000Z");
-}
-
-function pickRandom<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
+const METADATA_PROFILES: Record<string, { format: string[]; video: string[]; audio: string[] }> = {
+  capcut: {
+    format: ["-metadata", "encoder=CapCut", "-metadata", "comment=Made with CapCut"],
+    video: ["-metadata:s:v", "handler_name=CapCut Video Handler", "-metadata:s:v", "encoder=CapCut Video"],
+    audio: ["-metadata:s:a", "handler_name=CapCut Sound Handler", "-metadata:s:a", "encoder=CapCut Audio"],
+  },
+  snapchat: {
+    format: ["-metadata", "encoder=Snapchat", "-metadata", "artist=Snapchat"],
+    video: ["-metadata:s:v", "handler_name=Snap Video Media Handler", "-metadata:s:v", "encoder=Snap Video"],
+    audio: ["-metadata:s:a", "handler_name=Snap Sound Media Handler", "-metadata:s:a", "encoder=Snap Audio"],
+  },
+  iphone: {
+    format: ["-metadata", "encoder=Apple", "-metadata", "com.apple.quicktime.make=Apple", "-metadata", "com.apple.quicktime.model=iPhone 15 Pro"],
+    video: ["-metadata:s:v", "handler_name=Core Media Video", "-metadata:s:v", "encoder=HEVC"],
+    audio: ["-metadata:s:a", "handler_name=Core Media Audio", "-metadata:s:a", "encoder=AAC"],
+  },
+};
 
 function rand(min: number, max: number): number {
   return Math.random() * (max - min) + min;
 }
 
-function buildMetadataProfile(profileName: string): { format: string[]; video: string[]; audio: string[]; brand: string } {
-  const creationTime = randomRecentTimestamp();
-
-  switch (profileName) {
-    case "capcut": {
-      const lavfVersion = pickRandom(LAVF_VERSIONS);
-      return {
-        format: [
-          "-metadata", `creation_time=${creationTime}`,
-          "-metadata", `encoder=${lavfVersion}`,
-          "-metadata", "comment=Made with CapCut",
-          "-metadata", "minor_version=512",
-        ],
-        video: [
-          "-metadata:s:v", "handler_name=VideoHandler",
-          "-metadata:s:v", `creation_time=${creationTime}`,
-          "-metadata:s:v", "language=und",
-          "-metadata:s:v", "vendor_id=[0][0][0][0]",
-        ],
-        audio: [
-          "-metadata:s:a", "handler_name=SoundHandler",
-          "-metadata:s:a", `creation_time=${creationTime}`,
-          "-metadata:s:a", "language=und",
-          "-metadata:s:a", "vendor_id=[0][0][0][0]",
-        ],
-        brand: "isom",
-      };
-    }
-
-    case "snapchat": {
-      return {
-        format: [
-          "-metadata", `creation_time=${creationTime}`,
-          "-metadata", "encoder=Snapchat",
-          "-metadata", "minor_version=0",
-        ],
-        video: [
-          "-metadata:s:v", "handler_name=VideoHandler",
-          "-metadata:s:v", `creation_time=${creationTime}`,
-          "-metadata:s:v", "language=und",
-          "-metadata:s:v", "vendor_id=[0][0][0][0]",
-        ],
-        audio: [
-          "-metadata:s:a", "handler_name=SoundHandler",
-          "-metadata:s:a", `creation_time=${creationTime}`,
-          "-metadata:s:a", "language=und",
-          "-metadata:s:a", "vendor_id=[0][0][0][0]",
-        ],
-        brand: "mp42",
-      };
-    }
-
-    case "iphone": {
-      const model = pickRandom(IPHONE_MODELS);
-      const iosVersion = pickRandom(IOS_VERSIONS);
-      return {
-        format: [
-          "-metadata", `creation_time=${creationTime}`,
-          "-metadata", "encoder=Apple",
-          "-metadata", "com.apple.quicktime.make=Apple",
-          "-metadata", `com.apple.quicktime.model=${model}`,
-          "-metadata", `com.apple.quicktime.software=${iosVersion}`,
-          "-metadata", "minor_version=0",
-        ],
-        video: [
-          "-metadata:s:v", "handler_name=Core Media Video",
-          "-metadata:s:v", `creation_time=${creationTime}`,
-          "-metadata:s:v", "language=und",
-          "-metadata:s:v", "vendor_id=appl",
-        ],
-        audio: [
-          "-metadata:s:a", "handler_name=Core Media Audio",
-          "-metadata:s:a", `creation_time=${creationTime}`,
-          "-metadata:s:a", "language=und",
-          "-metadata:s:a", "vendor_id=appl",
-        ],
-        brand: "qt  ",
-      };
-    }
-
-    default:
-      return buildMetadataProfile("capcut");
-  }
-}
-
-function getMetadataArgs(profile: MetadataProfile | MetadataProfile[]): { args: string[]; brand: string } {
+function getMetadataArgs(profile: MetadataProfile | MetadataProfile[]): string[] {
   const profiles = Array.isArray(profile) ? profile : [profile];
 
-  let chosenProfile: string;
-  if (profiles.includes("random") || profiles[0] === "random") {
-    const options = ["capcut", "snapchat", "iphone"];
-    chosenProfile = pickRandom(options);
-  } else {
-    chosenProfile = profiles[0];
+  const allFormat: string[] = [];
+  const allVideo: string[] = [];
+  const allAudio: string[] = [];
+
+  for (const p of profiles) {
+    if (p === "random") {
+      const keys = Object.keys(METADATA_PROFILES);
+      const chosen = keys[Math.floor(Math.random() * keys.length)];
+      const meta = METADATA_PROFILES[chosen];
+      allFormat.push(...meta.format);
+      allVideo.push(...meta.video);
+      allAudio.push(...meta.audio);
+    } else {
+      const meta = METADATA_PROFILES[p];
+      allFormat.push(...meta.format);
+      allVideo.push(...meta.video);
+      allAudio.push(...meta.audio);
+    }
   }
 
-  const meta = buildMetadataProfile(chosenProfile);
-
-  // Strip ALL existing metadata first, then inject fresh
-  const args = [
-    "-map_metadata", "-1",
-    ...meta.format,
-    ...meta.video,
-    ...meta.audio,
-  ];
-
-  return { args, brand: meta.brand };
+  return [...allFormat, ...allVideo, ...allAudio];
 }
 
 // Process segments in parallel batches to avoid overwhelming the server
@@ -205,22 +108,6 @@ export async function POST(req: NextRequest) {
     if (!userId) {
       const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET || "uniq-social-dev-secret-change-in-prod" });
       if (token?.id) userId = token.id as string;
-    }
-
-    // Try API key auth as third fallback
-    if (!userId) {
-      const authHeader = req.headers.get("authorization");
-      if (authHeader?.startsWith("Bearer us_")) {
-        const apiKey = await prisma.apiKey.findUnique({
-          where: { key: authHeader.slice(7) },
-          select: { userId: true, id: true },
-        });
-        if (apiKey) {
-          userId = apiKey.userId;
-          // Update last used timestamp (fire and forget)
-          prisma.apiKey.update({ where: { id: apiKey.id }, data: { lastUsed: new Date() } }).catch(() => {});
-        }
-      }
     }
 
     if (!userId) {
@@ -261,7 +148,6 @@ export async function POST(req: NextRequest) {
           sharpenAmount: 0.3,
           mirror: true,
           metadata: "random",
-          thumbnailRandomise: false,
         };
 
     const jobId = randomUUID();
@@ -290,25 +176,6 @@ export async function POST(req: NextRequest) {
         break;
       }
     }
-
-    // === Hash source video for history tracking ===
-    const sourceHash = createHash("sha256").update(buffer).digest("hex");
-
-    // === Fingerprint-breaking: re-encode with different params ===
-    // Re-encoding alone completely changes the video bitstream.
-    // Tiny invisible tweaks to brightness/contrast/saturation shift the DCT hash.
-    // NO speed changes, NO intro frames, NO pixel padding — just clean re-encode.
-    const speedFactor = 1.0;
-    const brightnessDelta = parseFloat(rand(-0.01, 0.01).toFixed(4));
-    const contrastDelta = parseFloat(rand(0.99, 1.01).toFixed(4));
-    const saturationDelta = parseFloat(rand(0.98, 1.02).toFixed(4));
-    const crfValue = Math.floor(rand(18, 22));
-    const gopSize = Math.floor(rand(24, 72));
-    const hueRotation = 0;
-    const gammaShift = 1.0;
-    const cropOffsetX = 0;
-    const cropOffsetY = 0;
-    const introFadeDuration = 0;
 
     // Random parameters
     const startTrim = parseFloat(rand(config.trimMin, config.trimMax).toFixed(3));
@@ -354,7 +221,6 @@ export async function POST(req: NextRequest) {
     if (config.mirror) vf += ",hflip";
     if (config.grain) vf += `,noise=alls=${config.grainIntensity}:allf=t`;
     if (config.sharpen) vf += `,unsharp=3:3:${config.sharpenAmount}:3:3:0.0`;
-    vf += `,eq=brightness=${brightnessDelta}:contrast=${contrastDelta}:saturation=${saturationDelta}`;
 
     // === SPEED OPTIMISATION 1: Process segments in PARALLEL (3 at a time) ===
     const segFiles: string[] = new Array(segments.length);
@@ -366,10 +232,10 @@ export async function POST(req: NextRequest) {
         const actualStart = startTrim + segStart;
         const segDur = segEnd - segStart;
 
-        // === SPEED OPTIMISATION 2: Use ultrafast preset with randomised CRF/GOP ===
+        // === SPEED OPTIMISATION 2: Use ultrafast preset instead of fast ===
         await execAsync(
           `ffmpeg -y -ss ${actualStart} -i "${inputPath}" -t ${segDur} ` +
-            `-vf "${vf}" -c:v libx264 -preset ultrafast -crf ${crfValue} -g ${gopSize} ` +
+            `-vf "${vf}" -c:v libx264 -preset ultrafast -crf 18 ` +
             `-c:a aac -b:a 128k -pix_fmt yuv420p -threads 2 "${segPath}"`,
           EXEC_OPTIONS
         );
@@ -388,7 +254,7 @@ export async function POST(req: NextRequest) {
     // === SPEED OPTIMISATION 3: Apply metadata with stream copy, NOT re-encode ===
     // Previously this did a FULL re-encode just to add metadata tags — insane.
     // Now we concat + apply metadata in a single pass with -c copy.
-    const { args: metadataArgs, brand } = getMetadataArgs(config.metadata);
+    const metadataArgs = getMetadataArgs(config.metadata);
     const quotedMetadataArgs = metadataArgs.map((arg) => {
       if (arg.includes("=") && arg.includes(" ")) {
         const eqIndex = arg.indexOf("=");
@@ -402,71 +268,25 @@ export async function POST(req: NextRequest) {
       return arg;
     });
 
-    // Concat segments with stream copy + metadata
     await execAsync(
       `ffmpeg -y -f concat -safe 0 -i "${concatPath}" ` +
         `-c copy ` +
-        `${quotedMetadataArgs.join(" ")} -brand ${brand} -movflags +faststart "${outputPath}"`,
+        `${quotedMetadataArgs.join(" ")} -movflags +faststart "${outputPath}"`,
       EXEC_OPTIONS
     );
 
-    // === Optional thumbnail randomisation ===
-    // Adds a very short (0.04s) unique colour flash at frame 1 then removes it,
-    // forcing the platform to generate a different thumbnail hash
-    let finalOutputPath = outputPath;
-    if (config.thumbnailRandomise) {
-      const thumbPath = path.join(tmpDir, "output_thumb.mp4");
-      // Shift hue of first 2 frames by a random amount, making the thumbnail unique
-      const hueShift = Math.floor(rand(1, 360));
-      await execAsync(
-        `ffmpeg -y -i "${outputPath}" -vf "select='if(lt(n\\,2),1,1)',hue=h='if(lt(t,0.08),${hueShift},0)'" ` +
-          `-c:v libx264 -preset ultrafast -crf ${crfValue} -c:a copy "${thumbPath}"`,
-        EXEC_OPTIONS
-      );
-      finalOutputPath = thumbPath;
-    }
-
     // Read output and return
-    const outputBuffer = await readFile(finalOutputPath);
+    const outputBuffer = await readFile(outputPath);
 
     // Cleanup entire tmp dir
     rm(tmpDir, { recursive: true, force: true }).catch(() => {});
 
-    // Log processing job + history
+    // Log processing job
     try {
       const origName = file?.name || "unknown";
-      await Promise.all([
-        prisma.processingJob.create({
-          data: { userId, fileName: origName, copies: 1, status: "completed" },
-        }),
-        prisma.processingHistory.create({
-          data: {
-            userId,
-            sourceHash,
-            fileName: origName,
-            startTrim,
-            zoomPct,
-            cutPoints: JSON.stringify(uniqueCuts),
-            mirror: config.mirror,
-            grainEnabled: config.grain,
-            grainIntensity: config.grainIntensity,
-            sharpenEnabled: config.sharpen,
-            sharpenAmount: config.sharpenAmount,
-            metadataProfile: typeof config.metadata === "string" ? config.metadata : config.metadata[0],
-            speedFactor,
-            brightnessDelta,
-            contrastDelta,
-            saturationDelta,
-            crfValue,
-            gopSize,
-            hueRotation,
-            gammaShift,
-            cropOffsetX,
-            cropOffsetY,
-            introFadeDuration,
-          },
-        }),
-      ]);
+      await prisma.processingJob.create({
+        data: { userId, fileName: origName, copies: 1, status: "completed" },
+      });
     } catch {}
 
     return new NextResponse(outputBuffer, {
