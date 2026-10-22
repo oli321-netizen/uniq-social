@@ -326,49 +326,56 @@ export async function POST(req: NextRequest) {
     });
 
     // Similarity check — returns a 0-1 score (0 = identical, 1 = completely different)
+    // Includes startTrim and zoomPct which are strong visual differentiators
     const paramSimilarity = (
-      params: { mirror: boolean; speedFactor: number; brightnessDelta: number; contrastDelta: number; saturationDelta: number; hueRotation: number; cropOffsetX: number; cropOffsetY: number },
-      prev: typeof previousCopies[0]
+      params: { mirror: boolean; speedFactor: number; brightnessDelta: number; contrastDelta: number; saturationDelta: number; hueRotation: number; cropOffsetX: number; cropOffsetY: number; startTrim: number; zoomPct: number },
+      prev: { mirror: boolean; speedFactor: number; brightnessDelta: number; contrastDelta: number; saturationDelta: number; hueRotation: number; cropOffsetX: number; cropOffsetY: number; startTrim: number; zoomPct: number }
     ): number => {
       let score = 0;
-      const checks = 8;
+      const checks = 10;
       // Mirror is binary — same = 0 points, different = full points
       if (params.mirror !== prev.mirror) score += 1;
-      // Speed: range is 1.005-1.015, so delta > 0.004 is different enough
-      if (Math.abs(params.speedFactor - prev.speedFactor) > 0.004) score += 1;
-      // Brightness: range is -0.01 to 0.01, delta > 0.008 is different
-      if (Math.abs(params.brightnessDelta - prev.brightnessDelta) > 0.008) score += 1;
-      // Contrast: range is 0.99-1.01, delta > 0.008 is different
-      if (Math.abs(params.contrastDelta - prev.contrastDelta) > 0.008) score += 1;
-      // Saturation: range is 0.98-1.02, delta > 0.015 is different
-      if (Math.abs(params.saturationDelta - prev.saturationDelta) > 0.015) score += 1;
-      // Hue: range is -2 to 2, delta > 1.5 is different
-      if (Math.abs(params.hueRotation - prev.hueRotation) > 1.5) score += 1;
-      // Crop offset: range is -8 to 8, delta > 6 is different
-      if (Math.abs(params.cropOffsetX - prev.cropOffsetX) > 6) score += 1;
-      if (Math.abs(params.cropOffsetY - prev.cropOffsetY) > 6) score += 1;
+      // Speed: range is 1.003-1.02, so delta > 0.005 is different enough
+      if (Math.abs(params.speedFactor - prev.speedFactor) > 0.005) score += 1;
+      // Brightness: range is -0.015 to 0.015, delta > 0.01 is different
+      if (Math.abs(params.brightnessDelta - prev.brightnessDelta) > 0.01) score += 1;
+      // Contrast: range is 0.985-1.015, delta > 0.01 is different
+      if (Math.abs(params.contrastDelta - prev.contrastDelta) > 0.01) score += 1;
+      // Saturation: range is 0.97-1.03, delta > 0.02 is different
+      if (Math.abs(params.saturationDelta - prev.saturationDelta) > 0.02) score += 1;
+      // Hue: range is -3 to 3, delta > 2 is different
+      if (Math.abs(params.hueRotation - prev.hueRotation) > 2) score += 1;
+      // Crop offset: range is -12 to 12, delta > 8 is different
+      if (Math.abs(params.cropOffsetX - prev.cropOffsetX) > 8) score += 1;
+      if (Math.abs(params.cropOffsetY - prev.cropOffsetY) > 8) score += 1;
+      // Start trim: range is trimMin-trimMax (e.g. 0.05-0.15), delta > 0.03 is different
+      if (Math.abs(params.startTrim - prev.startTrim) > 0.03) score += 1;
+      // Zoom: range is zoomMin-zoomMax (e.g. 1-7), delta > 2 is different
+      if (Math.abs(params.zoomPct - prev.zoomPct) > 2) score += 1;
       return score / checks;
     };
 
-    // Generate parameters, re-rolling if too similar to any previous copy (up to 10 attempts)
+    // Generate parameters with wider ranges for more headroom across many copies
     const generateParams = () => {
       return {
-        speedFactor: config.speedShift ? parseFloat(rand(1.005, 1.015).toFixed(4)) : 1.0,
-        brightnessDelta: parseFloat(rand(-0.01, 0.01).toFixed(4)),
-        contrastDelta: parseFloat(rand(0.99, 1.01).toFixed(4)),
-        saturationDelta: parseFloat(rand(0.98, 1.02).toFixed(4)),
-        crfValue: Math.floor(rand(18, 22)),
+        speedFactor: config.speedShift ? parseFloat(rand(1.003, 1.02).toFixed(4)) : 1.0,
+        brightnessDelta: parseFloat(rand(-0.015, 0.015).toFixed(4)),
+        contrastDelta: parseFloat(rand(0.985, 1.015).toFixed(4)),
+        saturationDelta: parseFloat(rand(0.97, 1.03).toFixed(4)),
+        crfValue: Math.floor(rand(18, 23)),
         gopSize: Math.floor(rand(24, 72)),
-        hueRotation: config.hueShift ? parseFloat(rand(-2, 2).toFixed(2)) : 0,
-        cropOffsetX: config.cropOffset ? Math.floor(rand(-8, 8)) : 0,
-        cropOffsetY: config.cropOffset ? Math.floor(rand(-8, 8)) : 0,
+        hueRotation: config.hueShift ? parseFloat(rand(-3, 3).toFixed(2)) : 0,
+        cropOffsetX: config.cropOffset ? Math.floor(rand(-12, 12)) : 0,
+        cropOffsetY: config.cropOffset ? Math.floor(rand(-12, 12)) : 0,
         mirror: config.mirror,
+        startTrim: parseFloat(rand(config.trimMin, config.trimMax).toFixed(3)),
+        zoomPct: parseFloat(rand(config.zoomMin, config.zoomMax).toFixed(2)),
       };
     };
 
     let params = generateParams();
-    const MIN_UNIQUENESS = 0.35; // At least 35% of params must be different
-    for (let attempt = 0; attempt < 10; attempt++) {
+    const MIN_UNIQUENESS = 0.3; // At least 30% of params must be different
+    for (let attempt = 0; attempt < 20; attempt++) {
       const tooSimilar = previousCopies.some(
         (prev) => paramSimilarity(params, prev) < MIN_UNIQUENESS
       );
@@ -376,13 +383,9 @@ export async function POST(req: NextRequest) {
       params = generateParams();
     }
 
-    const { speedFactor, brightnessDelta, contrastDelta, saturationDelta, crfValue, gopSize, hueRotation, cropOffsetX, cropOffsetY } = params;
+    const { speedFactor, brightnessDelta, contrastDelta, saturationDelta, crfValue, gopSize, hueRotation, cropOffsetX, cropOffsetY, startTrim, zoomPct } = params;
     const gammaShift = 1.0;
     const introFadeDuration = 0;
-
-    // Random parameters
-    const startTrim = parseFloat(rand(config.trimMin, config.trimMax).toFixed(3));
-    const zoomPct = parseFloat(rand(config.zoomMin, config.zoomMax).toFixed(2));
     const effectiveDuration = duration - startTrim;
 
     // Generate random cut points
