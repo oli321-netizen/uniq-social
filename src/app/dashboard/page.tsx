@@ -312,24 +312,30 @@ export default function Dashboard() {
     throw new Error("Processing failed after retries");
   };
 
-  // Process copies sequentially so each copy's params are saved to DB
-  // before the next one starts — ensures uniqueness checking works across copies
+  // Process copies for a single video concurrently (up to 3 at a time)
   const processVideoCopies = async (vid: VideoFile): Promise<{ url: string; filename: string }[]> => {
-    const results: { url: string; filename: string }[] = [];
+    const COPY_CONCURRENCY = 3;
+    const results: { url: string; filename: string }[] = new Array(copies);
     let completedCopies = 0;
 
-    for (let copyIdx = 0; copyIdx < copies; copyIdx++) {
-      const result = await processVideo(vid, copyIdx);
-      results.push(result);
-      completedCopies++;
-      setCredits((prev) => Math.max(0, prev - 1));
-      setVideos((prev) =>
-        prev.map((v) =>
-          v.id === vid.id
-            ? { ...v, progress: Math.round((completedCopies / copies) * 90) + 10, completedCopies }
-            : v
-        )
-      );
+    // Process copies in batches of COPY_CONCURRENCY
+    for (let batch = 0; batch < copies; batch += COPY_CONCURRENCY) {
+      const batchSize = Math.min(COPY_CONCURRENCY, copies - batch);
+      const batchPromises = Array.from({ length: batchSize }, async (_, i) => {
+        const copyIdx = batch + i;
+        const result = await processVideo(vid, copyIdx);
+        results[copyIdx] = result;
+        completedCopies++;
+        setCredits((prev) => Math.max(0, prev - 1));
+        setVideos((prev) =>
+          prev.map((v) =>
+            v.id === vid.id
+              ? { ...v, progress: Math.round((completedCopies / copies) * 90) + 10, completedCopies }
+              : v
+          )
+        );
+      });
+      await Promise.all(batchPromises);
     }
 
     return results;
