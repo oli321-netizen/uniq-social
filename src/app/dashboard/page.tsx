@@ -37,6 +37,8 @@ import InstallButton from "@/components/InstallButton";
 type VideoOutput = {
   url: string;
   filename: string;
+  dupAvoided?: boolean;
+  prevCopies?: number;
 };
 
 type VideoFile = {
@@ -269,7 +271,7 @@ export default function Dashboard() {
 
   const clearAll = () => setVideos([]);
 
-  const processVideo = async (vid: VideoFile, copyIndex: number, retries = 2): Promise<{ url: string; filename: string }> => {
+  const processVideo = async (vid: VideoFile, copyIndex: number, retries = 2): Promise<{ url: string; filename: string; dupAvoided?: boolean; prevCopies?: number }> => {
     const formData = new FormData();
     formData.append("video", vid.file);
     formData.append(
@@ -297,12 +299,14 @@ export default function Dashboard() {
           throw new Error(errData.error || `Processing failed: ${res.statusText}`);
         }
 
+        const dupAvoided = res.headers.get("X-Duplicate-Avoided") === "true";
+        const prevCopies = parseInt(res.headers.get("X-Previous-Copies") || "0");
         const blob = await res.blob();
         const ext = vid.name.split(".").pop() || "mp4";
         const suffix = copies > 1 ? `_v${copyIndex + 1}` : "";
         const filename = vid.name.replace(`.${ext}`, `_uniq${suffix}.mp4`);
         const url = URL.createObjectURL(blob);
-        return { url, filename };
+        return { url, filename, dupAvoided, prevCopies };
       } catch (err) {
         if (attempt >= retries) throw err;
         // Wait briefly before retry
@@ -312,30 +316,24 @@ export default function Dashboard() {
     throw new Error("Processing failed after retries");
   };
 
-  // Process copies for a single video concurrently (up to 3 at a time)
-  const processVideoCopies = async (vid: VideoFile): Promise<{ url: string; filename: string }[]> => {
-    const COPY_CONCURRENCY = 3;
-    const results: { url: string; filename: string }[] = new Array(copies);
+  // Process copies sequentially so each copy's params are saved to DB
+  // before the next one starts — ensures uniqueness checking works across copies
+  const processVideoCopies = async (vid: VideoFile): Promise<{ url: string; filename: string; dupAvoided?: boolean; prevCopies?: number }[]> => {
+    const results: { url: string; filename: string; dupAvoided?: boolean; prevCopies?: number }[] = [];
     let completedCopies = 0;
 
-    // Process copies in batches of COPY_CONCURRENCY
-    for (let batch = 0; batch < copies; batch += COPY_CONCURRENCY) {
-      const batchSize = Math.min(COPY_CONCURRENCY, copies - batch);
-      const batchPromises = Array.from({ length: batchSize }, async (_, i) => {
-        const copyIdx = batch + i;
-        const result = await processVideo(vid, copyIdx);
-        results[copyIdx] = result;
-        completedCopies++;
-        setCredits((prev) => Math.max(0, prev - 1));
-        setVideos((prev) =>
-          prev.map((v) =>
-            v.id === vid.id
-              ? { ...v, progress: Math.round((completedCopies / copies) * 90) + 10, completedCopies }
-              : v
-          )
-        );
-      });
-      await Promise.all(batchPromises);
+    for (let copyIdx = 0; copyIdx < copies; copyIdx++) {
+      const result = await processVideo(vid, copyIdx);
+      results.push(result);
+      completedCopies++;
+      setCredits((prev) => Math.max(0, prev - 1));
+      setVideos((prev) =>
+        prev.map((v) =>
+          v.id === vid.id
+            ? { ...v, progress: Math.round((completedCopies / copies) * 90) + 10, completedCopies }
+            : v
+        )
+      );
     }
 
     return results;
@@ -433,53 +431,61 @@ export default function Dashboard() {
   const doneCount = videos.filter((v) => v.status === "done").length;
 
   return (
-    <div className="min-h-screen bg-[#010313]">
+    <div className="min-h-screen bg-[#010313] relative overflow-hidden">
+      {/* Ambient background glow */}
+      <div className="fixed inset-0 pointer-events-none">
+        <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] rounded-full bg-purple-600/[0.04] blur-[120px]" />
+        <div className="absolute top-[30%] right-[-5%] w-[400px] h-[400px] rounded-full bg-indigo-600/[0.03] blur-[100px]" />
+        <div className="absolute bottom-[-10%] left-[30%] w-[600px] h-[600px] rounded-full bg-fuchsia-600/[0.02] blur-[140px]" />
+      </div>
+
       {/* Top bar */}
-      <header className="border-b border-white/5 bg-[#010313]/80 backdrop-blur-xl sticky top-0 z-50">
+      <header className="border-b border-white/[0.06] bg-[#010313]/60 backdrop-blur-2xl sticky top-0 z-50">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-3 sm:px-6">
           <div className="flex items-center gap-3 sm:gap-6">
-            <a href="/" className="flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-purple-500/10 border border-purple-500/20">
-                <Fingerprint className="h-3.5 w-3.5 text-purple-400" />
+            <a href="/" className="flex items-center gap-2.5 group">
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500/20 to-indigo-500/20 border border-purple-500/20 group-hover:border-purple-500/40 transition-colors shadow-lg shadow-purple-500/5">
+                <Fingerprint className="h-4 w-4 text-purple-400" />
               </div>
               <span className="text-sm font-semibold tracking-tight hidden sm:inline">
                 Uniq<span className="text-purple-400">Social</span>
               </span>
             </a>
-            <span className="text-xs text-slate-600 hidden sm:inline">Dashboard</span>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-4">
-            <div className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg bg-purple-500/10 border border-purple-500/20">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-purple-500/10 to-indigo-500/10 border border-purple-500/15 backdrop-blur-sm">
               <Zap className="h-3.5 w-3.5 text-purple-400" />
-              <span className="text-xs sm:text-sm font-medium text-purple-300">
+              <span className="text-xs sm:text-sm font-semibold text-purple-300 tabular-nums">
                 {credits}
               </span>
             </div>
             <button
               onClick={() => setShowTopUp(true)}
-              className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium transition-all hover:shadow-lg hover:shadow-purple-500/20"
+              className="flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-medium transition-all hover:shadow-lg hover:shadow-purple-500/25 active:scale-[0.98]"
             >
               <Plus className="h-3 w-3" />
               <span className="hidden sm:inline">Buy Credits</span>
             </button>
             <InstallButton />
-            <button
-              onClick={toggleTheme}
-              className="text-slate-500 hover:text-white transition-colors"
-              title="Toggle theme"
-            >
-              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </button>
-            <a href="/account" className="text-slate-500 hover:text-white transition-colors">
-              <Settings className="h-4 w-4" />
-            </a>
-            <button
-              onClick={() => signOut({ callbackUrl: "/login" })}
-              className="text-slate-500 hover:text-white transition-colors"
-            >
-              <LogOut className="h-4 w-4" />
-            </button>
+            <div className="flex items-center gap-1 ml-1">
+              <button
+                onClick={toggleTheme}
+                className="p-2 rounded-lg text-slate-500 hover:text-white hover:bg-white/5 transition-all"
+                title="Toggle theme"
+              >
+                {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              </button>
+              <a href="/account" className="p-2 rounded-lg text-slate-500 hover:text-white hover:bg-white/5 transition-all">
+                <Settings className="h-4 w-4" />
+              </a>
+              <button
+                onClick={() => signOut({ callbackUrl: "/login" })}
+                className="p-2 rounded-lg text-slate-500 hover:text-white hover:bg-white/5 transition-all"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -548,8 +554,8 @@ export default function Dashboard() {
         </div>
       )}
       {/* Tab bar */}
-      <div className="mx-auto max-w-6xl px-3 sm:px-6 pt-4 sm:pt-6">
-        <div className="flex gap-1 p-1 rounded-xl bg-white/[0.03] border border-white/5 w-full sm:w-fit overflow-x-auto">
+      <div className="mx-auto max-w-6xl px-3 sm:px-6 pt-4 sm:pt-6 relative">
+        <div className="flex gap-1 p-1.5 rounded-2xl bg-white/[0.03] border border-white/[0.06] w-full sm:w-fit overflow-x-auto backdrop-blur-sm">
           {([
             { key: "process", label: "Process", icon: "Zap" },
             { key: "history", label: "History", icon: "History" },
@@ -560,10 +566,10 @@ export default function Dashboard() {
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
                 activeTab === tab.key
-                  ? "bg-purple-600 text-white shadow-lg shadow-purple-500/20"
-                  : "text-slate-500 hover:text-white hover:bg-white/5"
+                  ? "bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-500/25"
+                  : "text-slate-500 hover:text-slate-300 hover:bg-white/[0.04]"
               }`}
             >
               {tab.key === "process" && <Zap className="h-3.5 w-3.5" />}
@@ -571,7 +577,7 @@ export default function Dashboard() {
               {tab.key === "duplicates" && <Search className="h-3.5 w-3.5" />}
               {tab.key === "stats" && <BarChart3 className="h-3.5 w-3.5" />}
               {tab.key === "refer" && <Gift className="h-3.5 w-3.5" />}
-              {tab.label}
+              <span className="whitespace-nowrap">{tab.label}</span>
             </button>
           ))}
         </div>
@@ -587,27 +593,35 @@ export default function Dashboard() {
               onDrop={onDrop}
               onDragOver={(e) => e.preventDefault()}
               onClick={() => fileInputRef.current?.click()}
-              className="group cursor-pointer rounded-2xl border-2 border-dashed border-white/10 hover:border-purple-500/30 bg-white/[0.01] hover:bg-purple-500/[0.02] transition-all duration-300 p-6 sm:p-12 text-center"
+              className="group cursor-pointer relative rounded-2xl transition-all duration-500 p-6 sm:p-14 text-center"
             >
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                accept="video/*"
-                className="hidden"
-                onChange={(e) => {
-                  if (e.target.files) addFiles(Array.from(e.target.files));
-                }}
-              />
-              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-purple-500/10 border border-purple-500/20 group-hover:bg-purple-500/15 transition-colors">
-                <Upload className="h-6 w-6 text-purple-400" />
+              {/* Animated gradient border */}
+              <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-purple-600/20 via-fuchsia-500/20 to-indigo-600/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-[length:300%_100%] animate-shimmer" />
+              <div className="absolute inset-[1px] rounded-2xl bg-[#010313]" />
+              {/* Dashed border default */}
+              <div className="absolute inset-0 rounded-2xl border-2 border-dashed border-white/[0.06] group-hover:border-transparent transition-colors duration-300" />
+              {/* Inner content */}
+              <div className="relative">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept="video/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files) addFiles(Array.from(e.target.files));
+                  }}
+                />
+                <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-500/15 to-indigo-500/15 border border-purple-500/20 group-hover:border-purple-500/40 group-hover:shadow-lg group-hover:shadow-purple-500/10 transition-all duration-300">
+                  <Upload className="h-7 w-7 text-purple-400 group-hover:scale-110 transition-transform duration-300" />
+                </div>
+                <p className="text-sm font-semibold text-slate-200 mb-1.5 group-hover:text-white transition-colors">
+                  Drop videos here or click to upload
+                </p>
+                <p className="text-xs text-slate-600 group-hover:text-slate-500 transition-colors">
+                  MP4, MOV, AVI, MKV — up to 500MB per file
+                </p>
               </div>
-              <p className="text-sm font-medium text-slate-300 mb-1">
-                Drop videos here or click to upload
-              </p>
-              <p className="text-xs text-slate-600">
-                MP4, MOV, AVI, MKV — up to 500MB per file
-              </p>
             </div>
 
             {/* Video list */}
@@ -633,14 +647,14 @@ export default function Dashboard() {
                 {videos.map((vid) => (
                   <div
                     key={vid.id}
-                    className={`relative flex items-center gap-4 p-4 rounded-xl border transition-all duration-500 ${
+                    className={`relative flex items-center gap-4 p-4 rounded-2xl border transition-all duration-500 backdrop-blur-sm ${
                       vid.status === "processing"
-                        ? "border-purple-500/30 bg-purple-500/[0.04] shadow-[0_0_20px_rgba(168,85,247,0.08)]"
+                        ? "border-purple-500/25 bg-gradient-to-r from-purple-500/[0.06] to-indigo-500/[0.03] shadow-[0_0_30px_rgba(168,85,247,0.08)]"
                         : vid.status === "done"
-                        ? "border-green-500/20 bg-green-500/[0.02]"
+                        ? "border-emerald-500/20 bg-gradient-to-r from-emerald-500/[0.04] to-transparent"
                         : vid.status === "error"
-                        ? "border-red-500/20 bg-red-500/[0.02]"
-                        : "border-white/5 bg-white/[0.02]"
+                        ? "border-red-500/20 bg-red-500/[0.03]"
+                        : "border-white/[0.06] bg-white/[0.02] hover:border-white/10 hover:bg-white/[0.03]"
                     }`}
                   >
                     {/* Icon / Progress ring */}
@@ -649,31 +663,31 @@ export default function Dashboard() {
                         <div className="relative">
                           <CircularProgress progress={vid.progress} />
                           <div className="absolute inset-0 flex items-center justify-center">
-                            <span className="text-[10px] font-bold text-purple-400">{vid.progress}%</span>
+                            <span className="text-[10px] font-bold text-purple-400 tabular-nums">{vid.progress}%</span>
                           </div>
                         </div>
                       ) : vid.status === "done" ? (
-                        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-green-500/10 border border-green-500/20">
-                          <Check className="h-5 w-5 text-green-400" />
+                        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-500/10 border border-emerald-500/20 shadow-lg shadow-emerald-500/5">
+                          <Check className="h-5 w-5 text-emerald-400" />
                         </div>
                       ) : vid.status === "error" ? (
-                        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-red-500/10 border border-red-500/20">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-500/10 border border-red-500/20">
                           <X className="h-5 w-5 text-red-400" />
                         </div>
                       ) : (
-                        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/5 border border-white/10">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/[0.04] border border-white/[0.08]">
                           <FileVideo className="h-5 w-5 text-slate-500" />
                         </div>
                       )}
                     </div>
 
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{vid.name}</p>
+                      <p className="text-sm font-medium truncate text-slate-200">{vid.name}</p>
                       {vid.status === "processing" ? (
                         <div className="flex items-center gap-2 mt-0.5">
                           <ProcessingStepText progress={vid.progress} />
                           {vid.completedCopies !== undefined && (
-                            <span className="text-[11px] text-slate-600">
+                            <span className="text-[11px] text-slate-600 tabular-nums">
                               · {vid.completedCopies}/{copies} clips
                             </span>
                           )}
@@ -682,9 +696,9 @@ export default function Dashboard() {
                         <p className="text-xs text-slate-600">{vid.size}</p>
                       )}
                       {vid.status === "processing" && (
-                        <div className="mt-2 h-1 rounded-full bg-white/5 overflow-hidden">
+                        <div className="mt-2.5 h-1.5 rounded-full bg-white/[0.04] overflow-hidden">
                           <div
-                            className="h-full rounded-full transition-all duration-700 ease-out bg-gradient-to-r from-purple-600 via-fuchsia-500 to-purple-600 bg-[length:200%_100%] animate-shimmer shadow-[0_0_8px_rgba(168,85,247,0.5)]"
+                            className="h-full rounded-full transition-all duration-700 ease-out bg-gradient-to-r from-purple-600 via-fuchsia-500 to-purple-600 bg-[length:200%_100%] animate-shimmer shadow-[0_0_12px_rgba(168,85,247,0.4)]"
                             style={{ width: `${vid.progress}%` }}
                           />
                         </div>
@@ -696,22 +710,27 @@ export default function Dashboard() {
                         <>
                           <button
                             onClick={() => setPreviewVid(vid)}
-                            className="text-xs text-purple-400 hover:text-purple-300 font-medium transition-colors"
+                            className="text-xs text-purple-400 hover:text-purple-300 font-medium transition-colors px-2.5 py-1 rounded-lg hover:bg-purple-500/10"
                           >
                             Preview
                           </button>
-                          <span className="text-xs text-green-400 font-medium">
+                          <span className="text-xs text-emerald-400 font-medium bg-emerald-500/10 px-2.5 py-1 rounded-lg">
                             {vid.outputs.length} clip{vid.outputs.length !== 1 ? "s" : ""} ready
                           </span>
+                          {vid.outputs.some((o) => o.dupAvoided) && (
+                            <span className="text-[9px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded-lg">
+                              DUPS FIXED
+                            </span>
+                          )}
                         </>
                       )}
                       {vid.status === "error" && (
-                        <span className="text-xs text-red-400">Failed</span>
+                        <span className="text-xs text-red-400 font-medium">Failed</span>
                       )}
                       {vid.status === "pending" && (
                         <button
                           onClick={() => removeVideo(vid.id)}
-                          className="text-slate-600 hover:text-red-400 transition-colors"
+                          className="p-1.5 rounded-lg text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-all"
                         >
                           <X className="h-4 w-4" />
                         </button>
@@ -758,7 +777,7 @@ export default function Dashboard() {
                         setIsZipping(false);
                       }
                     }}
-                    className="w-full py-3 rounded-xl font-medium text-sm bg-purple-600 hover:bg-purple-700 text-white transition-all flex items-center justify-center gap-2 hover:shadow-lg hover:shadow-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full py-3.5 rounded-2xl font-medium text-sm bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white transition-all flex items-center justify-center gap-2 hover:shadow-lg hover:shadow-purple-500/25 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
                   >
                     {isZipping ? (
                       <>
@@ -780,9 +799,11 @@ export default function Dashboard() {
           {/* Sidebar — settings */}
           <div className="space-y-6">
             {/* Metadata profile — redesigned with logos */}
-            <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-5">
+            <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5 backdrop-blur-sm">
               <h3 className="text-sm font-semibold mb-1 flex items-center gap-2">
-                <Fingerprint className="h-4 w-4 text-purple-400" />
+                <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-purple-500/15">
+                  <Fingerprint className="h-3.5 w-3.5 text-purple-400" />
+                </div>
                 Video Identity
               </h3>
               <p className="text-[11px] text-[--text-muted] mb-4">Choose how your video appears to platforms</p>
@@ -973,9 +994,11 @@ export default function Dashboard() {
             </div>
 
             {/* Edit settings */}
-            <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-5">
+            <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5 backdrop-blur-sm">
               <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
-                <Settings className="h-4 w-4 text-purple-400" />
+                <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-purple-500/15">
+                  <Settings className="h-3.5 w-3.5 text-purple-400" />
+                </div>
                 Edit Parameters
               </h3>
 
@@ -1187,37 +1210,43 @@ export default function Dashboard() {
             })()}
 
             {/* Process button */}
-            <button
-              onClick={processAll}
-              disabled={pendingCount === 0 || isProcessing || credits < pendingCount * copies}
-              className={`w-full py-3.5 rounded-xl font-medium text-sm transition-all flex items-center justify-center gap-2 ${
-                pendingCount > 0 && !isProcessing && credits >= pendingCount * copies
-                  ? "bg-purple-600 hover:bg-purple-700 text-white hover:shadow-lg hover:shadow-purple-500/20"
-                  : "bg-white/5 text-slate-600 cursor-not-allowed"
-              }`}
-            >
-              {isProcessing ? (
-                <div className="flex items-center gap-3">
-                  <div className="relative h-5 w-5">
-                    <div className="absolute inset-0 rounded-full border-2 border-purple-400/30" />
-                    <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-purple-400 animate-spin" />
-                  </div>
-                  <span className="text-slate-400">Processing — do not close this tab</span>
-                </div>
-              ) : (
-                <>
-                  <Zap className="h-4 w-4" />
-                  {pendingCount > 0
-                    ? `Generate ${pendingCount * copies} video${pendingCount * copies !== 1 ? "s" : ""}`
-                    : "Process videos"}
-                  {pendingCount > 0 && (
-                    <span className="text-purple-300 text-xs">
-                      ({pendingCount * copies} credit{pendingCount * copies !== 1 ? "s" : ""})
-                    </span>
-                  )}
-                </>
+            <div className="relative group">
+              {/* Glow behind button */}
+              {pendingCount > 0 && !isProcessing && credits >= pendingCount * copies && (
+                <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 opacity-20 group-hover:opacity-30 blur-lg transition-opacity duration-500" />
               )}
-            </button>
+              <button
+                onClick={processAll}
+                disabled={pendingCount === 0 || isProcessing || credits < pendingCount * copies}
+                className={`relative w-full py-4 rounded-2xl font-semibold text-sm transition-all flex items-center justify-center gap-2.5 ${
+                  pendingCount > 0 && !isProcessing && credits >= pendingCount * copies
+                    ? "bg-gradient-to-r from-purple-600 via-purple-500 to-indigo-600 text-white hover:shadow-xl hover:shadow-purple-500/30 active:scale-[0.98]"
+                    : "bg-white/[0.04] text-slate-600 cursor-not-allowed border border-white/[0.06]"
+                }`}
+              >
+                {isProcessing ? (
+                  <div className="flex items-center gap-3">
+                    <div className="relative h-5 w-5">
+                      <div className="absolute inset-0 rounded-full border-2 border-purple-400/30" />
+                      <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-purple-400 animate-spin" />
+                    </div>
+                    <span className="text-slate-400">Processing — do not close this tab</span>
+                  </div>
+                ) : (
+                  <>
+                    <Zap className="h-4 w-4" />
+                    {pendingCount > 0
+                      ? `Generate ${pendingCount * copies} video${pendingCount * copies !== 1 ? "s" : ""}`
+                      : "Process videos"}
+                    {pendingCount > 0 && (
+                      <span className="text-purple-200/80 text-xs font-medium">
+                        ({pendingCount * copies} credit{pendingCount * copies !== 1 ? "s" : ""})
+                      </span>
+                    )}
+                  </>
+                )}
+              </button>
+            </div>
             {pendingCount > 0 && !isProcessing && credits < pendingCount * copies && (
               <p className="text-xs text-red-400 text-center mt-2">
                 Not enough credits — you need {pendingCount * copies} but have {credits}.{" "}
