@@ -1,6 +1,14 @@
 import Stripe from "stripe";
 
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+let _stripe: Stripe | null = null;
+export const stripe: Stripe = new Proxy({} as Stripe, {
+  get(_target, prop) {
+    if (!_stripe) {
+      _stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+    }
+    return (_stripe as any)[prop];
+  },
+});
 
 /* ── One-time credit top-ups ── */
 export const CREDIT_PACKS = [
