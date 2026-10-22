@@ -326,10 +326,10 @@ export async function POST(req: NextRequest) {
     });
 
     // Similarity check — returns a 0-1 score (0 = identical, 1 = completely different)
-    function paramSimilarity(
+    const paramSimilarity = (
       params: { mirror: boolean; speedFactor: number; brightnessDelta: number; contrastDelta: number; saturationDelta: number; hueRotation: number; cropOffsetX: number; cropOffsetY: number },
       prev: typeof previousCopies[0]
-    ): number {
+    ): number => {
       let score = 0;
       const checks = 8;
       // Mirror is binary — same = 0 points, different = full points
@@ -348,10 +348,10 @@ export async function POST(req: NextRequest) {
       if (Math.abs(params.cropOffsetX - prev.cropOffsetX) > 6) score += 1;
       if (Math.abs(params.cropOffsetY - prev.cropOffsetY) > 6) score += 1;
       return score / checks;
-    }
+    };
 
     // Generate parameters, re-rolling if too similar to any previous copy (up to 10 attempts)
-    function generateParams() {
+    const generateParams = () => {
       return {
         speedFactor: config.speedShift ? parseFloat(rand(1.005, 1.015).toFixed(4)) : 1.0,
         brightnessDelta: parseFloat(rand(-0.01, 0.01).toFixed(4)),
@@ -364,7 +364,7 @@ export async function POST(req: NextRequest) {
         cropOffsetY: config.cropOffset ? Math.floor(rand(-8, 8)) : 0,
         mirror: config.mirror,
       };
-    }
+    };
 
     let params = generateParams();
     const MIN_UNIQUENESS = 0.35; // At least 35% of params must be different
