@@ -154,10 +154,10 @@ export default function Dashboard() {
 
   // Edit parameter ranges
   const [editSettings, setEditSettings] = useState({
-    trimMin: 0.05,
-    trimMax: 0.15,
-    cutsMin: 0,
-    cutsMax: 0,
+    trimMin: 0.3,
+    trimMax: 0.7,
+    cutsMin: 3,
+    cutsMax: 7,
     zoomMin: 1,
     zoomMax: 7,
     grain: true,
@@ -166,7 +166,6 @@ export default function Dashboard() {
     sharpenAmount: 0.3,
     mirror: true,
     thumbnailRandomise: false,
-    hiddenEmoji: true,
   });
 
   const onDrop = useCallback((e: React.DragEvent) => {
@@ -932,42 +931,6 @@ export default function Dashboard() {
                   }`}>
                     <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-0.5 transition-all ${
                       editSettings.thumbnailRandomise ? "left-[18px]" : "left-[3px]"
-                    }`} />
-                  </div>
-                </button>
-
-                {/* Hidden emoji overlay toggle */}
-                <button
-                  onClick={() =>
-                    setEditSettings({
-                      ...editSettings,
-                      hiddenEmoji: !editSettings.hiddenEmoji,
-                    })
-                  }
-                  className={`w-full flex items-center justify-between p-3 rounded-xl border text-sm transition-all mt-2 ${
-                    editSettings.hiddenEmoji
-                      ? "border-purple-500/30 bg-purple-500/10"
-                      : "border-white/5 bg-white/[0.01] hover:border-white/10"
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
-                      editSettings.hiddenEmoji ? "bg-purple-500/20" : "bg-white/5"
-                    }`}>
-                      <span className={`text-sm ${editSettings.hiddenEmoji ? "opacity-100" : "opacity-40"}`}>✦</span>
-                    </div>
-                    <div className="text-left">
-                      <span className={`font-medium block ${editSettings.hiddenEmoji ? "text-[--text-primary]" : "text-[--text-secondary]"}`}>
-                        Hidden Overlay
-                      </span>
-                      <span className="text-[10px] text-[--text-muted] block">Invisible marker to beat hash matching</span>
-                    </div>
-                  </div>
-                  <div className={`w-9 h-5 rounded-full transition-all relative ${
-                    editSettings.hiddenEmoji ? "bg-purple-500" : "bg-white/10"
-                  }`}>
-                    <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-0.5 transition-all ${
-                      editSettings.hiddenEmoji ? "left-[18px]" : "left-[3px]"
                     }`} />
                   </div>
                 </button>

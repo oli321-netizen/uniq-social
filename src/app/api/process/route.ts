@@ -302,22 +302,76 @@ export async function POST(req: NextRequest) {
     // === Hash source video for history tracking ===
     const sourceHash = createHash("sha256").update(buffer).digest("hex");
 
-    // === Fingerprint-breaking: re-encode with different params ===
-    // Re-encoding alone completely changes the video bitstream.
-    // Tiny invisible tweaks to brightness/contrast/saturation shift the DCT hash.
-    // NO speed changes, NO intro frames, NO pixel padding — just clean re-encode.
-    // Tiny speed shift — imperceptible but changes frame alignment against perceptual hash
-    const speedFactor = parseFloat(rand(1.005, 1.015).toFixed(4));
-    const brightnessDelta = parseFloat(rand(-0.01, 0.01).toFixed(4));
-    const contrastDelta = parseFloat(rand(0.99, 1.01).toFixed(4));
-    const saturationDelta = parseFloat(rand(0.98, 1.02).toFixed(4));
-    const crfValue = Math.floor(rand(18, 22));
-    const gopSize = Math.floor(rand(24, 72));
-    const hueRotation = parseFloat(rand(-2, 2).toFixed(2));
+    // === Duplicate detection: fetch all previous copies of this source video ===
+    const previousCopies = await prisma.processingHistory.findMany({
+      where: { sourceHash },
+      select: {
+        mirror: true,
+        speedFactor: true,
+        brightnessDelta: true,
+        contrastDelta: true,
+        saturationDelta: true,
+        hueRotation: true,
+        cropOffsetX: true,
+        cropOffsetY: true,
+        startTrim: true,
+        zoomPct: true,
+      },
+    });
+
+    // Similarity check — returns a 0-1 score (0 = identical, 1 = completely different)
+    function paramSimilarity(
+      params: { mirror: boolean; speedFactor: number; brightnessDelta: number; contrastDelta: number; saturationDelta: number; hueRotation: number; cropOffsetX: number; cropOffsetY: number },
+      prev: typeof previousCopies[0]
+    ): number {
+      let score = 0;
+      const checks = 8;
+      // Mirror is binary — same = 0 points, different = full points
+      if (params.mirror !== prev.mirror) score += 1;
+      // Speed: range is 1.005-1.015, so delta > 0.004 is different enough
+      if (Math.abs(params.speedFactor - prev.speedFactor) > 0.004) score += 1;
+      // Brightness: range is -0.01 to 0.01, delta > 0.008 is different
+      if (Math.abs(params.brightnessDelta - prev.brightnessDelta) > 0.008) score += 1;
+      // Contrast: range is 0.99-1.01, delta > 0.008 is different
+      if (Math.abs(params.contrastDelta - prev.contrastDelta) > 0.008) score += 1;
+      // Saturation: range is 0.98-1.02, delta > 0.015 is different
+      if (Math.abs(params.saturationDelta - prev.saturationDelta) > 0.015) score += 1;
+      // Hue: range is -2 to 2, delta > 1.5 is different
+      if (Math.abs(params.hueRotation - prev.hueRotation) > 1.5) score += 1;
+      // Crop offset: range is -8 to 8, delta > 6 is different
+      if (Math.abs(params.cropOffsetX - prev.cropOffsetX) > 6) score += 1;
+      if (Math.abs(params.cropOffsetY - prev.cropOffsetY) > 6) score += 1;
+      return score / checks;
+    }
+
+    // Generate parameters, re-rolling if too similar to any previous copy (up to 10 attempts)
+    function generateParams() {
+      return {
+        speedFactor: parseFloat(rand(1.005, 1.015).toFixed(4)),
+        brightnessDelta: parseFloat(rand(-0.01, 0.01).toFixed(4)),
+        contrastDelta: parseFloat(rand(0.99, 1.01).toFixed(4)),
+        saturationDelta: parseFloat(rand(0.98, 1.02).toFixed(4)),
+        crfValue: Math.floor(rand(18, 22)),
+        gopSize: Math.floor(rand(24, 72)),
+        hueRotation: parseFloat(rand(-2, 2).toFixed(2)),
+        cropOffsetX: Math.floor(rand(-8, 8)),
+        cropOffsetY: Math.floor(rand(-8, 8)),
+        mirror: config.mirror,
+      };
+    }
+
+    let params = generateParams();
+    const MIN_UNIQUENESS = 0.35; // At least 35% of params must be different
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const tooSimilar = previousCopies.some(
+        (prev) => paramSimilarity(params, prev) < MIN_UNIQUENESS
+      );
+      if (!tooSimilar || previousCopies.length === 0) break;
+      params = generateParams();
+    }
+
+    const { speedFactor, brightnessDelta, contrastDelta, saturationDelta, crfValue, gopSize, hueRotation, cropOffsetX, cropOffsetY } = params;
     const gammaShift = 1.0;
-    // Slight random crop position offset — shifts the frame slightly off-centre
-    const cropOffsetX = Math.floor(rand(-8, 8));
-    const cropOffsetY = Math.floor(rand(-8, 8));
     const introFadeDuration = 0;
 
     // Random parameters
