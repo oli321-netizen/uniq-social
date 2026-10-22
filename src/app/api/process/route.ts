@@ -33,6 +33,9 @@ interface ProcessingConfig {
   metadata: MetadataProfile | MetadataProfile[];
   thumbnailRandomise: boolean;
   hiddenEmoji: boolean;
+  speedShift: boolean;
+  cropOffset: boolean;
+  hueShift: boolean;
 }
 
 // Tiny emojis to overlay — visually invisible at 1-2% opacity in a corner
@@ -270,6 +273,9 @@ export async function POST(req: NextRequest) {
           metadata: "random",
           thumbnailRandomise: false,
           hiddenEmoji: true,
+          speedShift: true,
+          cropOffset: true,
+          hueShift: true,
         };
 
     const jobId = randomUUID();
@@ -347,15 +353,15 @@ export async function POST(req: NextRequest) {
     // Generate parameters, re-rolling if too similar to any previous copy (up to 10 attempts)
     function generateParams() {
       return {
-        speedFactor: parseFloat(rand(1.005, 1.015).toFixed(4)),
+        speedFactor: config.speedShift ? parseFloat(rand(1.005, 1.015).toFixed(4)) : 1.0,
         brightnessDelta: parseFloat(rand(-0.01, 0.01).toFixed(4)),
         contrastDelta: parseFloat(rand(0.99, 1.01).toFixed(4)),
         saturationDelta: parseFloat(rand(0.98, 1.02).toFixed(4)),
         crfValue: Math.floor(rand(18, 22)),
         gopSize: Math.floor(rand(24, 72)),
-        hueRotation: parseFloat(rand(-2, 2).toFixed(2)),
-        cropOffsetX: Math.floor(rand(-8, 8)),
-        cropOffsetY: Math.floor(rand(-8, 8)),
+        hueRotation: config.hueShift ? parseFloat(rand(-2, 2).toFixed(2)) : 0,
+        cropOffsetX: config.cropOffset ? Math.floor(rand(-8, 8)) : 0,
+        cropOffsetY: config.cropOffset ? Math.floor(rand(-8, 8)) : 0,
         mirror: config.mirror,
       };
     }

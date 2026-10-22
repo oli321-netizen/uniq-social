@@ -27,8 +27,9 @@ import {
   Gift,
   History,
   Copy,
-  ImageIcon,
   Shuffle,
+  Search,
+  AlertTriangle,
 } from "lucide-react";
 import JSZip from "jszip";
 import InstallButton from "@/components/InstallButton";
@@ -143,7 +144,9 @@ export default function Dashboard() {
   const planRank: Record<string, number> = { free: 0, starter: 1, growth: 2, pro: 3, business: 4, agency: 5 };
   const currentRank = planRank[plan] ?? 0;
   const [isZipping, setIsZipping] = useState(false);
-  const [activeTab, setActiveTab] = useState<"process" | "history" | "stats" | "refer">("process");
+  const [activeTab, setActiveTab] = useState<"process" | "history" | "stats" | "refer" | "duplicates">("process");
+  const [duplicateData, setDuplicateData] = useState<any>(null);
+  const [duplicatesLoading, setDuplicatesLoading] = useState(false);
   const [historyJobs, setHistoryJobs] = useState<any[]>([]);
   const [usageData, setUsageData] = useState<any>(null);
   const [referralData, setReferralData] = useState<any>(null);
@@ -151,13 +154,14 @@ export default function Dashboard() {
   const { theme, toggleTheme } = useTheme();
   const { addToast } = useToast();
   const [previewVid, setPreviewVid] = useState<VideoFile | null>(null);
+  const [showProcessMore, setShowProcessMore] = useState(false);
 
   // Edit parameter ranges
   const [editSettings, setEditSettings] = useState({
-    trimMin: 0.3,
-    trimMax: 0.7,
-    cutsMin: 3,
-    cutsMax: 7,
+    trimMin: 0.05,
+    trimMax: 0.15,
+    cutsMin: 0,
+    cutsMax: 0,
     zoomMin: 1,
     zoomMax: 7,
     grain: true,
@@ -166,6 +170,10 @@ export default function Dashboard() {
     sharpenAmount: 0.3,
     mirror: true,
     thumbnailRandomise: false,
+    hiddenEmoji: true,
+    speedShift: true,
+    cropOffset: true,
+    hueShift: true,
   });
 
   const onDrop = useCallback((e: React.DragEvent) => {
@@ -227,6 +235,9 @@ export default function Dashboard() {
       fetch("/api/usage").then(r => r.json()).then(d => setUsageData(d)).catch(() => {});
     } else if (activeTab === "refer") {
       fetch("/api/referral").then(r => r.json()).then(d => setReferralData(d)).catch(() => {});
+    } else if (activeTab === "duplicates") {
+      setDuplicatesLoading(true);
+      fetch("/api/duplicates").then(r => r.json()).then(d => { setDuplicateData(d); setDuplicatesLoading(false); }).catch(() => setDuplicatesLoading(false));
     }
   }, [activeTab, status]);
 
@@ -410,6 +421,12 @@ export default function Dashboard() {
     }
 
     setIsProcessing(false);
+    setShowProcessMore(true);
+  };
+
+  const clearCompleted = () => {
+    setVideos((prev) => prev.filter((v) => v.status !== "done" && v.status !== "error"));
+    setShowProcessMore(false);
   };
 
   const pendingCount = videos.filter((v) => v.status === "pending").length;
@@ -536,6 +553,7 @@ export default function Dashboard() {
           {([
             { key: "process", label: "Process", icon: "Zap" },
             { key: "history", label: "History", icon: "History" },
+            { key: "duplicates", label: "Duplicates", icon: "Search" },
             { key: "stats", label: "Stats", icon: "BarChart3" },
             { key: "refer", label: "Refer & Earn", icon: "Gift" },
           ] as const).map((tab) => (
@@ -550,6 +568,7 @@ export default function Dashboard() {
             >
               {tab.key === "process" && <Zap className="h-3.5 w-3.5" />}
               {tab.key === "history" && <History className="h-3.5 w-3.5" />}
+              {tab.key === "duplicates" && <Search className="h-3.5 w-3.5" />}
               {tab.key === "stats" && <BarChart3 className="h-3.5 w-3.5" />}
               {tab.key === "refer" && <Gift className="h-3.5 w-3.5" />}
               {tab.label}
@@ -793,14 +812,14 @@ export default function Dashboard() {
                     </div>
                     <span className="text-sm font-semibold text-[--text-primary]">CapCut</span>
                   </div>
-                  <span className="text-[10px] text-[--text-muted] leading-tight block">Edited with CapCut</span>
+                  <span className="text-[10px] text-[--text-muted] leading-tight block pr-5">Edited with CapCut</span>
                   {metadata.includes("capcut") && (
                     <div className="absolute top-2 right-2">
                       <Check className="h-3.5 w-3.5 text-[#00d1ed]" />
                     </div>
                   )}
                   {metadata.includes("capcut") && metadata.length > 1 && !metadata.includes("random") && (
-                    <span className="absolute bottom-2 right-2 text-[9px] font-bold text-[#00d1ed]/80 bg-[#00d1ed]/10 px-1.5 py-0.5 rounded">STACKED</span>
+                    <span className="text-[9px] font-bold text-[#00d1ed]/80 bg-[#00d1ed]/10 px-1.5 py-0.5 rounded mt-1.5 inline-block">STACKED</span>
                   )}
                 </button>
 
@@ -827,14 +846,14 @@ export default function Dashboard() {
                     </div>
                     <span className="text-sm font-semibold text-[--text-primary]">Snapchat</span>
                   </div>
-                  <span className="text-[10px] text-[--text-muted] leading-tight block">Recorded via Snap</span>
+                  <span className="text-[10px] text-[--text-muted] leading-tight block pr-5">Recorded via Snap</span>
                   {metadata.includes("snapchat") && (
                     <div className="absolute top-2 right-2">
                       <Check className="h-3.5 w-3.5 text-[#FFFC00]" />
                     </div>
                   )}
                   {metadata.includes("snapchat") && metadata.length > 1 && !metadata.includes("random") && (
-                    <span className="absolute bottom-2 right-2 text-[9px] font-bold text-[#FFFC00]/80 bg-[#FFFC00]/10 px-1.5 py-0.5 rounded">STACKED</span>
+                    <span className="text-[9px] font-bold text-[#FFFC00]/80 bg-[#FFFC00]/10 px-1.5 py-0.5 rounded mt-1.5 inline-block">STACKED</span>
                   )}
                 </button>
 
@@ -863,14 +882,14 @@ export default function Dashboard() {
                     </div>
                     <span className="text-sm font-semibold text-[--text-primary]">iPhone</span>
                   </div>
-                  <span className="text-[10px] text-[--text-muted] leading-tight block">Shot on iPhone</span>
+                  <span className="text-[10px] text-[--text-muted] leading-tight block pr-5">Shot on iPhone</span>
                   {metadata.includes("iphone") && (
                     <div className="absolute top-2 right-2">
                       <Check className="h-3.5 w-3.5 text-[#a3a3a3]" />
                     </div>
                   )}
                   {metadata.includes("iphone") && metadata.length > 1 && !metadata.includes("random") && (
-                    <span className="absolute bottom-2 right-2 text-[9px] font-bold text-[#a3a3a3]/80 bg-[#a3a3a3]/10 px-1.5 py-0.5 rounded">STACKED</span>
+                    <span className="text-[9px] font-bold text-[#a3a3a3]/80 bg-[#a3a3a3]/10 px-1.5 py-0.5 rounded mt-1.5 inline-block">STACKED</span>
                   )}
                 </button>
 
@@ -898,42 +917,57 @@ export default function Dashboard() {
                 </button>
               </div>
 
-              {/* Thumbnail randomisation toggle */}
+              {/* Anti-detection toggles — the important ones */}
               <div className="mt-4 pt-4 border-t border-white/5">
-                <button
-                  onClick={() =>
-                    setEditSettings({
-                      ...editSettings,
-                      thumbnailRandomise: !editSettings.thumbnailRandomise,
-                    })
-                  }
-                  className={`w-full flex items-center justify-between p-3 rounded-xl border text-sm transition-all ${
-                    editSettings.thumbnailRandomise
-                      ? "border-purple-500/30 bg-purple-500/10"
-                      : "border-white/5 bg-white/[0.01] hover:border-white/10"
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
-                      editSettings.thumbnailRandomise ? "bg-purple-500/20" : "bg-white/5"
-                    }`}>
-                      <ImageIcon className={`h-3.5 w-3.5 ${editSettings.thumbnailRandomise ? "text-purple-400" : "text-slate-500"}`} />
-                    </div>
-                    <div className="text-left">
-                      <span className={`font-medium block ${editSettings.thumbnailRandomise ? "text-[--text-primary]" : "text-[--text-secondary]"}`}>
-                        Randomise Thumbnail
-                      </span>
-                      <span className="text-[10px] text-[--text-muted] block">Unique first-frame fingerprint</span>
-                    </div>
-                  </div>
-                  <div className={`w-9 h-5 rounded-full transition-all relative ${
-                    editSettings.thumbnailRandomise ? "bg-purple-500" : "bg-white/10"
-                  }`}>
-                    <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-0.5 transition-all ${
-                      editSettings.thumbnailRandomise ? "left-[18px]" : "left-[3px]"
-                    }`} />
-                  </div>
-                </button>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400">Anti-Detection</span>
+                  <span className="text-[9px] text-purple-400/60 bg-purple-500/10 px-1.5 py-0.5 rounded">Recommended</span>
+                </div>
+                <div className="space-y-2">
+                  {[
+                    { key: "hiddenEmoji", icon: "✦", label: "Hidden Overlay", desc: "Invisible pixel marker — beats hash matching", important: true },
+                    { key: "speedShift", icon: "⏱", label: "Speed Shift", desc: "0.5–1.5% tempo change — breaks frame timing", important: true },
+                    { key: "cropOffset", icon: "⊞", label: "Crop Offset", desc: "±8px spatial shift — changes position hash", important: true },
+                    { key: "hueShift", icon: "◐", label: "Hue Shift", desc: "±2° colour rotation — alters frame colours", important: false },
+                    { key: "thumbnailRandomise", icon: "🖼", label: "Randomise Thumbnail", desc: "Unique first-frame fingerprint", important: false },
+                  ].map((t) => (
+                    <button
+                      key={t.key}
+                      onClick={() =>
+                        setEditSettings({
+                          ...editSettings,
+                          [t.key]: !editSettings[t.key as keyof typeof editSettings],
+                        })
+                      }
+                      className={`w-full flex items-center justify-between p-3 rounded-xl border text-sm transition-all ${
+                        editSettings[t.key as keyof typeof editSettings]
+                          ? t.important ? "border-purple-500/40 bg-purple-500/10 ring-1 ring-purple-500/20" : "border-purple-500/30 bg-purple-500/10"
+                          : "border-white/5 bg-white/[0.01] hover:border-white/10"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                          editSettings[t.key as keyof typeof editSettings] ? "bg-purple-500/20" : "bg-white/5"
+                        }`}>
+                          <span className={`text-xs ${editSettings[t.key as keyof typeof editSettings] ? "opacity-100" : "opacity-40"}`}>{t.icon}</span>
+                        </div>
+                        <div className="text-left min-w-0">
+                          <span className={`font-medium text-xs block truncate ${editSettings[t.key as keyof typeof editSettings] ? "text-[--text-primary]" : "text-[--text-secondary]"}`}>
+                            {t.label}
+                          </span>
+                          <span className="text-[10px] text-[--text-muted] block truncate">{t.desc}</span>
+                        </div>
+                      </div>
+                      <div className={`w-9 h-5 rounded-full transition-all relative flex-shrink-0 ml-2 ${
+                        editSettings[t.key as keyof typeof editSettings] ? "bg-purple-500" : "bg-white/10"
+                      }`}>
+                        <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-0.5 transition-all ${
+                          editSettings[t.key as keyof typeof editSettings] ? "left-[18px]" : "left-[3px]"
+                        }`} />
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
 
             </div>
@@ -1192,6 +1226,15 @@ export default function Dashboard() {
                 </button>
               </p>
             )}
+            {showProcessMore && doneCount > 0 && !isProcessing && (
+              <button
+                onClick={clearCompleted}
+                className="w-full py-3 rounded-xl font-medium text-sm transition-all flex items-center justify-center gap-2 mt-2 border border-purple-500/30 bg-purple-500/10 text-purple-300 hover:bg-purple-500/20"
+              >
+                <Plus className="h-4 w-4" />
+                Process More Videos
+              </button>
+            )}
 
           </div>
         </div>
@@ -1307,6 +1350,119 @@ export default function Dashboard() {
       )}
 
       {/* Refer & Earn tab */}
+      {activeTab === "duplicates" && (
+        <div className="mx-auto max-w-6xl px-6 py-8">
+          <div className="space-y-6">
+            <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-lg font-semibold flex items-center gap-2">
+                    <Search className="h-5 w-5 text-purple-400" />
+                    Duplicate Checker
+                  </h3>
+                  <p className="text-sm text-[--text-muted] mt-1">
+                    Scans all processed videos to find copies that are too similar to each other
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setDuplicatesLoading(true);
+                    fetch("/api/duplicates").then(r => r.json()).then(d => { setDuplicateData(d); setDuplicatesLoading(false); }).catch(() => setDuplicatesLoading(false));
+                  }}
+                  className="px-4 py-2 rounded-lg text-sm font-medium bg-purple-600 hover:bg-purple-700 text-white transition-all flex items-center gap-2"
+                >
+                  {duplicatesLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                  {duplicatesLoading ? "Scanning..." : "Scan Now"}
+                </button>
+              </div>
+
+              {duplicatesLoading && !duplicateData && (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-6 w-6 text-purple-400 animate-spin" />
+                </div>
+              )}
+
+              {duplicateData && (
+                <div className="space-y-4">
+                  {/* Summary stats */}
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="rounded-xl bg-white/[0.03] border border-white/5 p-4 text-center">
+                      <div className="text-2xl font-bold text-[--text-primary]">{duplicateData.totalVideos}</div>
+                      <div className="text-xs text-[--text-muted] mt-1">Total Processed</div>
+                    </div>
+                    <div className="rounded-xl bg-white/[0.03] border border-white/5 p-4 text-center">
+                      <div className="text-2xl font-bold text-[--text-primary]">{duplicateData.uniqueSources}</div>
+                      <div className="text-xs text-[--text-muted] mt-1">Unique Sources</div>
+                    </div>
+                    <div className={`rounded-xl border p-4 text-center ${
+                      duplicateData.duplicateGroups > 0
+                        ? "bg-red-500/5 border-red-500/20"
+                        : "bg-green-500/5 border-green-500/20"
+                    }`}>
+                      <div className={`text-2xl font-bold ${
+                        duplicateData.duplicateGroups > 0 ? "text-red-400" : "text-green-400"
+                      }`}>
+                        {duplicateData.duplicateGroups}
+                      </div>
+                      <div className="text-xs text-[--text-muted] mt-1">Duplicate Groups</div>
+                    </div>
+                  </div>
+
+                  {/* Duplicate groups */}
+                  {duplicateData.duplicateGroups === 0 ? (
+                    <div className="rounded-xl bg-green-500/5 border border-green-500/20 p-6 text-center">
+                      <Check className="h-8 w-8 text-green-400 mx-auto mb-2" />
+                      <p className="text-sm font-medium text-green-400">All clear — no duplicate copies detected</p>
+                      <p className="text-xs text-[--text-muted] mt-1">Every processed video has unique enough parameters</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {duplicateData.groups.map((group: any, gi: number) => (
+                        <div key={gi} className="rounded-xl bg-red-500/5 border border-red-500/20 p-4">
+                          <div className="flex items-start justify-between mb-3">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <AlertTriangle className="h-4 w-4 text-red-400" />
+                                <span className="text-sm font-medium text-[--text-primary]">{group.fileName}</span>
+                              </div>
+                              <span className="text-xs text-[--text-muted]">
+                                {group.copies} copies — {group.duplicates.length} similar pair{group.duplicates.length !== 1 ? "s" : ""}
+                              </span>
+                            </div>
+                            <span className="text-xs bg-red-500/20 text-red-300 px-2 py-1 rounded-full">
+                              {group.sourceHash}
+                            </span>
+                          </div>
+                          <div className="space-y-2">
+                            {group.duplicates.map((dup: any, di: number) => (
+                              <div key={di} className="rounded-lg bg-white/[0.03] p-3 text-xs">
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="text-red-300 font-medium">{dup.similarity}% similar</span>
+                                  <span className="text-[--text-muted]">
+                                    {new Date(dup.date1).toLocaleDateString()} vs {new Date(dup.date2).toLocaleDateString()}
+                                  </span>
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                                  {dup.details.map((d: string, k: number) => (
+                                    <span key={k} className="bg-red-500/10 text-red-300 px-2 py-0.5 rounded text-[10px]">
+                                      {d}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {activeTab === "refer" && (
         <div className="mx-auto max-w-6xl px-6 py-8">
           <div className="max-w-lg mx-auto space-y-6">
