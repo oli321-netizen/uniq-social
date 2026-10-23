@@ -297,7 +297,9 @@ export default function Dashboard() {
           throw new Error(errData.error || `Processing failed: ${res.statusText}`);
         }
 
-        const blob = await res.blob();
+        const rawBlob = await res.blob();
+        // Force video/mp4 MIME type so OS treats it as a video, not a document
+        const blob = new Blob([rawBlob], { type: "video/mp4" });
         const ext = vid.name.split(".").pop() || "mp4";
         const suffix = copies > 1 ? `_v${copyIndex + 1}` : "";
         const filename = vid.name.replace(`.${ext}`, `_uniq${suffix}.mp4`);
@@ -720,7 +722,7 @@ export default function Dashboard() {
                   </div>
                 ))}
 
-                {/* Download all as zip — right below the video list */}
+                {/* Download as zip */}
                 {doneCount > 0 && (
                   <button
                     disabled={isZipping}
@@ -761,14 +763,11 @@ export default function Dashboard() {
                     className="w-full py-3 rounded-xl font-medium text-sm bg-purple-600 hover:bg-purple-700 text-white transition-all flex items-center justify-center gap-2 hover:shadow-lg hover:shadow-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isZipping ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Zipping...
-                      </>
+                      <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
                       <>
                         <Download className="h-4 w-4" />
-                        Download all
+                        Download .zip
                       </>
                     )}
                   </button>
