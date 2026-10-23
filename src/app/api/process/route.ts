@@ -32,11 +32,6 @@ interface ProcessingConfig {
   mirror: boolean;
   metadata: MetadataProfile | MetadataProfile[];
   thumbnailRandomise: boolean;
-  // Anti-detection toggles from frontend
-  hiddenEmoji?: boolean;
-  speedShift?: boolean;
-  cropOffset?: boolean;
-  hueShift?: boolean;
 }
 
 // Realistic Lavf version strings (CapCut uses ffmpeg internally)
@@ -183,84 +178,6 @@ function getMetadataArgs(profile: MetadataProfile | MetadataProfile[]): { args: 
   return { args, brand: meta.brand };
 }
 
-// === UNIQUENESS ENGINE ===
-// Generate a set of fingerprint-breaking parameters
-interface VideoParams {
-  speedFactor: number;
-  brightnessDelta: number;
-  contrastDelta: number;
-  saturationDelta: number;
-  crfValue: number;
-  gopSize: number;
-  hueRotation: number;
-  cropOffsetX: number;
-  cropOffsetY: number;
-  startTrim: number;
-  mirror: boolean;
-}
-
-// Generate random params based on config and anti-detection toggles
-const generateParams = (config: ProcessingConfig): VideoParams => {
-  const useSpeedShift = config.speedShift !== false; // default true
-  const useHueShift = config.hueShift !== false;     // default true
-  const useCropOffset = config.cropOffset !== false;  // default true
-
-  return {
-    speedFactor: useSpeedShift ? parseFloat(rand(0.97, 1.03).toFixed(4)) : 1.0,
-    brightnessDelta: parseFloat(rand(-0.02, 0.02).toFixed(4)),
-    contrastDelta: parseFloat(rand(0.97, 1.03).toFixed(4)),
-    saturationDelta: parseFloat(rand(0.96, 1.04).toFixed(4)),
-    crfValue: Math.floor(rand(18, 23)),
-    gopSize: Math.floor(rand(24, 72)),
-    hueRotation: useHueShift ? parseFloat(rand(-3, 3).toFixed(2)) : 0,
-    cropOffsetX: useCropOffset ? Math.floor(rand(-8, 8)) : 0,
-    cropOffsetY: useCropOffset ? Math.floor(rand(-8, 8)) : 0,
-    startTrim: parseFloat(rand(config.trimMin, config.trimMax).toFixed(3)),
-    mirror: config.mirror,
-  };
-};
-
-// Calculate similarity between two param sets (same logic as duplicates API)
-const calculateSimilarity = (a: VideoParams, b: { speedFactor: number; brightnessDelta: number; contrastDelta: number; saturationDelta: number; hueRotation: number; cropOffsetX: number; cropOffsetY: number; startTrim: number; mirror: boolean }): number => {
-  let matchCount = 0;
-  const totalChecks = 9;
-
-  if (a.mirror === b.mirror) matchCount++;
-  if (Math.abs(a.speedFactor - b.speedFactor) < 0.004) matchCount++;
-  if (Math.abs(a.brightnessDelta - b.brightnessDelta) < 0.008) matchCount++;
-  if (Math.abs(a.contrastDelta - b.contrastDelta) < 0.008) matchCount++;
-  if (Math.abs(a.saturationDelta - b.saturationDelta) < 0.015) matchCount++;
-  if (Math.abs(a.hueRotation - b.hueRotation) < 1.5) matchCount++;
-  if (Math.abs(a.cropOffsetX - b.cropOffsetX) < 6) matchCount++;
-  if (Math.abs(a.cropOffsetY - b.cropOffsetY) < 6) matchCount++;
-  if (Math.abs(a.startTrim - b.startTrim) < 0.03) matchCount++;
-
-  return matchCount / totalChecks;
-};
-
-// Force-differentiate params to guarantee uniqueness against a specific past copy
-const forceDifferentiate = (params: VideoParams, pastCopy: { mirror: boolean; startTrim: number; hueRotation: number; cropOffsetX: number; cropOffsetY: number }): VideoParams => {
-  const p = { ...params };
-  // Flip mirror if same
-  if (p.mirror === pastCopy.mirror) p.mirror = !p.mirror;
-  // Push startTrim far from past
-  if (Math.abs(p.startTrim - pastCopy.startTrim) < 0.1) {
-    p.startTrim = parseFloat((pastCopy.startTrim + 0.15 + rand(0.05, 0.2)).toFixed(3));
-  }
-  // Push hue away
-  if (Math.abs(p.hueRotation - pastCopy.hueRotation) < 1.5) {
-    p.hueRotation = parseFloat((pastCopy.hueRotation + (Math.random() > 0.5 ? 2.5 : -2.5)).toFixed(2));
-  }
-  // Push crop offsets away
-  if (Math.abs(p.cropOffsetX - pastCopy.cropOffsetX) < 6) {
-    p.cropOffsetX = pastCopy.cropOffsetX + (Math.random() > 0.5 ? 8 : -8);
-  }
-  if (Math.abs(p.cropOffsetY - pastCopy.cropOffsetY) < 6) {
-    p.cropOffsetY = pastCopy.cropOffsetY + (Math.random() > 0.5 ? 8 : -8);
-  }
-  return p;
-};
-
 // Process segments in parallel batches to avoid overwhelming the server
 async function processInBatches<T>(
   items: T[],
@@ -377,83 +294,26 @@ export async function POST(req: NextRequest) {
     // === Hash source video for history tracking ===
     const sourceHash = createHash("sha256").update(buffer).digest("hex");
 
-    // === PRE-PROCESSING DUPLICATE PREVENTION ===
-    // Fetch ALL past copies of this exact source video
-    const pastCopies = await prisma.processingHistory.findMany({
-      where: { sourceHash },
-      select: {
-        mirror: true,
-        speedFactor: true,
-        brightnessDelta: true,
-        contrastDelta: true,
-        saturationDelta: true,
-        hueRotation: true,
-        cropOffsetX: true,
-        cropOffsetY: true,
-        startTrim: true,
-      },
-    });
-
-    // Generate params with anti-detection toggles applied
-    let params = generateParams(config);
-    const MAX_REROLL_ATTEMPTS = 20;
-
-    if (pastCopies.length > 0) {
-      // Check against ALL past copies, re-roll if any is >65% similar
-      let attempts = 0;
-      let tooSimilar = true;
-
-      while (tooSimilar && attempts < MAX_REROLL_ATTEMPTS) {
-        tooSimilar = false;
-        for (const past of pastCopies) {
-          const similarity = calculateSimilarity(params, past);
-          if (similarity > 0.65) {
-            tooSimilar = true;
-            break;
-          }
-        }
-        if (tooSimilar) {
-          attempts++;
-          params = generateParams(config);
-        }
-      }
-
-      // If still too similar after max attempts, force-differentiate against the most similar
-      if (tooSimilar) {
-        let mostSimilar = pastCopies[0];
-        let highestSim = 0;
-        for (const past of pastCopies) {
-          const sim = calculateSimilarity(params, past);
-          if (sim > highestSim) {
-            highestSim = sim;
-            mostSimilar = past;
-          }
-        }
-        params = forceDifferentiate(params, mostSimilar);
-      }
-    }
-
-    // Destructure the guaranteed-unique params
-    const {
-      speedFactor,
-      brightnessDelta,
-      contrastDelta,
-      saturationDelta,
-      crfValue,
-      gopSize,
-      hueRotation,
-      cropOffsetX,
-      cropOffsetY,
-      startTrim,
-      mirror,
-    } = params;
-
+    // === Fingerprint-breaking: re-encode with different params ===
+    // Re-encoding alone completely changes the video bitstream.
+    // Tiny invisible tweaks to brightness/contrast/saturation shift the DCT hash.
+    // NO speed changes, NO intro frames, NO pixel padding — just clean re-encode.
+    const speedFactor = 1.0;
+    const brightnessDelta = parseFloat(rand(-0.01, 0.01).toFixed(4));
+    const contrastDelta = parseFloat(rand(0.99, 1.01).toFixed(4));
+    const saturationDelta = parseFloat(rand(0.98, 1.02).toFixed(4));
+    const crfValue = Math.floor(rand(18, 22));
+    const gopSize = Math.floor(rand(24, 72));
+    const hueRotation = 0;
     const gammaShift = 1.0;
+    const cropOffsetX = 0;
+    const cropOffsetY = 0;
     const introFadeDuration = 0;
 
     // Random parameters
+    const startTrim = parseFloat(rand(config.trimMin, config.trimMax).toFixed(3));
     const zoomPct = parseFloat(rand(config.zoomMin, config.zoomMax).toFixed(2));
-    const effectiveDuration = (duration / speedFactor) - startTrim;
+    const effectiveDuration = duration - startTrim;
 
     // Generate random cut points
     const numCuts = Math.floor(rand(config.cutsMin, config.cutsMax + 1));
@@ -480,34 +340,21 @@ export async function POST(req: NextRequest) {
       segments.push([prev, parseFloat((effectiveDuration - msTrim).toFixed(3))]);
     }
 
-    // Zoom crop values (including crop offset for anti-detection)
+    // Zoom crop values
     const zoomFactor = 1 + zoomPct / 100;
     let cropW = Math.floor(origW / zoomFactor);
     let cropH = Math.floor(origH / zoomFactor);
     cropW = cropW - (cropW % 2);
     cropH = cropH - (cropH % 2);
-    // Apply crop offset (shifts the crop window slightly off-center)
-    let cropX = Math.floor((origW - cropW) / 2) + cropOffsetX;
-    let cropY = Math.floor((origH - cropH) / 2) + cropOffsetY;
-    // Clamp to valid range
-    cropX = Math.max(0, Math.min(cropX, origW - cropW));
-    cropY = Math.max(0, Math.min(cropY, origH - cropH));
+    const cropX = Math.floor((origW - cropW) / 2);
+    const cropY = Math.floor((origH - cropH) / 2);
 
     // Build filter chain
     let vf = `crop=${cropW}:${cropH}:${cropX}:${cropY},scale=${origW}:${origH}`;
-    if (mirror) vf += ",hflip";
+    if (config.mirror) vf += ",hflip";
     if (config.grain) vf += `,noise=alls=${config.grainIntensity}:allf=t`;
     if (config.sharpen) vf += `,unsharp=3:3:${config.sharpenAmount}:3:3:0.0`;
     vf += `,eq=brightness=${brightnessDelta}:contrast=${contrastDelta}:saturation=${saturationDelta}`;
-    // Apply hue rotation if non-zero
-    if (Math.abs(hueRotation) > 0.01) {
-      vf += `,hue=h=${hueRotation}`;
-    }
-
-    // Build speed filter for audio/video if speed shift is active
-    const speedActive = Math.abs(speedFactor - 1.0) > 0.001;
-    const af = speedActive ? `atempo=${speedFactor}` : "";
-    const speedVf = speedActive ? `,setpts=${(1 / speedFactor).toFixed(6)}*PTS` : "";
 
     // === SPEED OPTIMISATION 1: Process segments in PARALLEL (3 at a time) ===
     const segFiles: string[] = new Array(segments.length);
@@ -519,14 +366,10 @@ export async function POST(req: NextRequest) {
         const actualStart = startTrim + segStart;
         const segDur = segEnd - segStart;
 
-        // Build ffmpeg command with optional speed shift
-        const fullVf = `${vf}${speedVf}`;
-        const afFlag = af ? `-af "${af}"` : "";
-
         // === SPEED OPTIMISATION 2: Use ultrafast preset with randomised CRF/GOP ===
         await execAsync(
           `ffmpeg -y -ss ${actualStart} -i "${inputPath}" -t ${segDur} ` +
-            `-vf "${fullVf}" ${afFlag} -c:v libx264 -preset ultrafast -crf ${crfValue} -g ${gopSize} ` +
+            `-vf "${vf}" -c:v libx264 -preset ultrafast -crf ${crfValue} -g ${gopSize} ` +
             `-c:a aac -b:a 128k -pix_fmt yuv420p -threads 2 "${segPath}"`,
           EXEC_OPTIONS
         );
@@ -574,9 +417,9 @@ export async function POST(req: NextRequest) {
     if (config.thumbnailRandomise) {
       const thumbPath = path.join(tmpDir, "output_thumb.mp4");
       // Shift hue of first 2 frames by a random amount, making the thumbnail unique
-      const thumbHueShift = Math.floor(rand(1, 360));
+      const hueShift = Math.floor(rand(1, 360));
       await execAsync(
-        `ffmpeg -y -i "${outputPath}" -vf "select='if(lt(n\\,2),1,1)',hue=h='if(lt(t,0.08),${thumbHueShift},0)'" ` +
+        `ffmpeg -y -i "${outputPath}" -vf "select='if(lt(n\\,2),1,1)',hue=h='if(lt(t,0.08),${hueShift},0)'" ` +
           `-c:v libx264 -preset ultrafast -crf ${crfValue} -c:a copy "${thumbPath}"`,
         EXEC_OPTIONS
       );
@@ -604,7 +447,7 @@ export async function POST(req: NextRequest) {
             startTrim,
             zoomPct,
             cutPoints: JSON.stringify(uniqueCuts),
-            mirror,
+            mirror: config.mirror,
             grainEnabled: config.grain,
             grainIntensity: config.grainIntensity,
             sharpenEnabled: config.sharpen,
