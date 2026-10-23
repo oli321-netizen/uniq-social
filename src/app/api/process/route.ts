@@ -388,7 +388,7 @@ export async function POST(req: NextRequest) {
     // === SPEED OPTIMISATION 3: Apply metadata with stream copy, NOT re-encode ===
     // Previously this did a FULL re-encode just to add metadata tags — insane.
     // Now we concat + apply metadata in a single pass with -c copy.
-    const { args: metadataArgs, brand } = getMetadataArgs(config.metadata);
+    const { args: metadataArgs } = getMetadataArgs(config.metadata);
     const quotedMetadataArgs = metadataArgs.map((arg) => {
       if (arg.includes("=") && arg.includes(" ")) {
         const eqIndex = arg.indexOf("=");
