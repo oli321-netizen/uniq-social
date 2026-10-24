@@ -1,15 +1,28 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { signIn } from "next-auth/react";
+import { useSearchParams } from "next/navigation";
 import { Fingerprint, Loader2, Mail, Lock, ArrowRight } from "lucide-react";
 
-export default function LoginPage() {
+function LoginForm() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const urlError = searchParams.get("error");
+    if (urlError) {
+      if (urlError === "CredentialsSignin") {
+        setError("Invalid email or password");
+      } else {
+        setError("Something went wrong. Please try again.");
+      }
+    }
+  }, [searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,19 +44,14 @@ export default function LoginPage() {
         }
       }
 
-      const result = await signIn("credentials", {
+      // Server-side redirect — NextAuth handles everything
+      // Success → redirects to /dashboard with session cookie set
+      // Failure → redirects to /login?error=CredentialsSignin
+      await signIn("credentials", {
         email,
         password,
-        redirect: false,
+        callbackUrl: "/dashboard",
       });
-
-      if (!result || result.ok === false || result.error) {
-        setError(isSignUp ? "Account created but login failed. Try signing in." : "Invalid email or password");
-        setLoading(false);
-        return;
-      }
-
-      window.location.href = "/dashboard";
     } catch {
       setError("Something went wrong. Try again.");
       setLoading(false);
@@ -145,5 +153,17 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#010313] flex items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-purple-400" />
+      </div>
+    }>
+      <LoginForm />
+    </Suspense>
   );
 }

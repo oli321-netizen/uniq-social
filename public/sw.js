@@ -1,4 +1,4 @@
-const CACHE_NAME = "uniq-v2";
+const CACHE_NAME = "uniq-v3";
 const OFFLINE_URL = "/offline";
 
 self.addEventListener("install", (event) => {
