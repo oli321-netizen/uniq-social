@@ -745,7 +745,7 @@ export default function Dashboard() {
                           })
                         );
 
-                        const zipBlob = await zip.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 1 }, streamFiles: false });
+                        const zipBlob = await zip.generateAsync({ type: "blob", compression: "STORE", streamFiles: false });
                         const url = URL.createObjectURL(zipBlob);
                         const a = document.createElement("a");
                         a.href = url;
