@@ -37,14 +37,12 @@ export default function LoginPage() {
         redirect: false,
       });
 
-      if (!result || result.error) {
+      if (!result || result.ok === false || result.error) {
         setError(isSignUp ? "Account created but login failed. Try signing in." : "Invalid email or password");
         setLoading(false);
         return;
       }
 
-      // Login worked - go to dashboard
-      setLoading(false);
       window.location.href = "/dashboard";
     } catch {
       setError("Something went wrong. Try again.");
