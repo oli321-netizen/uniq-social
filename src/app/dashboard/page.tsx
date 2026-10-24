@@ -722,55 +722,79 @@ export default function Dashboard() {
                   </div>
                 ))}
 
-                {/* Download as zip */}
+                {/* Download buttons */}
                 {doneCount > 0 && (
-                  <button
-                    disabled={isZipping}
-                    onClick={async () => {
-                      setIsZipping(true);
-                      try {
-                        const zip = new JSZip();
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
                         const allOutputs: { url: string; filename: string }[] = [];
                         videos.forEach((v) => {
                           if (v.status === "done" && v.outputs) {
                             v.outputs.forEach((out) => allOutputs.push(out));
                           }
                         });
-
-                        await Promise.all(
-                          allOutputs.map(async (out) => {
-                            const res = await fetch(out.url);
-                            const buf = await res.arrayBuffer();
-                            zip.file(out.filename, buf, { binary: true });
-                          })
-                        );
-
-                        const zipBlob = await zip.generateAsync({ type: "blob", compression: "STORE", streamFiles: false });
-                        const url = URL.createObjectURL(zipBlob);
-                        const a = document.createElement("a");
-                        a.href = url;
-                        a.download = `uniq_${Date.now()}.zip`;
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                        setTimeout(() => URL.revokeObjectURL(url), 5000);
-                      } catch (err) {
-                        console.error("Zip download failed:", err);
-                      } finally {
-                        setIsZipping(false);
-                      }
-                    }}
-                    className="w-full py-3 rounded-xl font-medium text-sm bg-purple-600 hover:bg-purple-700 text-white transition-all flex items-center justify-center gap-2 hover:shadow-lg hover:shadow-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isZipping ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <>
-                        <Download className="h-4 w-4" />
-                        Download .zip
-                      </>
-                    )}
-                  </button>
+                        allOutputs.forEach((out, i) => {
+                          setTimeout(() => {
+                            const a = document.createElement("a");
+                            a.href = out.url;
+                            a.download = out.filename;
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
+                          }, i * 500);
+                        });
+                      }}
+                      className="flex-1 py-3 rounded-xl font-medium text-sm bg-purple-600 hover:bg-purple-700 text-white transition-all flex items-center justify-center gap-2 hover:shadow-lg hover:shadow-purple-500/20"
+                    >
+                      <Download className="h-4 w-4" />
+                      Save videos
+                    </button>
+                    <button
+                      disabled={isZipping}
+                      onClick={async () => {
+                        setIsZipping(true);
+                        try {
+                          const zip = new JSZip();
+                          const allOutputs: { url: string; filename: string }[] = [];
+                          videos.forEach((v) => {
+                            if (v.status === "done" && v.outputs) {
+                              v.outputs.forEach((out) => allOutputs.push(out));
+                            }
+                          });
+                          await Promise.all(
+                            allOutputs.map(async (out) => {
+                              const res = await fetch(out.url);
+                              const buf = await res.arrayBuffer();
+                              zip.file(out.filename, buf, { binary: true });
+                            })
+                          );
+                          const zipBlob = await zip.generateAsync({ type: "blob", compression: "STORE", streamFiles: false });
+                          const url = URL.createObjectURL(zipBlob);
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = `uniq_${Date.now()}.zip`;
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                          setTimeout(() => URL.revokeObjectURL(url), 5000);
+                        } catch (err) {
+                          console.error("Zip download failed:", err);
+                        } finally {
+                          setIsZipping(false);
+                        }
+                      }}
+                      className="py-3 px-4 rounded-xl font-medium text-sm bg-white/5 hover:bg-white/10 text-slate-300 transition-all flex items-center justify-center gap-2 border border-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isZipping ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <>
+                          <Download className="h-4 w-4" />
+                          .zip
+                        </>
+                      )}
+                    </button>
+                  </div>
                 )}
               </div>
             )}
