@@ -740,12 +740,12 @@ export default function Dashboard() {
                         await Promise.all(
                           allOutputs.map(async (out) => {
                             const res = await fetch(out.url);
-                            const blob = await res.blob();
-                            zip.file(out.filename, blob);
+                            const buf = await res.arrayBuffer();
+                            zip.file(out.filename, buf, { binary: true });
                           })
                         );
 
-                        const zipBlob = await zip.generateAsync({ type: "blob", compression: "STORE" });
+                        const zipBlob = await zip.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 1 }, streamFiles: false });
                         const url = URL.createObjectURL(zipBlob);
                         const a = document.createElement("a");
                         a.href = url;
