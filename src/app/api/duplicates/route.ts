@@ -4,6 +4,29 @@ import { getToken } from "next-auth/jwt";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+// Same similarity function used in the process route — keeps detection consistent
+function paramSimilarity(
+  a: { mirror: boolean; speedFactor: number; brightnessDelta: number; contrastDelta: number; saturationDelta: number; hueRotation: number; cropOffsetX: number; cropOffsetY: number; startTrim: number; zoomPct: number; crfValue: number },
+  b: { mirror: boolean; speedFactor: number; brightnessDelta: number; contrastDelta: number; saturationDelta: number; hueRotation: number; cropOffsetX: number; cropOffsetY: number; startTrim: number; zoomPct: number; crfValue: number }
+): number {
+  let matchCount = 0;
+  const totalChecks = 11;
+
+  if (a.mirror === b.mirror) matchCount++;
+  if (Math.abs(a.startTrim - b.startTrim) < 0.04) matchCount++;
+  if (Math.abs(a.zoomPct - b.zoomPct) < 0.6) matchCount++;
+  if (Math.abs(a.speedFactor - b.speedFactor) < 0.004) matchCount++;
+  if (Math.abs(a.brightnessDelta - b.brightnessDelta) < 0.006) matchCount++;
+  if (Math.abs(a.contrastDelta - b.contrastDelta) < 0.006) matchCount++;
+  if (Math.abs(a.saturationDelta - b.saturationDelta) < 0.012) matchCount++;
+  if (Math.abs(a.hueRotation - b.hueRotation) < 1.5) matchCount++;
+  if (Math.abs(a.cropOffsetX - b.cropOffsetX) < 4) matchCount++;
+  if (Math.abs(a.cropOffsetY - b.cropOffsetY) < 4) matchCount++;
+  if (Math.abs(a.crfValue - b.crfValue) < 2) matchCount++;
+
+  return matchCount / totalChecks;
+}
+
 export async function GET(req: NextRequest) {
   try {
     // Auth check
@@ -76,51 +99,24 @@ export async function GET(req: NextRequest) {
           const b = copies[j];
 
           const similar: string[] = [];
-          let matchCount = 0;
-          const totalChecks = 9;
 
-          // Check each parameter
-          if (a.mirror === b.mirror) {
-            similar.push("Same mirror");
-            matchCount++;
-          }
-          if (Math.abs(a.speedFactor - b.speedFactor) < 0.004) {
-            similar.push("Similar speed");
-            matchCount++;
-          }
-          if (Math.abs(a.brightnessDelta - b.brightnessDelta) < 0.008) {
-            similar.push("Similar brightness");
-            matchCount++;
-          }
-          if (Math.abs(a.contrastDelta - b.contrastDelta) < 0.008) {
-            similar.push("Similar contrast");
-            matchCount++;
-          }
-          if (Math.abs(a.saturationDelta - b.saturationDelta) < 0.015) {
-            similar.push("Similar saturation");
-            matchCount++;
-          }
-          if (Math.abs(a.hueRotation - b.hueRotation) < 1.5) {
-            similar.push("Similar hue");
-            matchCount++;
-          }
-          if (Math.abs(a.cropOffsetX - b.cropOffsetX) < 6) {
-            similar.push("Similar crop X");
-            matchCount++;
-          }
-          if (Math.abs(a.cropOffsetY - b.cropOffsetY) < 6) {
-            similar.push("Similar crop Y");
-            matchCount++;
-          }
-          if (Math.abs(a.startTrim - b.startTrim) < 0.03) {
-            similar.push("Similar trim");
-            matchCount++;
-          }
+          // Check each parameter for human-readable detail
+          if (a.mirror === b.mirror) similar.push("Same mirror");
+          if (Math.abs(a.speedFactor - b.speedFactor) < 0.004) similar.push("Similar speed");
+          if (Math.abs(a.brightnessDelta - b.brightnessDelta) < 0.006) similar.push("Similar brightness");
+          if (Math.abs(a.contrastDelta - b.contrastDelta) < 0.006) similar.push("Similar contrast");
+          if (Math.abs(a.saturationDelta - b.saturationDelta) < 0.012) similar.push("Similar saturation");
+          if (Math.abs(a.hueRotation - b.hueRotation) < 1.5) similar.push("Similar hue");
+          if (Math.abs(a.cropOffsetX - b.cropOffsetX) < 4) similar.push("Similar crop X");
+          if (Math.abs(a.cropOffsetY - b.cropOffsetY) < 4) similar.push("Similar crop Y");
+          if (Math.abs(a.startTrim - b.startTrim) < 0.04) similar.push("Similar trim");
+          if (Math.abs(a.zoomPct - b.zoomPct) < 0.6) similar.push("Similar zoom");
+          if (Math.abs(a.crfValue - b.crfValue) < 2) similar.push("Similar quality");
 
-          const similarity = matchCount / totalChecks;
+          const similarity = paramSimilarity(a, b);
 
-          // Flag pairs with >65% similarity as potential duplicates
-          if (similarity > 0.65) {
+          // Flag pairs with >45% similarity (matches process route threshold)
+          if (similarity > 0.45) {
             duplicates.push({
               id1: a.id,
               id2: b.id,
