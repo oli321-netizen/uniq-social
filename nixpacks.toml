@@ -1,3 +1,9 @@
 # ffmpeg is required by the existing video processor. Do not remove it.
 [phases.setup]
 aptPkgs = ["ffmpeg"]
+
+# Railway sets NODE_ENV=production before install, which makes npm skip
+# devDependencies. Next needs those (typescript for @/ paths, tailwind, eslint)
+# or `next build` fails while compiling.
+[phases.install]
+cmds = ["npm ci --include=dev"]
