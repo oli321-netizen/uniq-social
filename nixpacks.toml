@@ -1,2 +1,3 @@
+# ffmpeg is required by the existing video processor. Do not remove it.
 [phases.setup]
 aptPkgs = ["ffmpeg"]

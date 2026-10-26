@@ -248,6 +248,19 @@ body {
   display: none;
 }
 
+.hub-app :focus-visible {
+  outline: 2px solid #8b5cf6;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub-app * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;

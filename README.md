@@ -1,36 +1,62 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Uniq
 
-## Getting Started
+Creator hub for short-form video. Hook Lab writes and stores estimated hook lines per creator. Rendering still goes through the existing processor.
 
-First, run the development server:
+## Go live on Railway
+
+1. Push this branch and deploy it with the Nixpacks builder (see `nixpacks.toml` and `railway.json`).
+2. Add a Postgres plugin. Copy its `DATABASE_URL` onto the web service.
+3. Set the variables below. Do not commit them.
+4. Deploy. The start command runs `prisma migrate deploy`, then seeds promo codes, then `next start`.
+5. Open `https://<your-domain>/api/health`. You want `{ "ok": true, "db": "up" }`.
+6. Set `NEXTAUTH_URL` to that public origin and redeploy once so sign-in cookies match the host.
+7. Sign up needs `RESEND_API_KEY` for the email code. Until mail works, create the first user from a trusted shell with Prisma, or use an account that already exists.
+
+If the database was previously created with `prisma db push` and has no `_prisma_migrations` table, `migrate deploy` fails because the tables already exist. Baseline once, then redeploy:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npx prisma migrate resolve --applied 0001_init
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The start script falls back to `prisma db push` if migrate deploy fails, so an old database can still boot. Prefer the baseline so later migrations apply cleanly.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+FFmpeg stays installed via `nixpacks.toml` for the existing processor. This app does not change that pipeline.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Environment variables
 
-## Learn More
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `DATABASE_URL` | Yes | Postgres connection string |
+| `NEXTAUTH_SECRET` | Yes in production | Signs session cookies. The code falls back to a dev string if this is empty. Set a long random value before go-live. |
+| `NEXTAUTH_URL` | Yes in production | Public origin, no trailing slash, for example `https://your-app.up.railway.app` |
+| `OPENAI_API_KEY` | No | Live hook lines. If unset, Hook Lab uses labelled template estimates. |
+| `OPENAI_MODEL` | No | Defaults to `gpt-4o-mini` |
+| `STRIPE_SECRET_KEY` | For top-up and plans | Checkout and subscriptions |
+| `STRIPE_WEBHOOK_SECRET` | For Stripe | Webhook signature |
+| `RESEND_API_KEY` | For email | Verification codes and team invites |
+| `RESEND_FROM_EMAIL` | No | From address. Defaults to `UniqSocial <noreply@uniqsocial.com>` |
 
-To learn more about Next.js, take a look at the following resources:
+Copy `.env.example` to `.env` for local work. Never commit `.env`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Local development
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+npm install
+# Postgres running, DATABASE_URL set
+npx prisma migrate deploy
+npm run dev
+```
 
-## Deploy on Vercel
+Health check: `GET /api/health`.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Hook Lab is at `/hub/hook-lab` after sign-in. Demo mode needs no model key.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## What the first hub deploy includes
+
+- Dark app shell with credits and top up
+- Public home page
+- Hook Lab: creators, generate, edit, favourite, delete, per-creator history, mock mode
+- Link out to the existing processor at `/dashboard` (unchanged)
+- Coming-soon states for variants, results, presets, and team
+
+Variant cards, results import, Postiz, brand voice, and notifications are follow-ups on this branch.
