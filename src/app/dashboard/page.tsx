@@ -496,21 +496,9 @@ export default function Dashboard() {
 
   const pendingCount = videos.filter((v) => v.status === "pending").length;
   const doneCount = videos.filter((v) => v.status === "done").length;
-  const processingCount = videos.filter(
-    (v) => v.status === "processing"
-  ).length;
 
-  // Active mods count
-  const activeMods = [
-    editSettings.hiddenEmoji,
-    editSettings.speedShift,
-    editSettings.cropOffset,
-    editSettings.mirror,
-    editSettings.grain,
-    editSettings.sharpen,
-    editSettings.hueShift,
-    editSettings.thumbnailRandomise,
-  ].filter(Boolean).length;
+
+
 
   // Icon sidebar tab data
   const sidebarTabs: {
