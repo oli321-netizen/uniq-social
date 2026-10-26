@@ -73,7 +73,7 @@ function ProcessingStepText({ progress }: { progress: number }) {
     PROCESSING_STEPS.length - 1
   );
   return (
-    <span className="text-cyan-400/80 text-[10px] font-medium tracking-wide">
+    <span className="text-purple-400/80 text-[10px] font-medium tracking-wide">
       {PROCESSING_STEPS[stepIndex]}{".".repeat(dotCount)}
     </span>
   );
@@ -174,7 +174,7 @@ export default function Dashboard() {
   });
 
   // Settings panel visibility
-  const [showSettings, setShowSettings] = useState(false);
+  // Settings are now in permanent sidebar
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -272,7 +272,7 @@ export default function Dashboard() {
   if (status === "loading") {
     return (
       <div className="min-h-screen bg-[#07080C] flex items-center justify-center">
-        <Loader2 className="h-8 w-8 text-cyan-400 animate-spin" />
+        <Loader2 className="h-8 w-8 text-purple-400 animate-spin" />
       </div>
     );
   }
@@ -561,79 +561,46 @@ export default function Dashboard() {
         <rect width="100%" height="100%" fill="url(#dotgrid)" />
       </svg>
 
-      {/* ═══ TOP STATUS BAR ═══ */}
-      <header className="relative z-10 h-10 flex items-center px-4 bg-white/[0.01] border-b border-white/[0.04] flex-shrink-0">
-        <a
-          href="/"
-          className="font-black text-[15px] tracking-tighter text-white mr-5"
-        >
-          uniq
-        </a>
-        <div className="w-px h-4 bg-white/[0.06]" />
+      {/* ═══ TOP NAV BAR ═══ */}
+      <header className="relative z-10 h-[46px] flex items-center px-5 bg-white/[0.01] border-b border-white/[0.04] flex-shrink-0">
+        <a href="/" className="font-black text-[16px] tracking-tighter text-white mr-6">uniq</a>
 
-        {/* Live metrics strip */}
-        <div className="hidden sm:flex items-center gap-5 ml-4 flex-1">
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] text-[#3D4050] font-semibold">
-              TODAY
-            </span>
-            <span className="font-mono text-[11px] font-bold text-cyan-400">
-              {doneCount || 0}
-            </span>
-            <span className="text-[9px] text-[#2A2D3A]">videos</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] text-[#3D4050] font-semibold">
-              QUEUE
-            </span>
-            <span className="font-mono text-[11px] font-bold text-white">
-              {pendingCount}
-            </span>
-          </div>
-          {processingCount > 0 && (
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] text-[#3D4050] font-semibold">
-                ACTIVE
-              </span>
-              <span className="font-mono text-[11px] font-bold text-cyan-400">
-                {processingCount}
-              </span>
-              <div className="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-pulse" />
-            </div>
-          )}
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] text-[#3D4050] font-semibold">
-              MODS
-            </span>
-            <span className="font-mono text-[11px] font-bold text-purple-400">
-              {activeMods}/8
-            </span>
-          </div>
+        {/* Nav tabs */}
+        <div className="flex items-center gap-0.5 h-full">
+          {sidebarTabs.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`relative h-full px-3.5 flex items-center transition-all ${
+                activeTab === tab.key
+                  ? "text-purple-400"
+                  : "text-[#3D4050] hover:text-[#C8CAD0]"
+              }`}
+            >
+              <span className="text-[13px] font-semibold">{tab.label}</span>
+              {activeTab === tab.key && (
+                <div className="absolute bottom-0 left-2 right-2 h-[2px] bg-purple-400 rounded-t" />
+              )}
+            </button>
+          ))}
         </div>
 
+        <div className="flex-1" />
+
         {/* Right: credits + actions */}
-        <div className="flex items-center gap-2 ml-auto">
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-cyan-500/[0.04] border border-cyan-500/[0.08]">
-            <span className="font-mono text-[12px] font-bold text-cyan-400">
-              {credits}
-            </span>
-            <span className="text-[9px] text-[#3D4050] font-semibold">
-              CR
-            </span>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-purple-500/[0.04] border border-purple-500/[0.08]">
+            <span className="font-mono text-[13px] font-bold text-purple-400">{credits}</span>
+            <span className="text-[9px] text-[#3D4050] font-semibold">CR</span>
           </div>
           <button
             onClick={() => setShowTopUp(true)}
-            className="px-2 py-1 rounded-md bg-cyan-500/[0.06] border border-cyan-500/[0.12] hover:bg-cyan-500/[0.1] transition-colors"
+            className="px-2.5 py-1 rounded-md bg-purple-500/[0.06] border border-purple-500/[0.12] hover:bg-purple-500/[0.1] transition-colors"
           >
-            <span className="text-[11px] font-bold text-cyan-400">
-              Top up
-            </span>
+            <span className="text-[12px] font-bold text-purple-400">Top up</span>
           </button>
           <InstallButton />
-          <a
-            href="/account"
-            className="text-[#3D4050] hover:text-white transition-colors"
-          >
+          <a href="/account" className="text-[#3D4050] hover:text-white transition-colors ml-1">
             <Settings className="h-3.5 w-3.5" />
           </a>
           <button
@@ -702,65 +669,20 @@ export default function Dashboard() {
 
       {/* ═══ MAIN BODY ═══ */}
       <div className="relative z-10 flex-1 flex overflow-hidden">
-        {/* ═══ ICON SIDEBAR ═══ */}
-        <nav className="w-[52px] flex-shrink-0 flex flex-col items-center py-3 gap-1 border-r border-white/[0.03] bg-white/[0.005]">
-          {sidebarTabs.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`relative w-9 h-9 rounded-[10px] flex items-center justify-center transition-all group ${
-                activeTab === tab.key
-                  ? "bg-cyan-500/[0.08] border border-cyan-500/[0.15]"
-                  : "hover:bg-white/[0.03] border border-transparent"
-              }`}
-              title={tab.label}
-            >
-              {activeTab === tab.key && (
-                <div className="absolute left-[-1px] top-2 w-[2px] h-5 rounded-r bg-cyan-400" />
-              )}
-              <span
-                className={
-                  activeTab === tab.key
-                    ? "text-cyan-400"
-                    : "text-[#2A2D3A] group-hover:text-[#3D4050]"
-                }
-              >
-                {tab.icon}
-              </span>
-            </button>
-          ))}
-          {/* Settings gear at bottom */}
-          <div className="mt-auto">
-            <button
-              onClick={() => setShowSettings(!showSettings)}
-              className={`w-9 h-9 rounded-[10px] flex items-center justify-center transition-all ${
-                showSettings
-                  ? "bg-purple-500/[0.08] border border-purple-500/[0.15]"
-                  : "hover:bg-white/[0.03] border border-transparent"
-              }`}
-              title="Parameters"
-            >
-              <Settings
-                className={`h-4 w-4 ${showSettings ? "text-purple-400" : "text-[#2A2D3A]"}`}
-              />
-            </button>
-          </div>
-        </nav>
+
 
         {/* ═══ PROCESS TAB ═══ */}
         {activeTab === "process" && (
           <div className="flex-1 flex overflow-hidden">
-            {/* CENTER WORKSPACE */}
+            {/* LEFT: Upload + Queue */}
             <div className="flex-1 flex flex-col overflow-hidden">
-              {/* Config bar */}
-              <div className="border-b border-white/[0.03] flex-shrink-0">
-                <div className="flex flex-col lg:flex-row gap-3 p-4">
-                  {/* Upload zone (compact) */}
+              {/* Upload zone (full-width) */}
+              <div className="p-4 flex-shrink-0">
                   <div
                     onDrop={onDrop}
                     onDragOver={(e) => e.preventDefault()}
                     onClick={() => fileInputRef.current?.click()}
-                    className="lg:w-[240px] flex-shrink-0 rounded-xl border-[1.5px] border-dashed border-cyan-500/[0.12] bg-cyan-500/[0.015] hover:border-cyan-500/[0.25] transition-all cursor-pointer flex flex-col items-center justify-center py-6 px-4 text-center group"
+                    className="w-full rounded-xl border-[1.5px] border-dashed border-purple-500/[0.12] bg-purple-500/[0.015] hover:border-purple-500/[0.25] transition-all cursor-pointer flex flex-col items-center justify-center py-8 px-4 text-center group"
                   >
                     <input
                       ref={fileInputRef}
@@ -773,8 +695,8 @@ export default function Dashboard() {
                           addFiles(Array.from(e.target.files));
                       }}
                     />
-                    <div className="w-9 h-9 rounded-[10px] bg-gradient-to-br from-cyan-500/[0.08] to-purple-500/[0.06] border border-cyan-500/[0.08] flex items-center justify-center mb-2 group-hover:from-cyan-500/[0.12] group-hover:to-purple-500/[0.1] transition-all">
-                      <Upload className="h-4 w-4 text-cyan-400" />
+                    <div className="w-9 h-9 rounded-[10px] bg-gradient-to-br from-purple-500/[0.08] to-purple-600/[0.06] border border-purple-500/[0.08] flex items-center justify-center mb-2 group-hover:from-purple-500/[0.12] group-hover:to-purple-600/[0.1] transition-all">
+                      <Upload className="h-4 w-4 text-purple-400" />
                     </div>
                     <p className="text-[13px] font-bold text-white tracking-tight">
                       Drop videos
@@ -784,223 +706,6 @@ export default function Dashboard() {
                     </p>
                   </div>
 
-                  {/* Right config area */}
-                  <div className="flex-1 flex flex-col gap-3 justify-center">
-                    {/* Profile + Copies row */}
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <span className="text-[10px] font-bold text-[#2A2D3A] tracking-wider">
-                        PROFILE
-                      </span>
-                      <div className="flex gap-1">
-                        {(
-                          [
-                            "capcut",
-                            "snapchat",
-                            "iphone",
-                            "random",
-                          ] as MetadataProfile[]
-                        ).map((p) => {
-                          const labels: Record<MetadataProfile, string> = {
-                            capcut: "CapCut",
-                            snapchat: "Snap",
-                            iphone: "iPhone",
-                            random: "Rand",
-                          };
-                          const isActive = metadata.includes(p);
-                          return (
-                            <button
-                              key={p}
-                              onClick={() => {
-                                if (p === "random") {
-                                  setMetadata(["random"]);
-                                  return;
-                                }
-                                const isSelected = metadata.includes(p);
-                                if (isSelected) {
-                                  const next = metadata.filter(
-                                    (m) => m !== p
-                                  );
-                                  setMetadata(
-                                    next.length === 0 ? ["random"] : next
-                                  );
-                                } else {
-                                  setMetadata([
-                                    ...metadata.filter(
-                                      (m) => m !== "random"
-                                    ),
-                                    p,
-                                  ]);
-                                }
-                              }}
-                              className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all ${
-                                isActive
-                                  ? "bg-cyan-500/[0.06] border border-cyan-500/[0.15] text-cyan-400"
-                                  : "bg-white/[0.015] border border-white/[0.04] text-[#2A2D3A] hover:text-[#3D4050]"
-                              }`}
-                            >
-                              {labels[p]}
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                      <div className="w-px h-4 bg-white/[0.04]" />
-
-                      <span className="text-[10px] font-bold text-[#2A2D3A] tracking-wider">
-                        COPIES
-                      </span>
-                      <div className="flex rounded-md border border-white/[0.06] overflow-hidden">
-                        <button
-                          onClick={() => {
-                            const v = Math.max(1, copies - 1);
-                            setCopies(v);
-                            setCopiesInput(String(v));
-                          }}
-                          className="w-6 h-6 flex items-center justify-center bg-white/[0.02] text-[#3D4050] text-xs hover:bg-white/[0.05] transition-colors"
-                        >
-                          −
-                        </button>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          value={copiesInput}
-                          onChange={(e) => {
-                            const raw = e.target.value.replace(
-                              /[^0-9]/g,
-                              ""
-                            );
-                            setCopiesInput(raw);
-                            const num = parseInt(raw);
-                            if (!isNaN(num) && num >= 1 && num <= 100)
-                              setCopies(num);
-                          }}
-                          onBlur={() => {
-                            const num = parseInt(copiesInput);
-                            if (isNaN(num) || num < 1) {
-                              setCopies(1);
-                              setCopiesInput("1");
-                            } else if (num > 100) {
-                              setCopies(100);
-                              setCopiesInput("100");
-                            } else {
-                              setCopies(num);
-                              setCopiesInput(String(num));
-                            }
-                          }}
-                          onFocus={(e) => e.target.select()}
-                          className="w-8 h-6 text-center font-mono text-[13px] font-bold text-white bg-white/[0.02] border-x border-white/[0.06] focus:outline-none"
-                        />
-                        <button
-                          onClick={() => {
-                            const v = Math.min(100, copies + 1);
-                            setCopies(v);
-                            setCopiesInput(String(v));
-                          }}
-                          className="w-6 h-6 flex items-center justify-center bg-white/[0.02] text-[#3D4050] text-xs hover:bg-white/[0.05] transition-colors"
-                        >
-                          +
-                        </button>
-                      </div>
-
-                      <div className="w-px h-4 bg-white/[0.04] hidden lg:block" />
-
-                      {/* Inline params */}
-                      <div className="hidden lg:flex items-center gap-3">
-                        <div className="flex items-center gap-1">
-                          <span className="text-[10px] text-[#2A2D3A] font-semibold">
-                            TRIM
-                          </span>
-                          <span className="font-mono text-[11px] font-semibold text-[#C8CAD0]">
-                            {editSettings.trimMin}
-                          </span>
-                          <span className="text-[8px] text-[#1A1D27]">
-                            –
-                          </span>
-                          <span className="font-mono text-[11px] font-semibold text-[#C8CAD0]">
-                            {editSettings.trimMax}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <span className="text-[10px] text-[#2A2D3A] font-semibold">
-                            CUTS
-                          </span>
-                          <span className="font-mono text-[11px] font-semibold text-[#C8CAD0]">
-                            {editSettings.cutsMin}
-                          </span>
-                          <span className="text-[8px] text-[#1A1D27]">
-                            –
-                          </span>
-                          <span className="font-mono text-[11px] font-semibold text-[#C8CAD0]">
-                            {editSettings.cutsMax}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <span className="text-[10px] text-[#2A2D3A] font-semibold">
-                            ZOOM
-                          </span>
-                          <span className="font-mono text-[11px] font-semibold text-[#C8CAD0]">
-                            {editSettings.zoomMin}
-                          </span>
-                          <span className="text-[8px] text-[#1A1D27]">
-                            –
-                          </span>
-                          <span className="font-mono text-[11px] font-semibold text-[#C8CAD0]">
-                            {editSettings.zoomMax}
-                          </span>
-                          <span className="text-[8px] text-[#2A2D3A]">
-                            %
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Mods row */}
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-[10px] font-bold text-[#2A2D3A] tracking-wider mr-1">
-                        MODS
-                      </span>
-                      {[
-                        { key: "hiddenEmoji", label: "Overlay" },
-                        { key: "speedShift", label: "Speed" },
-                        { key: "cropOffset", label: "Crop" },
-                        { key: "mirror", label: "Mirror" },
-                        { key: "grain", label: "Grain" },
-                        { key: "sharpen", label: "Sharpen" },
-                        { key: "hueShift", label: "Hue" },
-                        { key: "thumbnailRandomise", label: "Thumb" },
-                      ].map((m) => {
-                        const isOn = editSettings[
-                          m.key as keyof typeof editSettings
-                        ] as boolean;
-                        return (
-                          <button
-                            key={m.key}
-                            onClick={() =>
-                              setEditSettings({
-                                ...editSettings,
-                                [m.key]: !isOn,
-                              })
-                            }
-                            className={`px-2.5 py-1 rounded-md flex items-center gap-1 cursor-pointer transition-all ${
-                              isOn
-                                ? "bg-cyan-500/[0.04] border border-cyan-500/[0.12]"
-                                : "bg-white/[0.01] border border-white/[0.03]"
-                            }`}
-                          >
-                            <div
-                              className={`w-[5px] h-[5px] rounded-full ${isOn ? "bg-cyan-400 shadow-[0_0_6px_rgba(125,249,255,0.5)]" : "bg-[#1A1D27]"}`}
-                            />
-                            <span
-                              className={`text-[10px] font-semibold ${isOn ? "text-cyan-400" : "text-[#1E2030]"}`}
-                            >
-                              {m.label}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
               </div>
 
               {/* Queue area */}
@@ -1043,7 +748,7 @@ export default function Dashboard() {
                         pendingCount > 0 &&
                         !isProcessing &&
                         credits >= pendingCount * copies
-                          ? "border border-cyan-500/20 bg-gradient-to-r from-cyan-500/[0.1] to-purple-500/[0.06] text-cyan-400 shadow-[0_2px_20px_rgba(125,249,255,0.08)] hover:from-cyan-500/[0.15]"
+                          ? "border border-purple-500/20 bg-gradient-to-r from-purple-500/[0.1] to-purple-500/[0.06] text-purple-400 shadow-[0_2px_20px_rgba(167,139,250,0.08)] hover:from-purple-500/[0.15]"
                           : "bg-white/[0.03] text-[#2A2D3A] cursor-not-allowed"
                       }`}
                     >
@@ -1087,7 +792,7 @@ export default function Dashboard() {
                       key={vid.id}
                       className={`rounded-xl p-4 transition-all ${
                         vid.status === "processing"
-                          ? "bg-cyan-500/[0.015] border border-cyan-500/[0.08]"
+                          ? "bg-purple-500/[0.015] border border-purple-500/[0.08]"
                           : vid.status === "done"
                             ? "bg-emerald-500/[0.01] border border-emerald-500/[0.06]"
                             : vid.status === "error"
@@ -1100,7 +805,7 @@ export default function Dashboard() {
                         <div
                           className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${
                             vid.status === "processing"
-                              ? "bg-cyan-500/[0.06]"
+                              ? "bg-purple-500/[0.06]"
                               : vid.status === "done"
                                 ? "bg-emerald-500/[0.06]"
                                 : vid.status === "error"
@@ -1120,13 +825,13 @@ export default function Dashboard() {
                                 cy="12"
                                 r="9"
                                 fill="none"
-                                stroke="rgba(125,249,255,0.1)"
+                                stroke="rgba(167,139,250,0.1)"
                                 strokeWidth="2.5"
                               />
                               <path
                                 d="M12 3a9 9 0 0 1 9 9"
                                 fill="none"
-                                stroke="#7DF9FF"
+                                stroke="#A78BFA"
                                 strokeWidth="2.5"
                                 strokeLinecap="round"
                               />
@@ -1172,7 +877,7 @@ export default function Dashboard() {
                           {vid.status === "processing" && (
                             <>
                               <WaveformBars />
-                              <span className="font-mono text-[11px] font-bold text-cyan-400 px-2 py-0.5 rounded bg-cyan-500/[0.06]">
+                              <span className="font-mono text-[11px] font-bold text-purple-400 px-2 py-0.5 rounded bg-purple-500/[0.06]">
                                 {vid.progress}%
                               </span>
                             </>
@@ -1244,10 +949,10 @@ export default function Dashboard() {
                             return (
                               <div
                                 key={i}
-                                className="flex-1 h-1 rounded-full bg-cyan-500/[0.06] overflow-hidden"
+                                className="flex-1 h-1 rounded-full bg-purple-500/[0.06] overflow-hidden"
                               >
                                 <div
-                                  className="h-full rounded-full bg-cyan-400 transition-all duration-700"
+                                  className="h-full rounded-full bg-purple-400 transition-all duration-700"
                                   style={{
                                     width: `${Math.min(100, filled)}%`,
                                   }}
@@ -1286,7 +991,7 @@ export default function Dashboard() {
                             }, i * 500);
                           });
                         }}
-                        className="flex-1 py-2.5 rounded-lg font-bold text-[12px] bg-gradient-to-r from-cyan-500/[0.1] to-purple-500/[0.06] border border-cyan-500/[0.15] text-cyan-400 transition-all flex items-center justify-center gap-2 hover:from-cyan-500/[0.15]"
+                        className="flex-1 py-2.5 rounded-lg font-bold text-[12px] bg-gradient-to-r from-purple-500/[0.1] to-purple-500/[0.06] border border-purple-500/[0.15] text-purple-400 transition-all flex items-center justify-center gap-2 hover:from-purple-500/[0.15]"
                       >
                         <Download className="h-3.5 w-3.5" />
                         Save all videos
@@ -1368,156 +1073,202 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* ═══ RIGHT STATS PANEL ═══ */}
-            <aside className="hidden lg:flex w-[220px] flex-shrink-0 border-l border-white/[0.03] bg-white/[0.005] flex-col p-3.5 gap-2.5 overflow-y-auto">
-              <p className="text-[10px] font-bold text-[#2A2D3A] tracking-wider pb-1.5 border-b border-white/[0.03]">
-                LIVE METRICS
-              </p>
-
-              {/* Uniqueness gauge */}
-              <div className="bg-white/[0.01] border border-white/[0.03] rounded-[10px] p-3.5 flex items-center gap-3">
-                <svg
-                  width="40"
-                  height="40"
-                  viewBox="0 0 40 40"
-                  className="-rotate-90 flex-shrink-0"
-                >
-                  <circle
-                    cx="20"
-                    cy="20"
-                    r="16"
-                    fill="none"
-                    stroke="rgba(125,249,255,0.06)"
-                    strokeWidth="3"
-                  />
-                  <circle
-                    cx="20"
-                    cy="20"
-                    r="16"
-                    fill="none"
-                    stroke="#7DF9FF"
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                    strokeDasharray="100.5"
-                    strokeDashoffset="11"
-                  />
-                </svg>
+            {/* ═══ RIGHT SETTINGS SIDEBAR ═══ */}
+            <aside className="hidden lg:flex w-[300px] flex-shrink-0 border-l border-white/[0.03] bg-white/[0.005] flex-col overflow-y-auto">
+              <div className="p-4 space-y-5">
+                {/* Video Identity Profile */}
                 <div>
-                  <p className="font-mono text-[18px] font-bold text-white tracking-tight">
-                    98.7
+                  <p className="text-[10px] font-bold text-[#2A2D3A] tracking-wider mb-3">
+                    VIDEO IDENTITY PROFILE
                   </p>
-                  <p className="text-[9px] text-[#3D4050] font-semibold">
-                    UNIQ SCORE
-                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(["capcut", "snapchat", "iphone", "random"] as MetadataProfile[]).map((p) => {
+                      const labels: Record<MetadataProfile, string> = { capcut: "CapCut", snapchat: "Snapchat", iphone: "iPhone", random: "Random" };
+                      const descs: Record<MetadataProfile, string> = { capcut: "Edited with CapCut", snapchat: "Recorded via Snap", iphone: "Shot on iPhone", random: "Auto per copy" };
+                      const isActive = metadata.includes(p);
+                      const stacked = isActive && metadata.length > 1 && !metadata.includes("random") && p !== "random";
+                      return (
+                        <button
+                          key={p}
+                          onClick={() => {
+                            if (p === "random") { setMetadata(["random"]); return; }
+                            const isSelected = metadata.includes(p);
+                            if (isSelected) {
+                              const next = metadata.filter((m) => m !== p);
+                              setMetadata(next.length === 0 ? ["random"] : next);
+                            } else {
+                              setMetadata([...metadata.filter((m) => m !== "random"), p]);
+                            }
+                          }}
+                          className={`relative p-3 rounded-lg border text-left transition-all ${
+                            isActive
+                              ? "border-purple-500/[0.2] bg-purple-500/[0.04]"
+                              : "border-white/[0.04] bg-white/[0.01] hover:border-white/[0.08]"
+                          }`}
+                        >
+                          <span className={`text-[12px] font-bold block ${isActive ? "text-purple-400" : "text-[#3D4050]"}`}>
+                            {labels[p]}
+                          </span>
+                          <span className="text-[10px] text-[#2A2D3A] block mt-0.5">{descs[p]}</span>
+                          {isActive && <Check className="absolute top-2 right-2 h-3 w-3 text-purple-400" />}
+                          {stacked && (
+                            <span className="text-[9px] font-bold text-purple-400/80 bg-purple-500/[0.1] px-1.5 py-0.5 rounded mt-1.5 inline-block">STACKED</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
 
-              {/* Throughput chart */}
-              <div className="bg-white/[0.01] border border-white/[0.03] rounded-[10px] p-3.5">
-                <div className="flex justify-between items-center mb-2.5">
-                  <p className="text-[9px] font-bold text-[#3D4050] tracking-wider">
-                    7-DAY
-                  </p>
-                  <span className="font-mono text-[10px] font-bold text-cyan-400">
-                    {doneCount || 0}
-                  </span>
+                {/* Anti-Detection Toggles */}
+                <div>
+                  <p className="text-[10px] font-bold text-purple-400 tracking-wider mb-3">ANTI-DETECTION</p>
+                  <div className="space-y-1.5">
+                    {[
+                      { key: "hiddenEmoji", label: "Hidden Overlay", desc: "Invisible pixel marker" },
+                      { key: "speedShift", label: "Speed Shift", desc: "Tempo change" },
+                      { key: "cropOffset", label: "Crop Offset", desc: "Spatial shift" },
+                      { key: "hueShift", label: "Hue Shift", desc: "Colour rotation" },
+                      { key: "thumbnailRandomise", label: "Randomise Thumb", desc: "Unique first-frame" },
+                    ].map((t) => {
+                      const isOn = editSettings[t.key as keyof typeof editSettings] as boolean;
+                      return (
+                        <button
+                          key={t.key}
+                          onClick={() => setEditSettings({ ...editSettings, [t.key]: !isOn })}
+                          className={`w-full flex items-center justify-between p-3 rounded-lg border transition-all ${
+                            isOn ? "border-purple-500/[0.2] bg-purple-500/[0.04]" : "border-white/[0.04] bg-white/[0.01] hover:border-white/[0.08]"
+                          }`}
+                        >
+                          <div className="text-left">
+                            <span className={`text-[12px] font-bold block ${isOn ? "text-white" : "text-[#3D4050]"}`}>{t.label}</span>
+                            <span className="text-[10px] text-[#2A2D3A]">{t.desc}</span>
+                          </div>
+                          <div className={`w-8 h-[18px] rounded-full transition-all relative flex-shrink-0 ${isOn ? "bg-purple-500" : "bg-white/[0.08]"}`}>
+                            <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-[1px] transition-all ${isOn ? "left-[15px]" : "left-[2px]"}`} />
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div className="flex items-end gap-[3px] h-[36px]">
-                  {[50, 70, 40, 85, 60, 95, 75].map((h, i) => (
-                    <div
-                      key={i}
-                      className={`flex-1 rounded-sm ${i === 6 ? "bg-cyan-400 shadow-[0_0_8px_rgba(125,249,255,0.3)]" : "bg-cyan-500/[0.12]"}`}
-                      style={{ height: `${h}%` }}
+
+                {/* Edit Parameters */}
+                <div>
+                  <p className="text-[10px] font-bold text-[#2A2D3A] tracking-wider mb-3">EDIT PARAMETERS</p>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-[10px] text-[#3D4050] block mb-1.5">Trim range (seconds)</label>
+                      <div className="flex gap-2">
+                        <input type="number" step="0.01" min="0" max="5" value={editSettings.trimMin}
+                          onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) setEditSettings({ ...editSettings, trimMin: v }); }}
+                          onFocus={(e) => e.target.select()}
+                          className="w-full bg-white/[0.03] border border-white/[0.06] rounded-md px-2.5 py-1.5 text-sm text-white font-mono focus:outline-none focus:border-purple-500/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        />
+                        <input type="number" step="0.01" min="0" max="5" value={editSettings.trimMax}
+                          onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) setEditSettings({ ...editSettings, trimMax: v }); }}
+                          onFocus={(e) => e.target.select()}
+                          className="w-full bg-white/[0.03] border border-white/[0.06] rounded-md px-2.5 py-1.5 text-sm text-white font-mono focus:outline-none focus:border-purple-500/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-[#3D4050] block mb-1.5">Number of cuts</label>
+                      <div className="flex gap-2">
+                        <input type="number" step="1" min="0" max="20" value={editSettings.cutsMin}
+                          onChange={(e) => { const v = parseInt(e.target.value); if (!isNaN(v)) setEditSettings({ ...editSettings, cutsMin: v }); }}
+                          onFocus={(e) => e.target.select()}
+                          className="w-full bg-white/[0.03] border border-white/[0.06] rounded-md px-2.5 py-1.5 text-sm text-white font-mono focus:outline-none focus:border-purple-500/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        />
+                        <input type="number" step="1" min="0" max="20" value={editSettings.cutsMax}
+                          onChange={(e) => { const v = parseInt(e.target.value); if (!isNaN(v)) setEditSettings({ ...editSettings, cutsMax: v }); }}
+                          onFocus={(e) => e.target.select()}
+                          className="w-full bg-white/[0.03] border border-white/[0.06] rounded-md px-2.5 py-1.5 text-sm text-white font-mono focus:outline-none focus:border-purple-500/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-[#3D4050] block mb-1.5">Zoom range (%)</label>
+                      <div className="flex gap-2">
+                        <input type="number" step="0.5" min="0" max="50" value={editSettings.zoomMin}
+                          onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) setEditSettings({ ...editSettings, zoomMin: v }); }}
+                          onFocus={(e) => e.target.select()}
+                          className="w-full bg-white/[0.03] border border-white/[0.06] rounded-md px-2.5 py-1.5 text-sm text-white font-mono focus:outline-none focus:border-purple-500/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        />
+                        <input type="number" step="0.5" min="0" max="50" value={editSettings.zoomMax}
+                          onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) setEditSettings({ ...editSettings, zoomMax: v }); }}
+                          onFocus={(e) => e.target.select()}
+                          className="w-full bg-white/[0.03] border border-white/[0.06] rounded-md px-2.5 py-1.5 text-sm text-white font-mono focus:outline-none focus:border-purple-500/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        />
+                      </div>
+                    </div>
+                    {/* Processing toggles */}
+                    <div className="space-y-2 pt-1">
+                      {[
+                        { key: "mirror", label: "Mirror (horizontal flip)" },
+                        { key: "grain", label: "Film grain" },
+                        { key: "sharpen", label: "Sharpen" },
+                      ].map((toggle) => (
+                        <label key={toggle.key} className="flex items-center justify-between cursor-pointer">
+                          <span className="text-[12px] text-[#C8CAD0]">{toggle.label}</span>
+                          <button
+                            onClick={() => setEditSettings({ ...editSettings, [toggle.key]: !editSettings[toggle.key as keyof typeof editSettings] })}
+                            className={`relative w-8 h-[18px] rounded-full transition-colors ${
+                              editSettings[toggle.key as keyof typeof editSettings] ? "bg-purple-500" : "bg-white/[0.08]"
+                            }`}
+                          >
+                            <span className={`absolute top-[1px] left-[2px] h-3.5 w-3.5 rounded-full bg-white transition-transform ${
+                              editSettings[toggle.key as keyof typeof editSettings] ? "translate-x-[14px]" : ""
+                            }`} />
+                          </button>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Copies */}
+                <div>
+                  <p className="text-[10px] font-bold text-[#2A2D3A] tracking-wider mb-3">COPIES PER VIDEO</p>
+                  <div className="flex rounded-md border border-white/[0.06] overflow-hidden">
+                    <button
+                      onClick={() => { const v = Math.max(1, copies - 1); setCopies(v); setCopiesInput(String(v)); }}
+                      className="w-8 h-8 flex items-center justify-center bg-white/[0.02] text-[#3D4050] text-sm hover:bg-white/[0.05] transition-colors"
+                    >−</button>
+                    <input
+                      type="text" inputMode="numeric" value={copiesInput}
+                      onChange={(e) => { const raw = e.target.value.replace(/[^0-9]/g, ""); setCopiesInput(raw); const num = parseInt(raw); if (!isNaN(num) && num >= 1 && num <= 100) setCopies(num); }}
+                      onBlur={() => { const num = parseInt(copiesInput); if (isNaN(num) || num < 1) { setCopies(1); setCopiesInput("1"); } else if (num > 100) { setCopies(100); setCopiesInput("100"); } else { setCopies(num); setCopiesInput(String(num)); } }}
+                      onFocus={(e) => e.target.select()}
+                      className="flex-1 h-8 text-center font-mono text-[15px] font-bold text-white bg-white/[0.02] border-x border-white/[0.06] focus:outline-none"
                     />
-                  ))}
+                    <button
+                      onClick={() => { const v = Math.min(100, copies + 1); setCopies(v); setCopiesInput(String(v)); }}
+                      className="w-8 h-8 flex items-center justify-center bg-white/[0.02] text-[#3D4050] text-sm hover:bg-white/[0.05] transition-colors"
+                    >+</button>
+                  </div>
                 </div>
-                <div className="flex justify-between mt-1">
-                  <span className="text-[8px] text-[#1A1D27]">Mon</span>
-                  <span className="text-[8px] text-[#3D4050]">Today</span>
-                </div>
-              </div>
 
-              {/* Detection bypass */}
-              <div className="bg-white/[0.01] border border-white/[0.03] rounded-[10px] p-3.5">
-                <p className="text-[9px] font-bold text-[#3D4050] tracking-wider mb-1">
-                  DETECTION BYPASS
-                </p>
-                <div className="flex items-baseline gap-1">
-                  <span className="font-mono text-[22px] font-bold text-emerald-400 tracking-tight">
-                    99.2
-                  </span>
-                  <span className="text-[10px] text-emerald-400 font-semibold">
-                    %
-                  </span>
-                </div>
-                <div className="h-[3px] bg-emerald-500/[0.08] rounded-full mt-2 overflow-hidden">
-                  <div className="w-[99.2%] h-full bg-emerald-400 rounded-full" />
-                </div>
-              </div>
-
-              {/* Credits remaining */}
-              <div className="bg-white/[0.01] border border-white/[0.03] rounded-[10px] p-3.5">
-                <p className="text-[9px] font-bold text-[#3D4050] tracking-wider mb-1">
-                  CREDITS
-                </p>
-                <div className="flex items-baseline gap-1">
-                  <span className="font-mono text-[22px] font-bold text-cyan-400 tracking-tight">
-                    {credits}
-                  </span>
-                </div>
-                <div className="h-[3px] bg-cyan-500/[0.06] rounded-full mt-2 overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-cyan-400 to-purple-400 rounded-full transition-all"
-                    style={{
-                      width: `${Math.min(100, (credits / Math.max(1, credits + 50)) * 100)}%`,
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* Activity log */}
-              <div className="mt-auto pt-2 border-t border-white/[0.03]">
-                <p className="text-[9px] font-bold text-[#2A2D3A] tracking-wider mb-2">
-                  ACTIVITY
-                </p>
-                <div className="space-y-1.5">
-                  {videos
-                    .filter((v) => v.status === "done")
-                    .slice(-3)
-                    .map((v, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center gap-1.5"
-                      >
-                        <div className="w-1 h-1 rounded-full bg-emerald-400 flex-shrink-0" />
-                        <span className="text-[10px] text-[#3D4050] truncate">
-                          {v.name.slice(0, 20)}
-                        </span>
-                        <Check className="h-2.5 w-2.5 text-emerald-400 flex-shrink-0 ml-auto" />
-                      </div>
-                    ))}
-                  {videos
-                    .filter((v) => v.status === "processing")
-                    .map((v, i) => (
-                      <div
-                        key={`p${i}`}
-                        className="flex items-center gap-1.5"
-                      >
-                        <div className="w-1 h-1 rounded-full bg-cyan-400 flex-shrink-0" />
-                        <span className="text-[10px] text-[#3D4050] truncate">
-                          {v.name.slice(0, 20)}
-                        </span>
-                        <Loader2 className="h-2.5 w-2.5 text-cyan-400 flex-shrink-0 ml-auto animate-spin" />
-                      </div>
-                    ))}
-                  {videos.length === 0 && (
-                    <span className="text-[10px] text-[#1A1D27]">
-                      No activity yet
-                    </span>
+                {/* Process all button */}
+                <button
+                  onClick={processAll}
+                  disabled={pendingCount === 0 || isProcessing || credits < pendingCount * copies}
+                  className={`w-full py-3 rounded-lg text-[13px] font-bold transition-all flex items-center justify-center gap-2 ${
+                    pendingCount > 0 && !isProcessing && credits >= pendingCount * copies
+                      ? "border border-purple-500/20 bg-gradient-to-r from-purple-500/[0.15] to-purple-600/[0.1] text-purple-300 shadow-[0_2px_20px_rgba(167,139,250,0.08)] hover:from-purple-500/[0.2]"
+                      : "bg-white/[0.03] text-[#2A2D3A] cursor-not-allowed"
+                  }`}
+                >
+                  {isProcessing ? (
+                    <><Loader2 className="h-4 w-4 animate-spin" /> Processing...</>
+                  ) : (
+                    <><Zap className="h-4 w-4" /> Process all ({pendingCount * copies} cr)</>
                   )}
-                </div>
+                </button>
               </div>
             </aside>
+
+
           </div>
         )}
 
@@ -1527,7 +1278,7 @@ export default function Dashboard() {
             <div className="max-w-4xl mx-auto">
               <div className="rounded-xl border border-white/[0.03] bg-white/[0.01] overflow-hidden">
                 <div className="p-4 border-b border-white/[0.03] flex items-center gap-2">
-                  <History className="h-4 w-4 text-cyan-400" />
+                  <History className="h-4 w-4 text-purple-400" />
                   <h2 className="text-sm font-bold text-white">
                     Processing History
                   </h2>
@@ -1589,7 +1340,7 @@ export default function Dashboard() {
             <div className="max-w-4xl mx-auto space-y-4">
               {!usageData ? (
                 <div className="flex items-center justify-center py-16">
-                  <Loader2 className="h-6 w-6 text-cyan-400 animate-spin" />
+                  <Loader2 className="h-6 w-6 text-purple-400 animate-spin" />
                 </div>
               ) : (usageData.totalJobs ?? 0) === 0 ? (
                 <div className="text-center py-16">
@@ -1619,7 +1370,7 @@ export default function Dashboard() {
                       <p className="text-[10px] text-[#3D4050] font-semibold mb-1">
                         Unique Copies
                       </p>
-                      <p className="font-mono text-2xl font-bold text-cyan-400">
+                      <p className="font-mono text-2xl font-bold text-purple-400">
                         {usageData.totalCopies ?? 0}
                       </p>
                       <p className="text-[10px] text-[#2A2D3A] mt-1">
@@ -1672,14 +1423,14 @@ export default function Dashboard() {
                                 {d.copies || 0}
                               </span>
                               <div
-                                className={`w-full rounded-sm transition-colors ${isToday ? "bg-cyan-400 hover:bg-cyan-300" : "bg-cyan-500/[0.15] hover:bg-cyan-500/[0.25]"}`}
+                                className={`w-full rounded-sm transition-colors ${isToday ? "bg-purple-400 hover:bg-purple-300" : "bg-purple-500/[0.15] hover:bg-purple-500/[0.25]"}`}
                                 style={{
                                   height: `${Math.max(h, 4)}%`,
                                 }}
                                 title={`${new Date(d.date).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}: ${d.copies} copies`}
                               />
                               <span
-                                className={`text-[10px] whitespace-nowrap ${isToday ? "text-cyan-400 font-medium" : "text-[#2A2D3A]"} ${i % 2 === 0 ? "" : "invisible"}`}
+                                className={`text-[10px] whitespace-nowrap ${isToday ? "text-purple-400 font-medium" : "text-[#2A2D3A]"} ${i % 2 === 0 ? "" : "invisible"}`}
                               >
                                 {new Date(
                                   d.date
@@ -1707,7 +1458,7 @@ export default function Dashboard() {
                 <div className="flex items-center justify-between mb-6">
                   <div>
                     <h3 className="text-base font-bold text-white flex items-center gap-2">
-                      <Search className="h-4 w-4 text-cyan-400" />
+                      <Search className="h-4 w-4 text-purple-400" />
                       Duplicate Checker
                     </h3>
                     <p className="text-xs text-[#3D4050] mt-1">
@@ -1726,7 +1477,7 @@ export default function Dashboard() {
                         })
                         .catch(() => setDuplicatesLoading(false));
                     }}
-                    className="px-4 py-2 rounded-lg text-[12px] font-bold bg-gradient-to-r from-cyan-500/[0.1] to-purple-500/[0.06] border border-cyan-500/[0.15] text-cyan-400 transition-all flex items-center gap-2 hover:from-cyan-500/[0.15]"
+                    className="px-4 py-2 rounded-lg text-[12px] font-bold bg-gradient-to-r from-purple-500/[0.1] to-purple-500/[0.06] border border-purple-500/[0.15] text-purple-400 transition-all flex items-center gap-2 hover:from-purple-500/[0.15]"
                   >
                     {duplicatesLoading ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1739,7 +1490,7 @@ export default function Dashboard() {
 
                 {duplicatesLoading && !duplicateData && (
                   <div className="flex items-center justify-center py-12">
-                    <Loader2 className="h-6 w-6 text-cyan-400 animate-spin" />
+                    <Loader2 className="h-6 w-6 text-purple-400 animate-spin" />
                   </div>
                 )}
 
@@ -1886,18 +1637,18 @@ export default function Dashboard() {
                 <p className="text-xs text-[#3D4050] mb-6">
                   Share your referral code. When someone signs up with it,
                   you both get{" "}
-                  <span className="text-cyan-400 font-bold">
+                  <span className="text-purple-400 font-bold">
                     50 free credits
                   </span>
                   !
                 </p>
 
                 {!referralData ? (
-                  <Loader2 className="h-6 w-6 text-cyan-400 animate-spin mx-auto" />
+                  <Loader2 className="h-6 w-6 text-purple-400 animate-spin mx-auto" />
                 ) : (
                   <>
                     <div className="flex items-center gap-2 p-3 rounded-lg bg-white/[0.03] border border-white/[0.06] mb-4">
-                      <code className="flex-1 text-sm font-mono text-cyan-400 select-all">
+                      <code className="flex-1 text-sm font-mono text-purple-400 select-all">
                         {referralData.code}
                       </code>
                       <button
@@ -1911,7 +1662,7 @@ export default function Dashboard() {
                             2000
                           );
                         }}
-                        className="px-3 py-1.5 rounded-md bg-cyan-500/[0.1] border border-cyan-500/[0.15] text-cyan-400 text-xs font-bold transition-all flex items-center gap-1.5 hover:bg-cyan-500/[0.15]"
+                        className="px-3 py-1.5 rounded-md bg-purple-500/[0.1] border border-purple-500/[0.15] text-purple-400 text-xs font-bold transition-all flex items-center gap-1.5 hover:bg-purple-500/[0.15]"
                       >
                         {referralCopied ? (
                           <Check className="h-3 w-3" />
@@ -1932,7 +1683,7 @@ export default function Dashboard() {
                         </p>
                       </div>
                       <div className="rounded-lg bg-white/[0.02] border border-white/[0.03] p-4">
-                        <p className="font-mono text-xl font-bold text-cyan-400">
+                        <p className="font-mono text-xl font-bold text-purple-400">
                           {(referralData.totalReferred ?? 0) * 50}
                         </p>
                         <p className="text-[10px] text-[#3D4050] mt-1">
@@ -1948,365 +1699,6 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* ═══ SETTINGS SLIDE-OVER ═══ */}
-      {showSettings && (
-        <div className="fixed inset-0 z-[90] flex">
-          <div
-            className="flex-1"
-            onClick={() => setShowSettings(false)}
-          />
-          <div className="w-[340px] bg-[#0A0B10] border-l border-white/[0.04] h-full overflow-y-auto p-5 space-y-5">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Settings className="h-4 w-4 text-purple-400" />
-                Parameters & Detection
-              </h3>
-              <button
-                onClick={() => setShowSettings(false)}
-                className="text-[#3D4050] hover:text-white transition-colors"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            {/* Metadata profiles */}
-            <div>
-              <p className="text-[10px] font-bold text-[#2A2D3A] tracking-wider mb-3">
-                VIDEO IDENTITY PROFILE
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                {(
-                  [
-                    "capcut",
-                    "snapchat",
-                    "iphone",
-                    "random",
-                  ] as MetadataProfile[]
-                ).map((p) => {
-                  const labels: Record<MetadataProfile, string> = {
-                    capcut: "CapCut",
-                    snapchat: "Snapchat",
-                    iphone: "iPhone",
-                    random: "Random",
-                  };
-                  const descs: Record<MetadataProfile, string> = {
-                    capcut: "Edited with CapCut",
-                    snapchat: "Recorded via Snap",
-                    iphone: "Shot on iPhone",
-                    random: "Auto per copy",
-                  };
-                  const isActive = metadata.includes(p);
-                  const stacked =
-                    isActive &&
-                    metadata.length > 1 &&
-                    !metadata.includes("random") &&
-                    p !== "random";
-                  return (
-                    <button
-                      key={p}
-                      onClick={() => {
-                        if (p === "random") {
-                          setMetadata(["random"]);
-                          return;
-                        }
-                        const isSelected = metadata.includes(p);
-                        if (isSelected) {
-                          const next = metadata.filter(
-                            (m) => m !== p
-                          );
-                          setMetadata(
-                            next.length === 0 ? ["random"] : next
-                          );
-                        } else {
-                          setMetadata([
-                            ...metadata.filter((m) => m !== "random"),
-                            p,
-                          ]);
-                        }
-                      }}
-                      className={`relative p-3 rounded-lg border text-left transition-all ${
-                        isActive
-                          ? "border-cyan-500/[0.2] bg-cyan-500/[0.04]"
-                          : "border-white/[0.04] bg-white/[0.01] hover:border-white/[0.08]"
-                      }`}
-                    >
-                      <span
-                        className={`text-[12px] font-bold block ${isActive ? "text-cyan-400" : "text-[#3D4050]"}`}
-                      >
-                        {labels[p]}
-                      </span>
-                      <span className="text-[10px] text-[#2A2D3A] block mt-0.5">
-                        {descs[p]}
-                      </span>
-                      {isActive && (
-                        <Check className="absolute top-2 right-2 h-3 w-3 text-cyan-400" />
-                      )}
-                      {stacked && (
-                        <span className="text-[9px] font-bold text-cyan-400/80 bg-cyan-500/[0.1] px-1.5 py-0.5 rounded mt-1.5 inline-block">
-                          STACKED
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Anti-detection toggles */}
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-[10px] font-bold text-purple-400 tracking-wider">
-                  ANTI-DETECTION
-                </span>
-              </div>
-              <div className="space-y-1.5">
-                {[
-                  {
-                    key: "hiddenEmoji",
-                    label: "Hidden Overlay",
-                    desc: "Invisible pixel marker",
-                  },
-                  {
-                    key: "speedShift",
-                    label: "Speed Shift",
-                    desc: "Tempo change",
-                  },
-                  {
-                    key: "cropOffset",
-                    label: "Crop Offset",
-                    desc: "Spatial shift",
-                  },
-                  {
-                    key: "hueShift",
-                    label: "Hue Shift",
-                    desc: "Colour rotation",
-                  },
-                  {
-                    key: "thumbnailRandomise",
-                    label: "Randomise Thumb",
-                    desc: "Unique first-frame",
-                  },
-                ].map((t) => {
-                  const isOn = editSettings[
-                    t.key as keyof typeof editSettings
-                  ] as boolean;
-                  return (
-                    <button
-                      key={t.key}
-                      onClick={() =>
-                        setEditSettings({
-                          ...editSettings,
-                          [t.key]: !isOn,
-                        })
-                      }
-                      className={`w-full flex items-center justify-between p-3 rounded-lg border transition-all ${
-                        isOn
-                          ? "border-purple-500/[0.2] bg-purple-500/[0.04]"
-                          : "border-white/[0.04] bg-white/[0.01] hover:border-white/[0.08]"
-                      }`}
-                    >
-                      <div className="text-left">
-                        <span
-                          className={`text-[12px] font-bold block ${isOn ? "text-white" : "text-[#3D4050]"}`}
-                        >
-                          {t.label}
-                        </span>
-                        <span className="text-[10px] text-[#2A2D3A]">
-                          {t.desc}
-                        </span>
-                      </div>
-                      <div
-                        className={`w-8 h-[18px] rounded-full transition-all relative flex-shrink-0 ${isOn ? "bg-purple-500" : "bg-white/[0.08]"}`}
-                      >
-                        <div
-                          className={`w-3.5 h-3.5 rounded-full bg-white absolute top-[1px] transition-all ${isOn ? "left-[15px]" : "left-[2px]"}`}
-                        />
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Edit parameters */}
-            <div>
-              <p className="text-[10px] font-bold text-[#2A2D3A] tracking-wider mb-3">
-                EDIT PARAMETERS
-              </p>
-              <div className="space-y-3">
-                <div>
-                  <label className="text-[10px] text-[#3D4050] block mb-1.5">
-                    Trim range (seconds)
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max="5"
-                      value={editSettings.trimMin}
-                      onChange={(e) => {
-                        const v = parseFloat(e.target.value);
-                        if (!isNaN(v))
-                          setEditSettings({
-                            ...editSettings,
-                            trimMin: v,
-                          });
-                      }}
-                      onFocus={(e) => e.target.select()}
-                      className="w-full bg-white/[0.03] border border-white/[0.06] rounded-md px-2.5 py-1.5 text-sm text-white font-mono focus:outline-none focus:border-cyan-500/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                    />
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max="5"
-                      value={editSettings.trimMax}
-                      onChange={(e) => {
-                        const v = parseFloat(e.target.value);
-                        if (!isNaN(v))
-                          setEditSettings({
-                            ...editSettings,
-                            trimMax: v,
-                          });
-                      }}
-                      onFocus={(e) => e.target.select()}
-                      className="w-full bg-white/[0.03] border border-white/[0.06] rounded-md px-2.5 py-1.5 text-sm text-white font-mono focus:outline-none focus:border-cyan-500/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="text-[10px] text-[#3D4050] block mb-1.5">
-                    Number of cuts
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="number"
-                      step="1"
-                      min="0"
-                      max="20"
-                      value={editSettings.cutsMin}
-                      onChange={(e) => {
-                        const v = parseInt(e.target.value);
-                        if (!isNaN(v))
-                          setEditSettings({
-                            ...editSettings,
-                            cutsMin: v,
-                          });
-                      }}
-                      onFocus={(e) => e.target.select()}
-                      className="w-full bg-white/[0.03] border border-white/[0.06] rounded-md px-2.5 py-1.5 text-sm text-white font-mono focus:outline-none focus:border-cyan-500/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                    />
-                    <input
-                      type="number"
-                      step="1"
-                      min="0"
-                      max="20"
-                      value={editSettings.cutsMax}
-                      onChange={(e) => {
-                        const v = parseInt(e.target.value);
-                        if (!isNaN(v))
-                          setEditSettings({
-                            ...editSettings,
-                            cutsMax: v,
-                          });
-                      }}
-                      onFocus={(e) => e.target.select()}
-                      className="w-full bg-white/[0.03] border border-white/[0.06] rounded-md px-2.5 py-1.5 text-sm text-white font-mono focus:outline-none focus:border-cyan-500/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="text-[10px] text-[#3D4050] block mb-1.5">
-                    Zoom range (%)
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="number"
-                      step="0.5"
-                      min="0"
-                      max="50"
-                      value={editSettings.zoomMin}
-                      onChange={(e) => {
-                        const v = parseFloat(e.target.value);
-                        if (!isNaN(v))
-                          setEditSettings({
-                            ...editSettings,
-                            zoomMin: v,
-                          });
-                      }}
-                      onFocus={(e) => e.target.select()}
-                      className="w-full bg-white/[0.03] border border-white/[0.06] rounded-md px-2.5 py-1.5 text-sm text-white font-mono focus:outline-none focus:border-cyan-500/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                    />
-                    <input
-                      type="number"
-                      step="0.5"
-                      min="0"
-                      max="50"
-                      value={editSettings.zoomMax}
-                      onChange={(e) => {
-                        const v = parseFloat(e.target.value);
-                        if (!isNaN(v))
-                          setEditSettings({
-                            ...editSettings,
-                            zoomMax: v,
-                          });
-                      }}
-                      onFocus={(e) => e.target.select()}
-                      className="w-full bg-white/[0.03] border border-white/[0.06] rounded-md px-2.5 py-1.5 text-sm text-white font-mono focus:outline-none focus:border-cyan-500/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                    />
-                  </div>
-                </div>
-                {/* Processing toggles */}
-                <div className="space-y-2 pt-1">
-                  {[
-                    { key: "mirror", label: "Mirror (horizontal flip)" },
-                    { key: "grain", label: "Film grain" },
-                    { key: "sharpen", label: "Sharpen" },
-                  ].map((toggle) => (
-                    <label
-                      key={toggle.key}
-                      className="flex items-center justify-between cursor-pointer"
-                    >
-                      <span className="text-[12px] text-[#C8CAD0]">
-                        {toggle.label}
-                      </span>
-                      <button
-                        onClick={() =>
-                          setEditSettings({
-                            ...editSettings,
-                            [toggle.key]:
-                              !editSettings[
-                                toggle.key as keyof typeof editSettings
-                              ],
-                          })
-                        }
-                        className={`relative w-8 h-[18px] rounded-full transition-colors ${
-                          editSettings[
-                            toggle.key as keyof typeof editSettings
-                          ]
-                            ? "bg-cyan-500"
-                            : "bg-white/[0.08]"
-                        }`}
-                      >
-                        <span
-                          className={`absolute top-[1px] left-[2px] h-3.5 w-3.5 rounded-full bg-white transition-transform ${
-                            editSettings[
-                              toggle.key as keyof typeof editSettings
-                            ]
-                              ? "translate-x-[14px]"
-                              : ""
-                          }`}
-                        />
-                      </button>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ═══ MODALS ═══ */}
 
@@ -2492,7 +1884,7 @@ export default function Dashboard() {
                         setSubscribingPlan(null);
                       }
                     }}
-                    className="w-full flex items-center justify-between p-4 rounded-lg border border-white/[0.06] bg-white/[0.01] hover:border-cyan-500/[0.15] hover:bg-cyan-500/[0.02] transition-all text-left cursor-pointer disabled:opacity-50"
+                    className="w-full flex items-center justify-between p-4 rounded-lg border border-white/[0.06] bg-white/[0.01] hover:border-purple-500/[0.15] hover:bg-purple-500/[0.02] transition-all text-left cursor-pointer disabled:opacity-50"
                   >
                     <div>
                       <div className="text-sm font-bold text-white">
@@ -2507,9 +1899,9 @@ export default function Dashboard() {
                         £{p.price}/mo
                       </span>
                       {subscribingPlan === p.key ? (
-                        <Loader2 className="h-4 w-4 text-cyan-400 animate-spin" />
+                        <Loader2 className="h-4 w-4 text-purple-400 animate-spin" />
                       ) : (
-                        <span className="text-[11px] font-bold text-cyan-400">
+                        <span className="text-[11px] font-bold text-purple-400">
                           Subscribe →
                         </span>
                       )}
@@ -2544,8 +1936,8 @@ export default function Dashboard() {
               <X className="h-5 w-5" />
             </button>
             <div className="text-center mb-6">
-              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-cyan-500/[0.08] border border-cyan-500/[0.15]">
-                <ShoppingCart className="h-6 w-6 text-cyan-400" />
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-purple-500/[0.08] border border-purple-500/[0.15]">
+                <ShoppingCart className="h-6 w-6 text-purple-400" />
               </div>
               <h2 className="text-lg font-bold text-white">
                 Top Up Credits
@@ -2599,7 +1991,7 @@ export default function Dashboard() {
                       );
                     }
                   }}
-                  className="group p-3.5 rounded-lg border border-white/[0.06] bg-white/[0.01] hover:border-cyan-500/[0.15] hover:bg-cyan-500/[0.02] transition-all text-left cursor-pointer"
+                  className="group p-3.5 rounded-lg border border-white/[0.06] bg-white/[0.01] hover:border-purple-500/[0.15] hover:bg-purple-500/[0.02] transition-all text-left cursor-pointer"
                 >
                   <div className="flex items-baseline justify-between mb-0.5">
                     <span className="font-mono text-lg font-bold text-white">
@@ -2612,7 +2004,7 @@ export default function Dashboard() {
                   <div className="text-[10px] text-[#3D4050] mb-2">
                     credits
                   </div>
-                  <div className="text-sm font-bold text-cyan-400">
+                  <div className="text-sm font-bold text-purple-400">
                     £{pack.price}
                   </div>
                 </button>
