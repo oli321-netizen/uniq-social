@@ -1009,26 +1009,30 @@ export default function Dashboard() {
                   </label>
                   <div className="flex gap-2">
                     <input
-                      type="text"
-                      inputMode="decimal"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="5"
                       value={editSettings.trimMin}
                       onChange={(e) => {
-                        const v = e.target.value.replace(/[^0-9.]/g, "");
-                        setEditSettings({ ...editSettings, trimMin: v === "" ? 0 : parseFloat(v) });
+                        const v = parseFloat(e.target.value);
+                        if (!isNaN(v)) setEditSettings({ ...editSettings, trimMin: v });
                       }}
                       onFocus={(e) => e.target.select()}
-                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     />
                     <input
-                      type="text"
-                      inputMode="decimal"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="5"
                       value={editSettings.trimMax}
                       onChange={(e) => {
-                        const v = e.target.value.replace(/[^0-9.]/g, "");
-                        setEditSettings({ ...editSettings, trimMax: v === "" ? 0 : parseFloat(v) });
+                        const v = parseFloat(e.target.value);
+                        if (!isNaN(v)) setEditSettings({ ...editSettings, trimMax: v });
                       }}
                       onFocus={(e) => e.target.select()}
-                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     />
                   </div>
                 </div>
@@ -1039,26 +1043,30 @@ export default function Dashboard() {
                   </label>
                   <div className="flex gap-2">
                     <input
-                      type="text"
-                      inputMode="numeric"
+                      type="number"
+                      step="1"
+                      min="0"
+                      max="20"
                       value={editSettings.cutsMin}
                       onChange={(e) => {
-                        const v = e.target.value.replace(/[^0-9]/g, "");
-                        setEditSettings({ ...editSettings, cutsMin: v === "" ? 0 : parseInt(v) });
+                        const v = parseInt(e.target.value);
+                        if (!isNaN(v)) setEditSettings({ ...editSettings, cutsMin: v });
                       }}
                       onFocus={(e) => e.target.select()}
-                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     />
                     <input
-                      type="text"
-                      inputMode="numeric"
+                      type="number"
+                      step="1"
+                      min="0"
+                      max="20"
                       value={editSettings.cutsMax}
                       onChange={(e) => {
-                        const v = e.target.value.replace(/[^0-9]/g, "");
-                        setEditSettings({ ...editSettings, cutsMax: v === "" ? 0 : parseInt(v) });
+                        const v = parseInt(e.target.value);
+                        if (!isNaN(v)) setEditSettings({ ...editSettings, cutsMax: v });
                       }}
                       onFocus={(e) => e.target.select()}
-                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     />
                   </div>
                 </div>
@@ -1069,26 +1077,30 @@ export default function Dashboard() {
                   </label>
                   <div className="flex gap-2">
                     <input
-                      type="text"
-                      inputMode="decimal"
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      max="50"
                       value={editSettings.zoomMin}
                       onChange={(e) => {
-                        const v = e.target.value.replace(/[^0-9.]/g, "");
-                        setEditSettings({ ...editSettings, zoomMin: v === "" ? 0 : parseFloat(v) });
+                        const v = parseFloat(e.target.value);
+                        if (!isNaN(v)) setEditSettings({ ...editSettings, zoomMin: v });
                       }}
                       onFocus={(e) => e.target.select()}
-                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     />
                     <input
-                      type="text"
-                      inputMode="decimal"
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      max="50"
                       value={editSettings.zoomMax}
                       onChange={(e) => {
-                        const v = e.target.value.replace(/[^0-9.]/g, "");
-                        setEditSettings({ ...editSettings, zoomMax: v === "" ? 0 : parseFloat(v) });
+                        const v = parseFloat(e.target.value);
+                        if (!isNaN(v)) setEditSettings({ ...editSettings, zoomMax: v });
                       }}
                       onFocus={(e) => e.target.select()}
-                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     />
                   </div>
                 </div>
