@@ -9,12 +9,12 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "Uniq Social — Make Every Video Unique",
-  description: "Transform your videos into unique, ready-to-use content. Batch process with randomized edits, metadata injection, and more.",
+  title: "Uniq — Hook lab and creator hub",
+  description: "Write hook lines, test creative variants of short-form video, and keep the cuts that hold attention.",
   metadataBase: new URL("https://uniqsocial.com"),
   openGraph: {
-    title: "Uniq Social — Make Every Video Unique",
-    description: "Transform your videos into unique, ready-to-use content. Batch process with randomized edits, metadata injection, and more.",
+    title: "Uniq — Hook lab and creator hub",
+    description: "Write hook lines, test creative variants of short-form video, and keep the cuts that hold attention.",
     url: "https://uniqsocial.com",
     siteName: "Uniq Social",
     images: [
@@ -29,8 +29,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Uniq Social — Make Every Video Unique",
-    description: "Transform your videos into unique, ready-to-use content.",
+    title: "Uniq — Hook lab and creator hub",
+    description: "Write hook lines, test creative variants, and log what wins.",
     images: ["/og-image.png"],
   },
   manifest: "/manifest.json",
