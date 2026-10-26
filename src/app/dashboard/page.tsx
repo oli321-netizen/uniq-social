@@ -3,7 +3,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { useTheme } from "@/components/ThemeProvider";
 import { useToast } from "@/components/Toast";
 import {
   Upload,
@@ -150,7 +149,6 @@ export default function Dashboard() {
   const [usageData, setUsageData] = useState<any>(null);
   const [referralData, setReferralData] = useState<any>(null);
   const [referralCopied, setReferralCopied] = useState(false);
-  const { toggleTheme } = useTheme();
   const { addToast } = useToast();
   const [previewVid, setPreviewVid] = useState<VideoFile | null>(null);
   const [showProcessMore, setShowProcessMore] = useState(false);
