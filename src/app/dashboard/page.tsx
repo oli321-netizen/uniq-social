@@ -100,7 +100,7 @@ function WaveformBars() {
           width="2"
           height={[4, 8, 6, 10, 6, 8, 4, 10, 6, 4][i]}
           rx="1"
-          fill="#7DF9FF"
+          fill="#A78BFA"
           className="animate-pulse"
           style={{ animationDelay: `${i * 0.1}s` }}
         />
@@ -549,53 +549,35 @@ export default function Dashboard() {
         <rect width="100%" height="100%" fill="url(#dotgrid)" />
       </svg>
 
-      {/* ═══ TOP NAV BAR ═══ */}
-      <header className="relative z-10 h-[46px] flex items-center px-5 bg-white/[0.01] border-b border-white/[0.04] flex-shrink-0">
-        <a href="/" className="font-black text-[16px] tracking-tighter text-white mr-6">uniq</a>
-
-        {/* Nav tabs */}
-        <div className="flex items-center gap-0.5 h-full">
-          {sidebarTabs.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`relative h-full px-3.5 flex items-center transition-all ${
-                activeTab === tab.key
-                  ? "text-purple-400"
-                  : "text-[#3D4050] hover:text-[#C8CAD0]"
-              }`}
-            >
-              <span className="text-[13px] font-semibold">{tab.label}</span>
-              {activeTab === tab.key && (
-                <div className="absolute bottom-0 left-2 right-2 h-[2px] bg-purple-400 rounded-t" />
-              )}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex-1" />
+      {/* ═══ TOP HEADER BAR ═══ */}
+      <header className="relative z-10 h-[52px] flex items-center justify-between px-5 bg-[#0B0D12]/80 backdrop-blur-md border-b border-white/[0.04] flex-shrink-0">
+        <a href="/" className="flex items-center gap-2">
+          <span className="font-black text-[18px] tracking-tighter text-white">uniq</span>
+        </a>
 
         {/* Right: credits + actions */}
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-purple-500/[0.04] border border-purple-500/[0.08]">
-            <span className="font-mono text-[13px] font-bold text-purple-400">{credits}</span>
-            <span className="text-[9px] text-[#3D4050] font-semibold">CR</span>
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/[0.06] border border-purple-500/[0.1]">
+            <Zap className="h-3.5 w-3.5 text-purple-400" />
+            <span className="font-mono text-[13px] font-bold text-purple-300">{credits.toLocaleString()}</span>
+            <span className="text-[10px] text-purple-400/50 font-semibold ml-0.5">credits</span>
           </div>
           <button
             onClick={() => setShowTopUp(true)}
-            className="px-2.5 py-1 rounded-md bg-purple-500/[0.06] border border-purple-500/[0.12] hover:bg-purple-500/[0.1] transition-colors"
+            className="px-3.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-[12px] font-bold transition-all flex items-center gap-1.5 shadow-[0_2px_12px_rgba(147,51,234,0.3)]"
           >
-            <span className="text-[12px] font-bold text-purple-400">Top up</span>
+            <Zap className="h-3 w-3" />
+            Top up
           </button>
           <InstallButton />
-          <a href="/account" className="text-[#3D4050] hover:text-white transition-colors ml-1">
-            <Settings className="h-3.5 w-3.5" />
+          <a href="/account" className="text-[#3D4050] hover:text-white transition-colors ml-1 p-1.5 rounded-lg hover:bg-white/[0.04]">
+            <Settings className="h-4 w-4" />
           </a>
           <button
             onClick={() => signOut({ callbackUrl: "/login" })}
-            className="text-[#3D4050] hover:text-white transition-colors"
+            className="text-[#3D4050] hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/[0.04]"
           >
-            <LogOut className="h-3.5 w-3.5" />
+            <LogOut className="h-4 w-4" />
           </button>
         </div>
       </header>
@@ -658,6 +640,47 @@ export default function Dashboard() {
       {/* ═══ MAIN BODY ═══ */}
       <div className="relative z-10 flex-1 flex overflow-hidden">
 
+        {/* ═══ LEFT SIDEBAR NAV ═══ */}
+        <nav className="hidden md:flex w-[180px] flex-shrink-0 border-r border-white/[0.04] bg-[#0B0D12]/60 flex-col justify-between py-4 px-3">
+          <div className="space-y-1">
+            {sidebarTabs.map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all ${
+                  activeTab === tab.key
+                    ? "bg-purple-500/[0.12] text-purple-300 shadow-[0_0_20px_rgba(147,51,234,0.08)]"
+                    : "text-[#4A4D5C] hover:text-[#C8CAD0] hover:bg-white/[0.03]"
+                }`}
+              >
+                <span className={activeTab === tab.key ? "text-purple-400" : ""}>{tab.icon}</span>
+                <span className="text-[13px] font-semibold">{tab.label}</span>
+              </button>
+            ))}
+          </div>
+          <div className="space-y-2 px-1">
+            <div className="h-px bg-white/[0.04] my-2" />
+            <p className="text-[10px] text-[#2A2D3A] font-medium px-2">© uniq {new Date().getFullYear()}</p>
+          </div>
+        </nav>
+
+        {/* Mobile bottom nav */}
+        <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#0B0D12] border-t border-white/[0.06] flex items-center justify-around py-2 px-1">
+          {sidebarTabs.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-all ${
+                activeTab === tab.key
+                  ? "text-purple-400"
+                  : "text-[#3D4050]"
+              }`}
+            >
+              {tab.icon}
+              <span className="text-[9px] font-semibold">{tab.label}</span>
+            </button>
+          ))}
+        </div>
 
         {/* ═══ PROCESS TAB ═══ */}
         {activeTab === "process" && (
@@ -687,10 +710,10 @@ export default function Dashboard() {
                       <Upload className="h-4 w-4 text-purple-400" />
                     </div>
                     <p className="text-[13px] font-bold text-white tracking-tight">
-                      Drop videos
+                      Drop videos here or click to upload
                     </p>
-                    <p className="text-[10px] text-[#2A2D3A] mt-0.5">
-                      MP4 MOV AVI · 500 MB max
+                    <p className="text-[10px] text-[#3D4050] mt-1">
+                      MP4, MOV, AVI — up to 500 MB per file
                     </p>
                   </div>
 
