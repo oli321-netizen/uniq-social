@@ -44,7 +44,9 @@ function LoginForm() {
         }
       }
 
-      const callbackUrl = searchParams.get("callbackUrl") || "/";
+      const raw = searchParams.get("callbackUrl") || "";
+      const safe = raw.startsWith("/") && !raw.startsWith("//") ? raw : "";
+      const callbackUrl = !safe || safe === "/" || safe === "/hub" ? "/dashboard" : safe;
       await signIn("credentials", {
         email,
         password,

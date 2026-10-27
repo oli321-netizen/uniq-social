@@ -1,62 +1,104 @@
 "use client";
 
-import { FormEvent, PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Loader2, Star, Trash2 } from "lucide-react";
+import { Loader2, Pause, Play, Star, Trash2 } from "lucide-react";
 import type { CreatorDTO, HookDTO } from "@/lib/serialize";
 import CaptionStudio from "@/components/hub/CaptionStudio";
+import EditorTimeline, { type FilmstripInfo } from "@/components/hub/editor/Timeline";
+import LookPanel from "@/components/hub/editor/LookPanel";
+import { applyPreset, DEFAULT_STYLE, PRESET_LIST, type CaptionStyle } from "@/lib/caption-ass";
+import { FONT_FACE_CSS, cssFamily, CAPTION_FONTS } from "@/lib/caption-fonts";
+import { breakCueLines, buildCues, type CaptionCue } from "@/lib/caption-cues";
 import {
+  clampSpeed,
   composedDuration,
+  composedStart,
+  cutSourceRanges,
+  fillerIndexes,
   mapWords,
+  newId,
+  playDuration,
+  rangesForIndexes,
+  sentenceGroups,
+  setSegmentSpeed,
+  silenceRanges,
   sourceAt,
   splitAt,
   type Segment,
   type WordStamp,
 } from "@/lib/edit-timeline";
-import { DEFAULT_STYLE, type CaptionStyle } from "@/lib/caption-ass";
-
-const TABS = ["Hook Lab", "Captions", "Reframe", "B-roll", "Metrics"] as const;
-type Tab = (typeof TABS)[number];
+import { canvasSize, cssFilter, DEFAULT_EDITOR, transformAt, type EditorDoc } from "@/lib/editor-doc";
 
 type Project = {
   id: string;
   creatorId: string | null;
   fileName: string;
   durationSec: number;
-  transcript: string;
   words: WordStamp[];
   segments: Segment[];
   style: CaptionStyle;
+  cues: CaptionCue[];
+  editor?: EditorDoc;
 };
 
-const PRESETS: { id: CaptionStyle["preset"]; label: string }[] = [
-  { id: "big", label: "Big bold" },
-  { id: "outline", label: "Outlined" },
-  { id: "highlight", label: "Highlighted word" },
-  { id: "karaoke", label: "Karaoke pop" },
-  { id: "boxed", label: "Boxed" },
-];
+type Doc = { words: WordStamp[]; segments: Segment[]; cues: CaptionCue[]; style: CaptionStyle; editor: EditorDoc };
+type LeftTab = "Media" | "Transcript" | "Hooks" | "Posts";
+
+const EMPTY: Doc = { words: [], segments: [], cues: [], style: DEFAULT_STYLE, editor: DEFAULT_EDITOR };
+
+function isSpecial(seg?: Segment) {
+  return Boolean(seg && (seg.reverse || seg.freeze || seg.kind === "image"));
+}
+
+function shownTime(seg: Segment, source: number) {
+  if (seg.freeze) return seg.start;
+  if (seg.reverse) return Math.max(seg.start, seg.end - (source - seg.start));
+  return source;
+}
 
 export default function HookLab() {
   const search = useSearchParams();
-  const [tab, setTab] = useState<Tab>("Hook Lab");
+  const [left, setLeft] = useState<LeftTab>("Transcript");
   const [creators, setCreators] = useState<CreatorDTO[]>([]);
   const [creatorId, setCreatorId] = useState(search.get("creator") || "");
   const [project, setProject] = useState<Project | null>(null);
+  const [doc, setDoc] = useState<Doc>(EMPTY);
+  const docRef = useRef(doc);
+  const past = useRef<Doc[]>([]);
+  const future = useRef<Doc[]>([]);
+  const gestureBase = useRef<Doc | null>(null);
   const [hooks, setHooks] = useState<HookDTO[] | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [words, setWords] = useState<WordStamp[]>([]);
-  const [segments, setSegments] = useState<Segment[]>([]);
-  const [style, setStyle] = useState<CaptionStyle>(DEFAULT_STYLE);
+  const [selectedHook, setSelectedHook] = useState<string | null>(null);
   const [time, setTime] = useState(0);
+  const timeRef = useRef(0);
   const segRef = useRef(0);
   const [playing, setPlaying] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [phase, setPhase] = useState("");
-  const [editing, setEditing] = useState<number | null>(null);
+  const [saveLabel, setSaveLabel] = useState("");
+  const [zoom, setZoom] = useState(72);
+  const [snap, setSnap] = useState(true);
+  const [selectedClip, setSelectedClip] = useState<string | null>(null);
+  const [selectedCue, setSelectedCue] = useState<string | null>(null);
+  const [selectedWord, setSelectedWord] = useState<number | null>(null);
+  const [editingWord, setEditingWord] = useState<number | null>(null);
+  const [filmstrip, setFilmstrip] = useState<FilmstripInfo>(null);
+  const [peaks, setPeaks] = useState<number[]>([]);
+  const [exportProgress, setExportProgress] = useState<number | null>(null);
+  const [downloadHref, setDownloadHref] = useState("");
+  const [saveVariant, setSaveVariant] = useState(true);
+  const [frameHeight, setFrameHeight] = useState(640);
+  const [frameWidth, setFrameWidth] = useState(360);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const barRef = useRef<HTMLDivElement>(null);
+  const blurRef = useRef<HTMLVideoElement>(null);
+  const musicRef = useRef<HTMLAudioElement>(null);
+  const frameRef = useRef<HTMLDivElement>(null);
+  const saveTimer = useRef<number | null>(null);
+  const playingRef = useRef(false);
+  const holdPlay = useRef(false);
+  const projectRef = useRef<Project | null>(null);
 
   useEffect(() => {
     fetch("/api/creators")
@@ -76,100 +118,457 @@ export default function HookLab() {
     fetch(`/api/hooks/projects/${id}`)
       .then((res) => res.json())
       .then((data) => {
-        if (!data.project) return;
-        applyProject(data.project);
+        if (data.project) openProject(data.project);
       })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
-  function applyProject(next: Project) {
+  useEffect(() => {
+    const node = frameRef.current;
+    if (!node) return;
+    const observer = new ResizeObserver(() => {
+      setFrameHeight(node.clientHeight || 640);
+      setFrameWidth(node.clientWidth || 360);
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [project?.id]);
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
+      actions.current.onKey(event);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => {
+    if (!playing) return;
+    let raf = 0;
+    let last = performance.now();
+    const tick = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      const list = docRef.current.segments;
+      const index = segRef.current;
+      const seg = list[index];
+      if (!seg || !isSpecial(seg)) {
+        raf = requestAnimationFrame(tick);
+        return;
+      }
+      const len = playDuration(seg);
+      let nextTime = timeRef.current + dt;
+      const video = videoRef.current;
+      if (seg.reverse && video && seg.kind !== "image") {
+        video.currentTime = Math.max(seg.start, (video.currentTime || seg.end) - dt * clampSpeed(seg.speed));
+      }
+      if (nextTime >= composedStart(list, index) + len - 0.02) {
+        const following = list[index + 1];
+        if (!following) {
+          holdPlay.current = false;
+          playingRef.current = false;
+          setPlaying(false);
+          timeRef.current = composedDuration(list);
+          setTime(timeRef.current);
+          return;
+        }
+        segRef.current = index + 1;
+        nextTime = composedStart(list, index + 1);
+        if (video && !isSpecial(following)) {
+          holdPlay.current = false;
+          video.playbackRate = clampSpeed(following.speed);
+          video.currentTime = following.reverse ? Math.max(following.start, following.end - 0.05) : following.start;
+          video.play().catch(() => {});
+        } else holdPlay.current = true;
+      }
+      timeRef.current = nextTime;
+      setTime(nextTime);
+      syncMusic(nextTime);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [playing]);
+
+  function openProject(next: Project) {
+    const cues = next.cues?.length ? next.cues : buildCues(next.words, next.segments);
+    const incoming: Doc = {
+      words: next.words,
+      segments: next.segments,
+      cues,
+      style: next.style || DEFAULT_STYLE,
+      editor: next.editor || DEFAULT_EDITOR,
+    };
+    past.current = [];
+    future.current = [];
+    gestureBase.current = null;
+    docRef.current = incoming;
+    setDoc(incoming);
     setProject(next);
-    setWords(next.words);
-    setSegments(next.segments);
-    setStyle(next.style);
+    setTime(0);
+    timeRef.current = 0;
+    setSelectedClip(next.segments[0]?.id || null);
+    setSelectedCue(null);
+    setSelectedWord(null);
+    setDownloadHref("");
+    setExportProgress(null);
     if (next.creatorId) setCreatorId(next.creatorId);
     loadHooks(next.id);
+    loadMedia(next.id);
+  }
+
+  function loadMedia(id: string) {
+    setFilmstrip(null);
+    setPeaks([]);
+    fetch(`/api/hooks/projects/${id}/filmstrip`)
+      .then(async (res) => {
+        if (!res.ok) return;
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        setFilmstrip({
+          url,
+          frames: Number(res.headers.get("x-frames") || 0),
+          interval: Number(res.headers.get("x-interval") || 1),
+        });
+      })
+      .catch(() => {});
+    fetch(`/api/hooks/projects/${id}/waveform`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && Array.isArray(data.peaks)) setPeaks(data.peaks);
+      })
+      .catch(() => {});
   }
 
   async function loadHooks(projectId: string) {
     const res = await fetch(`/api/hooks?projectId=${encodeURIComponent(projectId)}`);
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Could not load hooks.");
+    if (!res.ok) return;
     setHooks(data.hooks || []);
-    setSelectedId((current) => current || data.hooks?.[0]?.id || null);
+    setSelectedHook((current) => current || data.hooks?.[0]?.id || null);
   }
 
-  useEffect(() => {
-    if (segments.length === 0) return;
-    const pos = sourceAt(segments, time);
-    segRef.current = pos.index;
-    const video = videoRef.current;
-    const seg = segments[pos.index];
-    if (!video || !seg) return;
-    if (video.currentTime < seg.start - 0.05 || video.currentTime > seg.end + 0.05) {
-      video.currentTime = pos.source;
+  function scheduleSave(next: Doc) {
+    if (!project) return;
+    if (saveTimer.current) window.clearTimeout(saveTimer.current);
+    setSaveLabel("Saving");
+    saveTimer.current = window.setTimeout(async () => {
+      const res = await fetch(`/api/hooks/projects/${project.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          words: next.words,
+          segments: next.segments,
+          cues: next.cues,
+          style: next.style,
+          editor: next.editor,
+          transcript: next.words.map((word) => word.word).join(" "),
+        }),
+      });
+      setSaveLabel(res.ok ? "Saved" : "Save failed");
+    }, 700);
+  }
+
+  function adopt(next: Doc, history: boolean) {
+    if (history) {
+      past.current.push(docRef.current);
+      if (past.current.length > 60) past.current.shift();
+      future.current = [];
     }
-    // Seek only when the cut list changes. `time` is the playhead at that moment.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [segments]);
+    docRef.current = next;
+    setDoc(next);
+    scheduleSave(next);
+  }
 
-  const duration = composedDuration(segments);
-  const timed = useMemo(() => mapWords(words, segments), [words, segments]);
-  const active = timed.find((word) => time >= word.composedStart && time < word.composedEnd) || null;
-  const selected = hooks?.find((hook) => hook.id === selectedId) || null;
-  const logged = (hooks || []).filter((hook) => hook.loggedResults > 0);
-  const totals = useMemo(() => {
-    const list = hooks || [];
-    const views = list.reduce((sum, hook) => sum + hook.views, 0);
-    const watch = list.length ? list.reduce((sum, hook) => sum + hook.watchTimeSec, 0) / list.length : 0;
-    return { views, watch, logs: logged.length };
-  }, [hooks, logged.length]);
+  function commit(next: Doc) {
+    setError("");
+    adopt(next, true);
+  }
 
-  function seekComposed(composed: number) {
-    const video = videoRef.current;
-    if (!video || segments.length === 0) return;
-    const pos = sourceAt(segments, composed);
+  function undo() {
+    const previous = past.current.pop();
+    if (!previous) return;
+    future.current.push(docRef.current);
+    docRef.current = previous;
+    setDoc(previous);
+    scheduleSave(previous);
+  }
+
+  function redo() {
+    const next = future.current.pop();
+    if (!next) return;
+    past.current.push(docRef.current);
+    docRef.current = next;
+    setDoc(next);
+    scheduleSave(next);
+  }
+
+  function beginGesture() {
+    if (!gestureBase.current) gestureBase.current = docRef.current;
+  }
+
+  function endGesture(kind: "clips" | "cues") {
+    const base = gestureBase.current;
+    gestureBase.current = null;
+    if (!base) return;
+    let next = docRef.current;
+    if (kind === "clips" && JSON.stringify(base.segments) !== JSON.stringify(next.segments)) {
+      next = { ...next, cues: buildCues(next.words, next.segments) };
+      docRef.current = next;
+      setDoc(next);
+    }
+    if (JSON.stringify(base) === JSON.stringify(next)) return;
+    past.current.push(base);
+    if (past.current.length > 60) past.current.shift();
+    future.current = [];
+    scheduleSave(next);
+  }
+
+  function previewSegments(segments: Segment[]) {
+    const next = { ...docRef.current, segments };
+    docRef.current = next;
+    setDoc(next);
+  }
+
+  function previewCues(cues: CaptionCue[]) {
+    const next = { ...docRef.current, cues };
+    docRef.current = next;
+    setDoc(next);
+  }
+
+  function previewStyle(partial: Partial<CaptionStyle>) {
+    if (!gestureBase.current) gestureBase.current = docRef.current;
+    const next = { ...docRef.current, style: { ...docRef.current.style, ...partial } };
+    docRef.current = next;
+    setDoc(next);
+  }
+
+  function seek(composed: number) {
+    const list = docRef.current.segments;
+    if (list.length === 0) return;
+    const pos = sourceAt(list, composed);
     segRef.current = pos.index;
-    video.currentTime = pos.source;
+    const video = videoRef.current;
+    const seg = list[pos.index];
+    if (video && seg && seg.kind !== "image") {
+      video.playbackRate = pos.speed;
+      const cap = Math.max(seg.start, seg.end - 0.02);
+      video.currentTime = Math.min(cap, Math.max(seg.start, shownTime(seg, pos.source)));
+      video.volume = seg.volume ?? 1;
+    }
+    timeRef.current = pos.composed;
     setTime(pos.composed);
   }
 
   function onTimeUpdate() {
     const video = videoRef.current;
+    const list = docRef.current.segments;
     const index = segRef.current;
-    const seg = segments[index];
-    if (!video || !seg) return;
-    if (video.currentTime >= seg.end - 0.05) {
-      const next = segments[index + 1];
+    const seg = list[index];
+    if (!video || !seg || isSpecial(seg)) return;
+    const local = Math.max(0, video.currentTime - seg.start) / clampSpeed(seg.speed);
+    let volume = seg.volume ?? 1;
+    if ((seg.fadeIn || 0) > 0 && local < (seg.fadeIn || 0)) volume *= local / (seg.fadeIn || 1);
+    const span = playDuration(seg);
+    if ((seg.fadeOut || 0) > 0 && span - local < (seg.fadeOut || 0)) volume *= Math.max(0, (span - local) / (seg.fadeOut || 1));
+    video.volume = Math.max(0, Math.min(1, volume));
+    syncMusic(cursorOf(list, index) + local);
+    if (video.currentTime >= (seg.reverse ? seg.start + 0.04 : seg.end - 0.04)) {
+      const next = list[index + 1];
       if (next && !video.paused) {
         segRef.current = index + 1;
-        video.currentTime = next.start;
+        if (isSpecial(next) || next.assetId !== seg.assetId || next.kind === "image") {
+          holdPlay.current = isSpecial(next);
+          const composed = composedStart(list, index + 1);
+          timeRef.current = composed;
+          setTime(composed);
+          video.pause();
+          return;
+        }
+        video.playbackRate = clampSpeed(next.speed);
+        video.currentTime = next.reverse ? Math.max(next.start, next.end - 0.04) : next.start;
         return;
       }
       video.pause();
+      playingRef.current = false;
       setPlaying(false);
+      const end = composedDuration(list);
+      timeRef.current = end;
+      setTime(end);
       return;
     }
     let cursor = 0;
-    for (let i = 0; i < index; i++) cursor += segments[i].end - segments[i].start;
-    setTime(cursor + Math.max(0, video.currentTime - seg.start));
+    for (let i = 0; i < index; i++) cursor += Math.max(0, list[i].end - list[i].start) / clampSpeed(list[i].speed);
+    const composed = cursor + Math.max(0, video.currentTime - seg.start) / clampSpeed(seg.speed);
+    timeRef.current = composed;
+    setTime(composed);
   }
 
-  async function saveEdit(next?: { words?: WordStamp[]; segments?: Segment[]; style?: CaptionStyle }) {
-    if (!project) return;
-    const payload = {
-      words: next?.words || words,
-      segments: next?.segments || segments,
-      style: next?.style || style,
-      transcript: (next?.words || words).map((word) => word.word).join(" "),
-    };
-    await fetch(`/api/hooks/projects/${project.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+  function togglePlay() {
+    const list = docRef.current.segments;
+    if (list.length === 0) return;
+    if (playingRef.current) {
+      holdPlay.current = false;
+      playingRef.current = false;
+      setPlaying(false);
+      videoRef.current?.pause();
+      musicRef.current?.pause();
+      return;
+    }
+    const total = composedDuration(list);
+    if (timeRef.current >= total - 0.05) seek(0);
+    else seek(timeRef.current);
+    const pos = sourceAt(list, timeRef.current);
+    const seg = list[pos.index];
+    playingRef.current = true;
+    setPlaying(true);
+    if (isSpecial(seg)) {
+      holdPlay.current = true;
+      videoRef.current?.pause();
+      return;
+    }
+    holdPlay.current = false;
+    videoRef.current?.play().catch(() => setPlaying(false));
   }
+
+  function cursorOf(list: Segment[], index: number) {
+    let cursor = 0;
+    for (let i = 0; i < index; i++) cursor += playDuration(list[i]);
+    return cursor;
+  }
+
+  function syncMusic(composed: number) {
+    const music = musicRef.current;
+    const current = projectRef.current;
+    if (!music || !current) return;
+    const layer = docRef.current.editor.audios.find((item) => composed >= item.start && composed < item.start + Math.max(0.12, item.out - item.in));
+    if (!layer) {
+      music.pause();
+      return;
+    }
+    const url = `/api/hooks/projects/${current.id}/assets/${layer.assetId}`;
+    if (!music.src.includes(layer.assetId)) music.src = url;
+    const local = layer.in + (composed - layer.start);
+    if (Math.abs((music.currentTime || 0) - local) > 0.35) music.currentTime = Math.max(0, local);
+    const span = Math.max(0.12, layer.out - layer.in);
+    const into = composed - layer.start;
+    let vol = layer.volume ?? 0.8;
+    if ((layer.fadeIn || 0) > 0 && into < (layer.fadeIn || 0)) vol *= into / (layer.fadeIn || 1);
+    if ((layer.fadeOut || 0) > 0 && span - into < (layer.fadeOut || 0)) vol *= Math.max(0, (span - into) / (layer.fadeOut || 1));
+    music.volume = Math.max(0, Math.min(1, vol));
+    if (playingRef.current) music.play().catch(() => {});
+    else music.pause();
+    const blur = blurRef.current;
+    const video = videoRef.current;
+    if (blur && video && docRef.current.editor.background === "blur" && Math.abs(blur.currentTime - video.currentTime) > 0.25) {
+      blur.currentTime = video.currentTime;
+    }
+  }
+
+  function doSplit() {
+    const next = splitAt(docRef.current.segments, timeRef.current);
+    if (next.length === docRef.current.segments.length) {
+      setError("Move the playhead inside a clip before splitting.");
+      return;
+    }
+    const cues = buildCues(docRef.current.words, next);
+    commit({ ...docRef.current, segments: next, cues });
+  }
+
+  function rippleDelete() {
+    const current = docRef.current;
+    if (selectedCue) {
+      commit({ ...current, cues: current.cues.filter((cue) => cue.id !== selectedCue) });
+      setSelectedCue(null);
+      return;
+    }
+    if (selectedClip) {
+      if (current.segments.length < 2) {
+        setError("Keep at least one clip.");
+        return;
+      }
+      const segments = current.segments.filter((seg) => seg.id !== selectedClip);
+      commit({ ...current, segments, cues: buildCues(current.words, segments) });
+      setSelectedClip(segments[0]?.id || null);
+      return;
+    }
+    if (selectedWord !== null) deleteWords([selectedWord]);
+  }
+
+  function deleteWords(indexes: number[]) {
+    const current = docRef.current;
+    const drop = new Set(indexes);
+    const ranges = rangesForIndexes(current.words, drop);
+    const words = current.words.filter((_, index) => !drop.has(index));
+    if (words.length === 0) {
+      setError("Keep at least one word.");
+      return;
+    }
+    const segments = cutSourceRanges(current.segments, ranges, project?.durationSec || 0);
+    commit({ ...current, words, segments, cues: buildCues(words, segments) });
+    setSelectedWord(null);
+    setNotice("");
+  }
+
+  function nudge(direction: number, amount: number) {
+    const current = docRef.current;
+    if (selectedCue) {
+      const cue = current.cues.find((item) => item.id === selectedCue);
+      if (!cue) return;
+      const delta = direction * amount;
+      const cues = current.cues.map((item) =>
+        item.id === cue.id
+          ? {
+              ...item,
+              start: item.start + delta,
+              end: item.end + delta,
+              words: item.words.map((word) => ({ ...word, start: word.start + delta, end: word.end + delta })),
+            }
+          : item
+      );
+      commit({ ...current, cues });
+      return;
+    }
+    if (selectedClip) {
+      const segments = current.segments.map((seg) => {
+        if (seg.id !== selectedClip) return seg;
+        const length = seg.end - seg.start;
+        const start = Math.max(0, Math.min((project?.durationSec || seg.end) - length, seg.start + direction * amount));
+        return { ...seg, start, end: start + length };
+      });
+      commit({ ...current, segments, cues: buildCues(current.words, segments) });
+      return;
+    }
+    seek(Math.max(0, timeRef.current + direction * amount));
+  }
+
+  const actions = useRef<{ onKey: (event: KeyboardEvent) => void }>({ onKey: () => {} });
+  actions.current.onKey = (event: KeyboardEvent) => {
+    if (!project) return;
+    const meta = event.metaKey || event.ctrlKey;
+    if (meta && event.key.toLowerCase() === "z") {
+      event.preventDefault();
+      if (event.shiftKey) redo();
+      else undo();
+      return;
+    }
+    if (event.key === " ") {
+      event.preventDefault();
+      togglePlay();
+    } else if (event.key.toLowerCase() === "s" && !meta) {
+      event.preventDefault();
+      doSplit();
+    } else if (event.key === "Delete" || event.key === "Backspace") {
+      event.preventDefault();
+      rippleDelete();
+    } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      event.preventDefault();
+      nudge(event.key === "ArrowRight" ? 1 : -1, event.shiftKey ? 0.5 : 0.05);
+    }
+  };
 
   async function onUpload(file: File | null) {
     if (!file) return;
@@ -184,11 +583,12 @@ export default function HookLab() {
       const res = await fetch("/api/hooks/transcribe", { method: "POST", body });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not transcribe that video.");
-      applyProject(data.project);
+      openProject(data.project);
       setHooks(data.hooks || []);
-      setSelectedId(data.hooks?.[0]?.id || null);
+      setSelectedHook(data.hooks?.[0]?.id || null);
       setNotice(data.notice || "");
-      window.history.replaceState(null, "", `/hub/hook-lab?project=${data.project.id}`);
+      setLeft("Transcript");
+      window.history.replaceState(null, "", `/hub/editor-lab?project=${data.project.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not transcribe that video.");
     } finally {
@@ -202,7 +602,7 @@ export default function HookLab() {
     setPhase("Writing hooks from the transcript");
     setError("");
     try {
-      const transcript = words.map((word) => word.word).join(" ");
+      const transcript = docRef.current.words.map((word) => word.word).join(" ");
       const res = await fetch("/api/hooks/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -211,7 +611,7 @@ export default function HookLab() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not write hooks.");
       setHooks(data.hooks || []);
-      setSelectedId(data.hooks?.[0]?.id || null);
+      setSelectedHook(data.hooks?.[0]?.id || null);
       setNotice(data.notice || "");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not write hooks.");
@@ -220,65 +620,554 @@ export default function HookLab() {
     }
   }
 
-  async function exportVideo(saveVariant: boolean) {
+  async function exportVideo() {
     if (!project) return;
-    setPhase(saveVariant ? "Exporting and saving a variant" : "Burning captions");
+    setExportProgress(0);
+    setDownloadHref("");
     setError("");
     try {
+      const current = docRef.current;
       const res = await fetch("/api/hooks/export", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: project.id, words, segments, style, saveVariant }),
+        body: JSON.stringify({
+          projectId: project.id,
+          words: current.words,
+          segments: current.segments,
+          style: current.style,
+          cues: current.cues,
+          editor: current.editor,
+          saveVariant,
+        }),
       });
-      if (!res.ok) {
+      if (!res.ok || !res.body) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || "Export failed.");
       }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `${project.fileName || "hook-lab"}-captions.mp4`;
-      link.click();
-      URL.revokeObjectURL(url);
-      setNotice(res.headers.get("X-Variant-Id") ? "Exported, and a copy was saved under Variants." : "Exported. This did not use the existing processor.");
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let download = "";
+      let variantId = "";
+      while (true) {
+        const step = await reader.read();
+        if (step.done) break;
+        buffer += decoder.decode(step.value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          const message = JSON.parse(line) as { progress?: number; error?: string; download?: string; variantId?: string | null };
+          if (message.error) throw new Error(message.error);
+          if (typeof message.progress === "number") setExportProgress(message.progress);
+          if (message.download) download = message.download;
+          if (message.variantId) variantId = message.variantId;
+        }
+      }
+      if (!download) throw new Error("Export finished without a file.");
+      setDownloadHref(download);
+      setExportProgress(1);
+      const size = canvasSize(docRef.current.editor);
+      setNotice(variantId ? `Exported ${size.width}×${size.height}. A copy was saved under Variants.` : `Exported ${size.width}×${size.height}.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Export failed.");
-    } finally {
-      setPhase("");
+      setExportProgress(null);
     }
   }
 
-  function doSplit() {
-    const next = splitAt(segments, time);
-    if (next.length === segments.length) {
-      setError("Move the playhead into a segment before splitting.");
+  function removeSilences() {
+    const ranges = silenceRanges(doc.words);
+    if (ranges.length === 0) {
+      setError("No silences longer than 0.35s between words.");
       return;
     }
+    const segments = cutSourceRanges(doc.segments, ranges, project?.durationSec || 0);
+    commit({ ...doc, segments, cues: buildCues(doc.words, segments) });
+    setNotice(`Removed ${ranges.length} silent gaps.`);
+  }
+
+  function removeFillers() {
+    const indexes = fillerIndexes(doc.words);
+    if (indexes.size === 0) {
+      setError("No filler words in this transcript.");
+      return;
+    }
+    deleteWords(Array.from(indexes));
+    setNotice(`Removed ${indexes.size} filler words.`);
+  }
+
+  function setStyle(style: CaptionStyle) {
+    commit({ ...docRef.current, style });
+  }
+
+  function applyChange(change: { editor?: EditorDoc; segments?: Segment[]; cues?: CaptionCue[]; style?: CaptionStyle }) {
+    let next: Doc = { ...docRef.current, ...change };
+    if (change.segments && !change.cues) next = { ...next, cues: buildCues(next.words, next.segments) };
+    commit(next);
+  }
+
+  async function importFile(file: File | null, slot: "main" | "overlay" | "audio") {
+    if (!file || !project) return;
     setError("");
-    setSegments(next);
-    saveEdit({ segments: next });
-  }
-
-  function removeSegment(id: string) {
-    if (segments.length < 2) {
-      setError("Keep at least one segment.");
+    const body = new FormData();
+    body.append("file", file);
+    const res = await fetch(`/api/hooks/projects/${project.id}/assets`, { method: "POST", body });
+    const data = await res.json();
+    if (!res.ok) {
+      setError(data.error || "Could not import that file.");
       return;
     }
-    const next = segments.filter((seg) => seg.id !== id);
-    setSegments(next);
-    saveEdit({ segments: next });
+    const asset = data.asset as EditorDoc["assets"][number];
+    const editor: EditorDoc = { ...docRef.current.editor, assets: [...docRef.current.editor.assets, asset].slice(0, 16) };
+    const span = asset.kind === "image" ? 3 : Math.max(0.4, Math.min(slot === "audio" ? 60 : 30, asset.duration || 3));
+    if (slot === "main") {
+      if (asset.kind === "audio") {
+        setError("Add audio on the music track.");
+        return;
+      }
+      applyChange({
+        editor,
+        segments: [
+          ...docRef.current.segments,
+          {
+            id: newId(),
+            start: 0,
+            end: span,
+            speed: 1,
+            kind: asset.kind === "image" ? "image" : "video",
+            assetId: asset.id,
+            mediaDuration: span,
+          },
+        ],
+      });
+      setNotice(asset.kind === "image" ? "Image added as a 3s clip." : "Clip added after the current edit.");
+      return;
+    }
+    if (slot === "overlay") {
+      if (asset.kind === "audio") {
+        setError("Audio goes on the music track.");
+        return;
+      }
+      applyChange({
+        editor: {
+          ...editor,
+          overlays: [...editor.overlays, { id: newId(), assetId: asset.id, start: timeRef.current, in: 0, out: Math.min(span, 8), scale: 0.45 }].slice(0, 4),
+        },
+      });
+      setNotice("Overlay added.");
+      return;
+    }
+    applyChange({
+      editor: {
+        ...editor,
+        audios: [...editor.audios, { id: newId(), assetId: asset.id, start: timeRef.current, in: 0, out: span, volume: 0.7, fadeIn: 0.15, fadeOut: 0.3 }].slice(0, 4),
+      },
+    });
+    setNotice("Audio added on the music track.");
   }
 
-  function moveSegment(index: number, dir: -1 | 1) {
-    const target = index + dir;
-    if (target < 0 || target >= segments.length) return;
-    const next = segments.slice();
-    const [item] = next.splice(index, 1);
-    next.splice(target, 0, item);
-    setSegments(next);
-    saveEdit({ segments: next });
-  }
+  const duration = composedDuration(doc.segments);
+  projectRef.current = project;
+  playingRef.current = playing;
+  const canvas = canvasSize(doc.editor);
+  const playPos = doc.segments.length ? sourceAt(doc.segments, Math.min(time, duration)) : { index: 0, source: 0, composed: 0, speed: 1 };
+  const active = doc.segments[playPos.index];
+  const imageMode = active?.kind === "image" && Boolean(active.assetId);
+  const videoSrc = project ? `/api/hooks/projects/${project.id}/${active?.assetId && !imageMode ? `assets/${active.assetId}` : "file"}` : "";
+  const imageSrc = project && imageMode ? `/api/hooks/projects/${project.id}/assets/${active?.assetId}` : "";
+  const clipRatio = active ? Math.max(0, Math.min(1, (time - composedStart(doc.segments, playPos.index)) / Math.max(0.001, playDuration(active)))) : 0;
+  const motion = active ? transformAt(active, clipRatio) : { x: 0, y: 0, scale: 1 };
+  const localPlay = active ? clipRatio * playDuration(active) : 0;
+  const fit = !active || (doc.editor.background !== "blur" && doc.editor.aspect === "9:16" && Math.abs(motion.scale - 1) < 0.02 && !motion.x && !motion.y && !active.rotate && !(active.crop || 0))
+    ? "cover"
+    : doc.editor.background === "blur"
+      ? "blur"
+      : "contain";
+  const punch = fit === "cover" && active?.effect === "punch" ? 1 + 0.16 * Math.min(1, localPlay / 0.45) : 1;
+  const shakeX = fit === "cover" && active?.effect === "shake" ? Math.sin(localPlay * 16) * 10 : 0;
+  const shakeY = fit === "cover" && active?.effect === "shake" ? Math.cos(localPlay * 19) * 7 : 0;
+  const slide = active?.transition === "slide" && localPlay < 0.35 ? (1 - localPlay / 0.35) * 15 : 0;
+  const fade = active?.transition === "fade" && localPlay < 0.35 ? Math.max(0, localPlay / 0.35) : 1;
+  const frameStyle = {
+    filter: active ? cssFilter(active) : undefined,
+    opacity: fade,
+    transform: `translate(calc(${slide}% + ${(motion.x + shakeX) * (frameWidth / canvas.width)}px), ${(motion.y + shakeY) * (frameHeight / canvas.height)}px) scale(${motion.scale * punch * (active?.flipX ? -1 : 1)}, ${motion.scale * punch * (active?.flipY ? -1 : 1)}) rotate(${active?.rotate || 0}deg)`,
+    clipPath: active?.crop ? `inset(${active.crop * 100}%)` : undefined,
+  };
+  const activeCue = doc.cues.find((cue) => time >= cue.start && time < cue.end) || null;
+  const logged = (hooks || []).filter((hook) => hook.loggedResults > 0);
+  const selected = hooks?.find((hook) => hook.id === selectedHook) || null;
+  const clip = doc.segments.find((seg) => seg.id === selectedClip) || null;
+  const sentences = useMemo(() => sentenceGroups(doc.words), [doc.words]);
+
+  return (
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#010313] text-white" data-editor="editor-lab">
+      <style>{`${FONT_FACE_CSS}@keyframes hookPop{from{transform:scale(.82)}to{transform:scale(1)}}@keyframes hookScale{from{transform:scale(.94)}to{transform:scale(1.04)}}`}</style>
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-white/10 px-3 py-2">
+        <p className="min-w-0 truncate text-[15px]">{project?.fileName || "Editor Lab"}</p>
+        <span className="text-[13px] text-slate-400">{saveLabel}</span>
+        <button type="button" onClick={undo} className="rounded-md border border-white/10 px-2 py-1 text-[13px]">Undo</button>
+        <button type="button" onClick={redo} className="rounded-md border border-white/10 px-2 py-1 text-[13px]">Redo</button>
+        <button type="button" onClick={doSplit} disabled={!project} className="rounded-md border border-white/10 px-2 py-1 text-[13px] disabled:opacity-40">Split</button>
+        <label className="ml-auto flex items-center gap-2 text-[13px] text-slate-300">
+          <input type="checkbox" checked={saveVariant} onChange={(event) => setSaveVariant(event.target.checked)} />
+          Save to Variants
+        </label>
+        <button type="button" onClick={exportVideo} disabled={!project || exportProgress !== null && exportProgress < 1} className="rounded-md bg-purple-600 px-3 py-1.5 text-[14px] disabled:opacity-40">
+          Export {canvas.width}×{canvas.height}
+        </button>
+        {downloadHref && (
+          <a href={downloadHref} className="rounded-md border border-white/10 px-3 py-1.5 text-[14px]">Download</a>
+        )}
+      </div>
+      {exportProgress !== null && (
+        <div className="h-1 bg-white/10">
+          <div className="h-full bg-purple-500" style={{ width: `${Math.round(exportProgress * 100)}%` }} />
+        </div>
+      )}
+      {phase && (
+        <p className="flex items-center gap-2 border-b border-white/10 bg-[#0a0a1a] px-3 py-2 text-[14px]">
+          <Loader2 className="h-4 w-4 animate-spin" /> {phase}
+        </p>
+      )}
+      {error && <p className="border-b border-white/10 bg-purple-500/10 px-3 py-2 text-[14px] text-purple-200" role="alert">{error}</p>}
+      {notice && !error && <p className="border-b border-white/10 px-3 py-2 text-[14px] text-slate-400">{notice}</p>}
+
+      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)_240px]">
+        <aside className="flex max-h-40 flex-col overflow-hidden border-b border-white/10 lg:max-h-none lg:border-b-0 lg:border-r">
+          <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-white/10 px-2" role="tablist">
+            {(["Media", "Transcript", "Hooks", "Posts"] as LeftTab[]).map((tab) => (
+              <button key={tab} type="button" role="tab" aria-selected={left === tab} onClick={() => setLeft(tab)} className={`shrink-0 border-b-2 px-2 py-2 text-[13px] ${left === tab ? "border-purple-500" : "border-transparent text-slate-400"}`}>
+                {tab}
+              </button>
+            ))}
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-3">
+            {left === "Media" && (
+              <div className="space-y-3 text-[14px]">
+                <label className="block">
+                  Creator
+                  <select value={creatorId} onChange={(event) => setCreatorId(event.target.value)} className="mt-1 w-full rounded-md border border-white/10 bg-[#12121A] px-2 py-2">
+                    <option value="">No creator</option>
+                    {creators.map((creator) => <option key={creator.id} value={creator.id}>{creator.name}</option>)}
+                  </select>
+                </label>
+                <label className="flex cursor-pointer flex-col items-center rounded-md border border-dashed border-white/20 bg-[#12121A] px-3 py-8 text-center">
+                  <span>{project ? "Replace video" : "Upload a video"}</span>
+                  <span className="mt-1 text-[13px] text-slate-400">MP4, MOV, or WebM. Speech is transcribed.</span>
+                  <input type="file" accept="video/mp4,video/quicktime,video/webm" className="sr-only" onChange={(event) => onUpload(event.target.files?.[0] || null)} />
+                </label>
+                <label className="block text-[13px]">
+                  Add video or image
+                  <input type="file" accept="video/mp4,video/quicktime,video/webm,image/png,image/jpeg,image/webp" className="mt-1 block w-full text-[12px]" onChange={(event) => importFile(event.target.files?.[0] || null, "main")} />
+                </label>
+                <label className="block text-[13px]">
+                  Overlay
+                  <input type="file" accept="video/mp4,video/quicktime,video/webm,image/png,image/jpeg,image/webp" className="mt-1 block w-full text-[12px]" onChange={(event) => importFile(event.target.files?.[0] || null, "overlay")} />
+                </label>
+                <label className="block text-[13px]">
+                  Music or audio
+                  <input type="file" accept="audio/mpeg,audio/wav,audio/mp4,audio/*" className="mt-1 block w-full text-[12px]" onChange={(event) => importFile(event.target.files?.[0] || null, "audio")} />
+                </label>
+                <p className="text-[13px] text-slate-400">Aspect, blur fill, and colour live in the properties. This editor does not call the processor, and it does not invent B-roll.</p>
+              </div>
+            )}
+            {left === "Transcript" && (
+              <div>
+                <div className="mb-3 flex flex-wrap gap-2">
+                  <button type="button" onClick={removeSilences} disabled={!project} className="rounded-md border border-white/10 px-2 py-1 text-[13px] disabled:opacity-40">Remove silences</button>
+                  <button type="button" onClick={removeFillers} disabled={!project} className="rounded-md border border-white/10 px-2 py-1 text-[13px] disabled:opacity-40">Remove fillers</button>
+                </div>
+                {doc.words.length === 0 && <p className="text-[14px] text-slate-400">Upload a talking video. Deleting a word cuts that moment out of the video.</p>}
+                <div className="space-y-3" aria-label="Transcript">
+                  {sentences.map((sentence, sentenceIndex) => (
+                    <div key={`${sentence[0]?.start}-${sentenceIndex}`} className="rounded-md border border-white/10 bg-[#12121A] p-2">
+                      <div className="mb-1 flex justify-end">
+                        <button type="button" className="text-[12px] text-slate-400" onClick={() => deleteWords(sentence.map((word) => doc.words.indexOf(word)).filter((index) => index >= 0))}>
+                          Delete sentence
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {sentence.map((word) => {
+                          const index = doc.words.indexOf(word);
+                          return (
+                            <button
+                              key={`${word.start}-${index}`}
+                              type="button"
+                              onClick={() => {
+                                setSelectedWord(index);
+                                setEditingWord((current) => (current === index ? index : selectedWord === index ? index : null));
+                                const timed = mapWords([word], doc.segments)[0];
+                                if (timed) seek(timed.composedStart);
+                              }}
+                              onDoubleClick={() => setEditingWord(index)}
+                              className={`rounded px-1 py-0.5 text-[14px] ${selectedWord === index ? "bg-purple-600" : "bg-white/10"}`}
+                            >
+                              {editingWord === index ? (
+                                <input
+                                  autoFocus
+                                  defaultValue={word.word}
+                                  aria-label={`Edit ${word.word}`}
+                                  className="w-16 bg-transparent outline-none"
+                                  onClick={(event) => event.stopPropagation()}
+                                  onBlur={(event) => {
+                                    const text = event.target.value.trim() || word.word;
+                                    const words = docRef.current.words.map((item, itemIndex) => (itemIndex === index ? { ...item, word: text } : item));
+                                    commit({ ...docRef.current, words, cues: buildCues(words, docRef.current.segments) });
+                                    setEditingWord(null);
+                                  }}
+                                />
+                              ) : word.word}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {left === "Hooks" && (
+              <div className="space-y-2">
+                <button type="button" onClick={() => rewrite()} disabled={!project || Boolean(phase)} className="w-full rounded-md border border-white/10 bg-[#12121A] px-3 py-2 text-[14px] disabled:opacity-40">
+                  Write hooks from this transcript
+                </button>
+                {hooks?.length === 0 && <p className="text-[14px] text-slate-400">Hooks are quoted from the transcript.</p>}
+                {hooks?.map((hook) => (
+                  <article key={hook.id} className={`rounded-md border p-2 ${selected?.id === hook.id ? "border-purple-500 bg-purple-500/10" : "border-white/10 bg-[#12121A]"}`}>
+                    <button type="button" onClick={() => setSelectedHook(hook.id)} className="w-full text-left text-[14px]">{hook.text}</button>
+                    <div className="mt-2 flex items-center justify-between text-[12px] text-slate-400">
+                      <span title="Estimate, not a measured result">{hook.score}</span>
+                      <span className="flex gap-1">
+                        <button type="button" aria-label="Favourite hook" onClick={() => toggleFavourite(hook)}><Star className="h-4 w-4" fill={hook.favourite ? "currentColor" : "none"} /></button>
+                        <button type="button" aria-label="Delete hook" onClick={() => removeHook(hook)}><Trash2 className="h-4 w-4" /></button>
+                      </span>
+                    </div>
+                  </article>
+                ))}
+                <p className="text-[13px] text-slate-400">{logged.length ? `${logged.length} hooks have logged results.` : "No results logged for these hooks yet."}</p>
+              </div>
+            )}
+            {left === "Posts" && <CaptionStudio creatorId={creatorId} topicDefault={selected?.text || doc.words.map((word) => word.word).join(" ")} />}
+          </div>
+        </aside>
+
+        <section className="flex min-h-0 min-w-0 flex-col bg-[#07080f]">
+          <div className="flex min-h-0 flex-1 items-center justify-center p-3">
+            {project ? (
+              <div ref={frameRef} className="relative h-full max-h-full w-auto max-w-full overflow-hidden rounded-md border border-white/10 bg-black" style={{ aspectRatio: `${canvas.width} / ${canvas.height}` }}>
+                {fit === "blur" && !imageMode && (
+                  <video ref={blurRef} src={videoSrc} muted className="absolute inset-0 h-full w-full scale-110 object-cover blur-xl" playsInline />
+                )}
+                {imageMode ? (
+                  <>
+                    {fit === "blur" && <img src={imageSrc} alt="" className="absolute inset-0 h-full w-full scale-110 object-cover blur-xl" />}
+                    <img src={imageSrc} alt="" className={`h-full w-full ${fit === "cover" ? "object-cover" : "object-contain"}`} style={frameStyle} />
+                  </>
+                ) : (
+                  <video
+                    ref={videoRef}
+                    src={videoSrc}
+                    className={`h-full w-full ${fit === "cover" ? "object-cover" : "object-contain"}`}
+                    style={frameStyle}
+                    playsInline
+                    onTimeUpdate={onTimeUpdate}
+                    onLoadedData={() => {
+                      const list = docRef.current.segments;
+                      const pos = sourceAt(list, timeRef.current);
+                      const seg = list[pos.index];
+                      const video = videoRef.current;
+                      if (!video || !seg || seg.kind === "image") return;
+                      video.playbackRate = clampSpeed(seg.speed);
+                      video.currentTime = shownTime(seg, pos.source);
+                      if (playingRef.current && !isSpecial(seg)) video.play().catch(() => {});
+                    }}
+                    onPlay={() => {
+                      playingRef.current = true;
+                      setPlaying(true);
+                    }}
+                    onPause={() => {
+                      if (!holdPlay.current) {
+                        playingRef.current = false;
+                        setPlaying(false);
+                      }
+                    }}
+                  />
+                )}
+                <div className="pointer-events-none absolute inset-0">
+                  <div className="absolute inset-x-0 top-0 h-[12%] border-b border-dashed border-white/40" />
+                  <div className="absolute inset-x-0 bottom-0 h-[20%] border-t border-dashed border-white/40" />
+                  <div className="absolute inset-y-0 left-0 w-[6%] border-r border-dashed border-white/30" />
+                  <div className="absolute inset-y-0 right-0 w-[6%] border-l border-dashed border-white/30" />
+                </div>
+                {doc.editor.texts.filter((text) => time >= text.start && time < text.end).map((text) => (
+                  <div
+                    key={text.id}
+                    className="pointer-events-none absolute font-bold"
+                    style={{
+                      left: `calc(50% + ${text.x * (frameWidth / canvas.width)}px)`,
+                      top: `calc(50% + ${text.y * (frameHeight / canvas.height)}px)`,
+                      transform: "translate(-50%, -50%)",
+                      color: text.color,
+                      fontSize: Math.max(12, (text.size * frameHeight) / canvas.height),
+                      fontFamily: text.emoji ? "sans-serif" : cssFamily("Montserrat"),
+                    }}
+                  >
+                    {text.text}
+                  </div>
+                ))}
+                <CaptionOverlay cue={activeCue} time={time} style={doc.style} frameHeight={frameHeight} canvasHeight={canvas.height} />
+                <audio ref={musicRef} />
+              </div>
+            ) : (
+              <label
+                className="flex w-full max-w-md cursor-pointer flex-col items-center rounded-md border border-dashed border-white/20 bg-[#12121A] px-6 py-16 text-center"
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  onUpload(event.dataTransfer.files?.[0] || null);
+                }}
+              >
+                <span className="text-[18px]">Upload a talking video</span>
+                <span className="mt-2 text-[14px] text-slate-400">The editor opens a 9:16 canvas with the transcript on a timeline.</span>
+                <input type="file" accept="video/mp4,video/quicktime,video/webm" className="sr-only" onChange={(event) => onUpload(event.target.files?.[0] || null)} />
+              </label>
+            )}
+          </div>
+          {project && (
+            <div className="flex items-center gap-3 border-t border-white/10 px-3 py-2">
+              <button type="button" aria-label={playing ? "Pause" : "Play"} onClick={togglePlay} className="rounded-md bg-purple-600 p-2">
+                {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+              </button>
+              <input
+                aria-label="Scrub preview"
+                type="range"
+                min={0}
+                max={Math.max(duration, 0.01)}
+                step={0.01}
+                value={Math.min(time, duration)}
+                onChange={(event) => seek(Number(event.target.value))}
+                className="min-w-0 flex-1"
+              />
+              <span className="w-24 text-right text-[13px] text-slate-400">{formatClock(time)} / {formatClock(duration)}</span>
+            </div>
+          )}
+        </section>
+
+        <aside className="max-h-48 overflow-y-auto border-t border-white/10 p-3 lg:max-h-none lg:border-l lg:border-t-0">
+          <LookPanel
+            projectId={project?.id || null}
+            editor={doc.editor}
+            clip={clip}
+            segments={doc.segments}
+            cues={doc.cues}
+            style={doc.style}
+            peaks={peaks}
+            sourceDuration={project?.durationSec || 0}
+            time={time}
+            onChange={applyChange}
+            onNotice={setNotice}
+            onError={setError}
+          />
+          <h2 className="mt-3 text-[14px] font-medium">Properties</h2>
+          {clip ? (
+            <label className="mt-3 block text-[13px]">
+              Clip speed {clampSpeed(clip.speed).toFixed(2)}×
+              <input
+                type="range"
+                min={0.25}
+                max={4}
+                step={0.05}
+                value={clampSpeed(clip.speed)}
+                onPointerDown={beginGesture}
+                onChange={(event) => {
+                  const segments = setSegmentSpeed(docRef.current.segments, clip.id, Number(event.target.value));
+                  previewSegments(segments);
+                }}
+                onPointerUp={() => endGesture("clips")}
+                className="w-full"
+              />
+            </label>
+          ) : (
+            <p className="mt-2 text-[13px] text-slate-400">Select a clip to change its speed.</p>
+          )}
+          <h2 className="mt-4 text-[14px] font-medium">Caption preset</h2>
+          <div className="mt-2 grid grid-cols-2 gap-1">
+            {PRESET_LIST.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                aria-pressed={doc.style.preset === preset.id}
+                onClick={() => setStyle(applyPreset(preset.id))}
+                className={`rounded-md border px-2 py-1 text-left text-[12px] ${doc.style.preset === preset.id ? "border-purple-500 bg-purple-500/15" : "border-white/10 bg-[#12121A]"}`}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+          <label className="mt-3 block text-[13px]">
+            Font
+            <select value={doc.style.font} onChange={(event) => setStyle({ ...doc.style, font: event.target.value as CaptionStyle["font"] })} className="mt-1 w-full rounded-md border border-white/10 bg-[#12121A] px-2 py-2">
+              {CAPTION_FONTS.map((font) => <option key={font.id}>{font.id}</option>)}
+            </select>
+          </label>
+          <label className="mt-3 block text-[13px]">
+            Size {doc.style.size}
+            <input type="range" min={32} max={120} value={doc.style.size} onPointerDown={beginGesture} onChange={(event) => previewStyle({ size: Number(event.target.value) })} onPointerUp={() => endGesture("cues")} onKeyUp={() => endGesture("cues")} onBlur={() => endGesture("cues")} className="w-full" />
+          </label>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-[13px]">
+            <label>Colour<input type="color" value={doc.style.color} onChange={(event) => setStyle({ ...docRef.current.style, color: event.target.value })} className="mt-1 block h-8 w-full bg-transparent" /></label>
+            <label>Active word<input type="color" value={doc.style.highlight} onChange={(event) => setStyle({ ...docRef.current.style, highlight: event.target.value })} className="mt-1 block h-8 w-full bg-transparent" /></label>
+            <label>Stroke<input type="color" value={doc.style.stroke} onChange={(event) => setStyle({ ...docRef.current.style, stroke: event.target.value })} className="mt-1 block h-8 w-full bg-transparent" /></label>
+            <label>Stroke {doc.style.strokeWidth}<input type="range" min={0} max={12} value={doc.style.strokeWidth} onPointerDown={beginGesture} onChange={(event) => previewStyle({ strokeWidth: Number(event.target.value) })} onPointerUp={() => endGesture("cues")} onKeyUp={() => endGesture("cues")} onBlur={() => endGesture("cues")} className="w-full" /></label>
+          </div>
+          <label className="mt-3 block text-[13px]">
+            Shadow {doc.style.shadow}
+            <input type="range" min={0} max={10} value={doc.style.shadow} onPointerDown={beginGesture} onChange={(event) => previewStyle({ shadow: Number(event.target.value) })} onPointerUp={() => endGesture("cues")} onKeyUp={() => endGesture("cues")} onBlur={() => endGesture("cues")} className="w-full" />
+          </label>
+          <div className="mt-3 flex flex-wrap gap-1">
+            {(["top", "middle", "bottom"] as const).map((position) => (
+              <button key={position} type="button" aria-pressed={doc.style.position === position} onClick={() => setStyle({ ...docRef.current.style, position })} className={`rounded-md border px-2 py-1 text-[12px] ${doc.style.position === position ? "border-purple-500" : "border-white/10"}`}>{position}</button>
+            ))}
+            {(["none", "pop", "scale"] as const).map((animation) => (
+              <button key={animation} type="button" aria-pressed={doc.style.animation === animation} onClick={() => setStyle({ ...docRef.current.style, animation })} className={`rounded-md border px-2 py-1 text-[12px] ${doc.style.animation === animation ? "border-purple-500" : "border-white/10"}`}>{animation}</button>
+            ))}
+          </div>
+          <p className="mt-3 text-[12px] text-slate-400">Longer words and emphasis words render larger in the highlight colour. Lines wrap automatically. The same fonts are burned in on export.</p>
+        </aside>
+      </div>
+
+      {project && (
+        <EditorTimeline
+          segments={doc.segments}
+          cues={doc.cues}
+          time={time}
+          sourceDuration={project.durationSec}
+          zoom={zoom}
+          snap={snap}
+          peaks={peaks}
+          filmstrip={filmstrip}
+          selectedClip={selectedClip}
+          selectedCue={selectedCue}
+          onZoom={setZoom}
+          onSnap={setSnap}
+          onSeek={seek}
+          onSelectClip={setSelectedClip}
+          onSelectCue={setSelectedCue}
+          onSegments={previewSegments}
+          onCues={previewCues}
+          onGestureStart={beginGesture}
+          onGestureEnd={endGesture}
+          marks={doc.editor.beats}
+          layers={[
+            ...doc.editor.overlays.map((layer) => ({ id: layer.id, start: layer.start, end: layer.start + Math.max(0.12, layer.out - layer.in), label: "Overlay" })),
+            ...doc.editor.audios.map((layer) => ({ id: layer.id, start: layer.start, end: layer.start + Math.max(0.12, layer.out - layer.in), label: "Audio" })),
+            ...doc.editor.texts.map((layer) => ({ id: layer.id, start: layer.start, end: layer.end, label: layer.text })),
+          ]}
+        />
+      )}
+    </div>
+  );
 
   async function toggleFavourite(hook: HookDTO) {
     const res = await fetch(`/api/hooks/${hook.id}`, {
@@ -294,334 +1183,48 @@ export default function HookLab() {
     const res = await fetch(`/api/hooks/${hook.id}`, { method: "DELETE" });
     if (res.ok) setHooks((prev) => prev?.filter((item) => item.id !== hook.id) ?? []);
   }
+}
 
-  const showEditor = tab === "Hook Lab" || tab === "Captions";
-
+function CaptionOverlay({ cue, time, style, frameHeight, canvasHeight }: { cue: CaptionCue | null; time: number; style: CaptionStyle; frameHeight: number; canvasHeight: number }) {
+  if (!cue) return null;
+  const active = cue.words.findIndex((word) => time >= word.start && time < word.end);
+  const lines = breakCueLines(cue.words);
+  const fontSize = Math.max(13, (style.size * frameHeight) / canvasHeight);
+  const stroke = (style.strokeWidth * frameHeight) / canvasHeight;
+  const place = style.position === "top" ? { top: "14%" } : style.position === "middle" ? { top: "42%" } : { bottom: "18%" };
+  const animation = style.animation === "pop" ? "hookPop 140ms ease-out" : style.animation === "scale" ? "hookScale 160ms ease-out" : undefined;
   return (
-    <div className="flex min-h-[calc(100dvh-3.5rem)] flex-col bg-[#f4efe8] text-[#2c241c]">
-      <div className="flex items-center gap-1 overflow-x-auto border-b border-[#e4d5c6] px-3" role="tablist">
-        {TABS.map((item) => (
-          <button
-            key={item}
-            type="button"
-            role="tab"
-            aria-selected={tab === item}
-            onClick={() => setTab(item)}
-            className={`shrink-0 border-b-2 px-3 py-3 text-[15px] ${tab === item ? "border-[#9a3412] font-medium" : "border-transparent text-[#6d5e53]"}`}
-          >
-            {item}
-          </button>
+    <div
+      key={`${cue.id}-${active}`}
+      className="pointer-events-none absolute inset-x-[8%] text-center font-bold leading-none"
+      style={{
+        ...place,
+        fontFamily: cssFamily(style.font),
+        fontSize,
+        color: style.color,
+        WebkitTextStroke: style.preset === "boxed" || stroke <= 0 ? undefined : `${Math.max(0.4, stroke)}px ${style.stroke}`,
+        textShadow: style.shadow > 0 ? `${style.shadow}px ${style.shadow}px 0 ${style.stroke}` : undefined,
+        paintOrder: "stroke fill",
+        animation,
+      }}
+    >
+      <span className={style.preset === "boxed" ? "inline-block bg-black px-2 py-1" : undefined}>
+        {lines.map((line, lineIndex) => (
+          <span key={lineIndex} className="block">
+            {line.map((word) => {
+              const index = cue.words.indexOf(word);
+              const hot = index === active || word.emphasis;
+              return (
+                <span key={`${word.start}-${index}`} style={{ color: hot ? style.highlight : style.color, fontSize: word.emphasis && index !== active ? fontSize * 1.12 : undefined }}>
+                  {word.text}{" "}
+                </span>
+              );
+            })}
+          </span>
         ))}
-        <div className="ml-auto flex items-center gap-2 py-2">
-          <button type="button" disabled={!project || Boolean(phase)} onClick={() => exportVideo(false)} className="rounded-md bg-[#9a3412] px-3 py-1.5 text-[15px] text-[#fffdfb] disabled:opacity-40">
-            Export
-          </button>
-          <button type="button" disabled={!project || Boolean(phase)} onClick={() => exportVideo(true)} className="rounded-md border border-[#e4d5c6] bg-white px-3 py-1.5 text-[15px] disabled:opacity-40">
-            Export and save
-          </button>
-        </div>
-      </div>
-
-      {phase && (
-        <p className="flex items-center gap-2 border-b border-[#e4d5c6] bg-[#fffdfb] px-4 py-2 text-[15px]">
-          <Loader2 className="h-4 w-4 animate-spin" /> {phase}
-        </p>
-      )}
-      {error && <p className="border-b border-[#e4d5c6] bg-[#fff4ef] px-4 py-2 text-[15px] text-[#9a3412]" role="alert">{error}</p>}
-      {notice && !error && <p className="border-b border-[#e4d5c6] px-4 py-2 text-[15px] text-[#6d5e53]">{notice}</p>}
-
-      {tab === "Reframe" || tab === "B-roll" ? (
-        <div className="mx-auto max-w-lg px-6 py-16">
-          <h1 className="text-2xl font-medium">{tab}</h1>
-          <p className="mt-2 text-[16px] leading-relaxed text-[#6d5e53]">
-            {tab} is not part of this editor. Hook Lab can split the clip and burn captions. The existing processor is unchanged.
-          </p>
-        </div>
-      ) : null}
-
-      {tab === "Metrics" && (
-        <div className="mx-auto w-full max-w-3xl px-4 py-8">
-          <h1 className="text-2xl font-medium">Metrics</h1>
-          <p className="mt-2 text-[16px] text-[#6d5e53]">Numbers come from results logged on these hooks. Estimates in the list are not measured retention.</p>
-          <div className="mt-4 overflow-x-auto rounded-md border border-[#e4d5c6] bg-white">
-            <table className="w-full text-left text-[15px]">
-              <thead className="text-[#6d5e53]">
-                <tr>
-                  <th className="px-3 py-2 font-medium">Hook</th>
-                  <th className="px-3 py-2 font-medium">Views</th>
-                  <th className="px-3 py-2 font-medium">Watch</th>
-                  <th className="px-3 py-2 font-medium">Shares</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(hooks || []).map((hook) => (
-                  <tr key={hook.id} className="border-t border-[#e4d5c6]">
-                    <td className="px-3 py-2">{hook.text}</td>
-                    <td className="px-3 py-2">{hook.views}</td>
-                    <td className="px-3 py-2">{hook.watchTimeSec.toFixed(1)}s</td>
-                    <td className="px-3 py-2">{hook.shares}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {hooks?.length === 0 && <p className="px-3 py-8 text-center text-[15px] text-[#6d5e53]">No hooks yet.</p>}
-          </div>
-        </div>
-      )}
-
-      {showEditor && (
-        <div className="grid min-h-0 flex-1 lg:grid-cols-[280px_minmax(0,1fr)_280px]">
-          <aside className="overflow-y-auto border-b border-[#e4d5c6] lg:border-b-0 lg:border-r">
-            <div className="space-y-3 border-b border-[#e4d5c6] p-3">
-              <label className="block text-[15px]">
-                Creator
-                <select value={creatorId} onChange={(event) => setCreatorId(event.target.value)} className="mt-1 w-full rounded-md border border-[#e4d5c6] bg-white px-2 py-2">
-                  <option value="">No creator</option>
-                  {creators.map((creator) => <option key={creator.id} value={creator.id}>{creator.name}</option>)}
-                </select>
-              </label>
-              <button type="button" onClick={() => rewrite()} disabled={!project || Boolean(phase)} className="w-full rounded-md border border-[#e4d5c6] bg-white px-3 py-2 text-[15px] disabled:opacity-40">
-                Write hooks from this transcript
-              </button>
-            </div>
-            <div className="px-3 py-2 text-[15px] font-medium">Hooks · {hooks?.length ?? 0}</div>
-            <div className="space-y-2 px-3 pb-4">
-              {hooks === null && project && <p className="text-[15px] text-[#6d5e53]">Loading hooks</p>}
-              {hooks?.length === 0 && <p className="rounded-md border border-dashed border-[#e4d5c6] px-3 py-6 text-center text-[15px] text-[#6d5e53]">Upload a talking video. Hooks are written from what they say.</p>}
-              {hooks?.map((hook) => (
-                <article key={hook.id} className={`rounded-md border p-2 ${selected?.id === hook.id ? "border-[#9a3412] bg-[#fff4ef]" : "border-[#e4d5c6] bg-white"}`}>
-                  <button type="button" onClick={() => setSelectedId(hook.id)} className="w-full text-left text-[15px] leading-snug">{hook.text}</button>
-                  <div className="mt-2 flex items-center justify-between text-[14px] text-[#6d5e53]">
-                    <span title="Estimate, not a measured result">{hook.score}</span>
-                    <span className="flex gap-1">
-                      <button type="button" aria-label="Favourite hook" onClick={() => toggleFavourite(hook)} className="rounded p-1">
-                        <Star className="h-4 w-4" fill={hook.favourite ? "currentColor" : "none"} />
-                      </button>
-                      <button type="button" aria-label="Delete hook" onClick={() => removeHook(hook)} className="rounded p-1">
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </span>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </aside>
-
-          <section className="flex min-h-[320px] flex-col bg-[#f7f2eb]">
-            <div className="relative flex flex-1 items-center justify-center p-4">
-              {project ? (
-                <div className="relative max-h-[520px] w-full max-w-[360px]">
-                  <video
-                    ref={videoRef}
-                    src={`/api/hooks/projects/${project.id}/file`}
-                    className="max-h-[520px] w-full bg-[#1c1612]"
-                    playsInline
-                    onTimeUpdate={onTimeUpdate}
-                    onPlay={() => setPlaying(true)}
-                    onPause={() => setPlaying(false)}
-                  />
-                  <CaptionOverlay word={active} nearby={timed} style={style} />
-                </div>
-              ) : (
-                <label
-                  className="flex w-full max-w-xl cursor-pointer flex-col items-center rounded-md border border-dashed border-[#c8b6a4] bg-white px-6 py-16 text-center"
-                  onDragOver={(event) => event.preventDefault()}
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    onUpload(event.dataTransfer.files?.[0] || null);
-                  }}
-                >
-                  <span className="text-[18px] font-medium">Upload a video</span>
-                  <span className="mt-2 max-w-sm text-[16px] text-[#6d5e53]">MP4, MOV, or WebM. The audio is transcribed, then hooks are written from those words.</span>
-                  <input type="file" accept="video/mp4,video/quicktime,video/webm" className="sr-only" onChange={(event) => onUpload(event.target.files?.[0] || null)} />
-                </label>
-              )}
-            </div>
-            {project && (
-              <div className="flex flex-wrap items-center gap-2 border-t border-[#e4d5c6] px-3 py-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const video = videoRef.current;
-                    if (!video) return;
-                    if (video.paused) {
-                      seekComposed(time);
-                      video.play().catch(() => {});
-                    } else video.pause();
-                  }}
-                  className="rounded-md border border-[#e4d5c6] bg-white px-3 py-1.5 text-[15px]"
-                >
-                  {playing ? "Pause" : "Play"}
-                </button>
-                <button type="button" onClick={doSplit} className="rounded-md border border-[#e4d5c6] bg-white px-3 py-1.5 text-[15px]">Split at playhead</button>
-                <span className="text-[15px] text-[#6d5e53]">{formatClock(time)} / {formatClock(duration)}</span>
-                <label className="ml-auto cursor-pointer text-[15px] text-[#9a3412]">
-                  Replace video
-                  <input type="file" accept="video/mp4,video/quicktime,video/webm" className="sr-only" onChange={(event) => onUpload(event.target.files?.[0] || null)} />
-                </label>
-              </div>
-            )}
-          </section>
-
-          <aside className="overflow-y-auto border-t border-[#e4d5c6] p-3 lg:border-l lg:border-t-0">
-            <h2 className="text-[16px] font-medium">Caption style</h2>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {PRESETS.map((preset) => (
-                <button
-                  key={preset.id}
-                  type="button"
-                  aria-pressed={style.preset === preset.id}
-                  onClick={() => {
-                    const next = { ...style, preset: preset.id };
-                    setStyle(next);
-                    saveEdit({ style: next });
-                  }}
-                  className={`rounded-md border px-2 py-1 text-[14px] ${style.preset === preset.id ? "border-[#9a3412] bg-[#fff4ef]" : "border-[#e4d5c6] bg-white"}`}
-                >
-                  {preset.label}
-                </button>
-              ))}
-            </div>
-            <label className="mt-3 block text-[15px]">
-              Font
-              <select value={style.font} onChange={(event) => { const next = { ...style, font: event.target.value as CaptionStyle["font"] }; setStyle(next); saveEdit({ style: next }); }} className="mt-1 w-full rounded-md border border-[#e4d5c6] bg-white px-2 py-2">
-                <option>DM Sans</option>
-                <option>Georgia</option>
-                <option>Impact</option>
-              </select>
-            </label>
-            <label className="mt-3 block text-[15px]">
-              Size {style.size}
-              <input type="range" min={32} max={96} value={style.size} onChange={(event) => setStyle({ ...style, size: Number(event.target.value) })} onMouseUp={() => saveEdit()} onTouchEnd={() => saveEdit()} className="w-full" />
-            </label>
-            <div className="mt-3 grid grid-cols-2 gap-2 text-[15px]">
-              <label>Colour <input type="color" value={style.color} onChange={(event) => { const next = { ...style, color: event.target.value }; setStyle(next); saveEdit({ style: next }); }} className="mt-1 block h-9 w-full" /></label>
-              <label>Highlight <input type="color" value={style.highlight} onChange={(event) => { const next = { ...style, highlight: event.target.value }; setStyle(next); saveEdit({ style: next }); }} className="mt-1 block h-9 w-full" /></label>
-            </div>
-            <div className="mt-3 flex gap-2">
-              {(["top", "middle", "bottom"] as const).map((position) => (
-                <button key={position} type="button" aria-pressed={style.position === position} onClick={() => { const next = { ...style, position }; setStyle(next); saveEdit({ style: next }); }} className={`rounded-md border px-2 py-1 text-[14px] ${style.position === position ? "border-[#9a3412]" : "border-[#e4d5c6]"}`}>
-                  {position}
-                </button>
-              ))}
-            </div>
-            <h2 className="mt-6 text-[16px] font-medium">Live metrics</h2>
-            {totals.logs === 0 ? (
-              <p className="mt-2 text-[15px] text-[#6d5e53]">No results logged for these hooks yet.</p>
-            ) : (
-              <dl className="mt-2 space-y-2 text-[15px]">
-                <div className="flex justify-between rounded-md border border-[#e4d5c6] bg-white px-3 py-2"><dt>Views</dt><dd>{totals.views.toLocaleString()}</dd></div>
-                <div className="flex justify-between rounded-md border border-[#e4d5c6] bg-white px-3 py-2"><dt>Watch</dt><dd>{totals.watch.toFixed(1)}s</dd></div>
-              </dl>
-            )}
-          </aside>
-        </div>
-      )}
-
-      {showEditor && project && (
-        <div className="border-t border-[#e4d5c6] bg-[#fffdfb] px-3 py-3">
-          <div
-            ref={barRef}
-            className="relative h-16 cursor-pointer rounded-md bg-[#efe4d8]"
-            onClick={(event) => {
-              const rect = event.currentTarget.getBoundingClientRect();
-              const ratio = (event.clientX - rect.left) / rect.width;
-              seekComposed(ratio * duration);
-            }}
-          >
-            <div className="absolute inset-1 flex gap-1">
-              {segments.map((seg, index) => {
-                const width = duration > 0 ? ((seg.end - seg.start) / duration) * 100 : 0;
-                return (
-                  <div key={seg.id} className="relative h-full rounded-sm bg-[#d8b79a]" style={{ width: `${width}%` }}>
-                    <button type="button" aria-label="Trim start" className="absolute left-0 top-0 h-full w-2 cursor-ew-resize" onPointerDown={(event) => trim(event, index, "start")} />
-                    <button type="button" aria-label="Trim end" className="absolute right-0 top-0 h-full w-2 cursor-ew-resize" onPointerDown={(event) => trim(event, index, "end")} />
-                    <span className="absolute left-2 top-1 text-[12px] text-[#2c241c]">Clip {index + 1}</span>
-                    <span className="absolute bottom-1 right-2 flex gap-1 text-[12px]">
-                      <button type="button" onClick={(event) => { event.stopPropagation(); moveSegment(index, -1); }}>Earlier</button>
-                      <button type="button" onClick={(event) => { event.stopPropagation(); moveSegment(index, 1); }}>Later</button>
-                      <button type="button" onClick={(event) => { event.stopPropagation(); removeSegment(seg.id); }}>Delete</button>
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="absolute top-0 h-full w-px bg-[#9a3412]" style={{ left: `${duration > 0 ? (time / duration) * 100 : 0}%` }} />
-          </div>
-          <div className="mt-3 flex max-h-24 flex-wrap gap-1 overflow-y-auto" aria-label="Transcript">
-            {timed.map((word, index) => (
-              <button
-                key={`${word.word}-${word.start}-${index}`}
-                type="button"
-                onClick={() => {
-                  const video = videoRef.current;
-                  const indexInSegments = segments.findIndex((seg) => word.start >= seg.start && word.start < seg.end);
-                  if (indexInSegments >= 0) {
-                    segRef.current = indexInSegments;
-                    let cursor = 0;
-                    for (let i = 0; i < indexInSegments; i++) cursor += segments[i].end - segments[i].start;
-                    setTime(cursor + (word.start - segments[indexInSegments].start));
-                  }
-                  if (video) video.currentTime = word.start;
-                  setEditing(index);
-                }}
-                className={`rounded px-1.5 py-0.5 text-[15px] ${active === word ? "bg-[#e07a3d] text-[#fffdfb]" : "bg-[#efe4d8]"}`}
-              >
-                {editing === index ? (
-                  <input
-                    autoFocus
-                    defaultValue={word.word}
-                    className="w-20 bg-transparent outline-none"
-                    onClick={(event) => event.stopPropagation()}
-                    onBlur={(event) => {
-                      const next = words.map((item) => (item.start === word.start && item.word === word.word ? { ...item, word: event.target.value.trim() || item.word } : item));
-                      setWords(next);
-                      setEditing(null);
-                      saveEdit({ words: next });
-                    }}
-                  />
-                ) : word.word}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {tab === "Captions" && (
-        <div className="border-t border-[#e4d5c6] px-4 py-4">
-          <CaptionStudio creatorId={creatorId} topicDefault={selected?.text || words.map((word) => word.word).join(" ")} />
-        </div>
-      )}
+      </span>
     </div>
   );
-
-  function trim(event: ReactPointerEvent<HTMLButtonElement>, index: number, edge: "start" | "end") {
-    event.preventDefault();
-    event.stopPropagation();
-    const bar = barRef.current;
-    if (!bar) return;
-    const total = composedDuration(segments) || 1;
-    const width = bar.getBoundingClientRect().width || 1;
-    const originX = event.clientX;
-    const original = segments[index];
-    const move = (ev: PointerEvent) => {
-      const delta = ((ev.clientX - originX) / width) * total;
-      setSegments((prev) => prev.map((seg, i) => {
-        if (i !== index) return seg;
-        if (edge === "start") return { ...seg, start: Math.min(original.end - 0.12, Math.max(0, original.start + delta)) };
-        return { ...seg, end: Math.max(original.start + 0.12, Math.min(project?.durationSec || original.end, original.end + delta)) };
-      }));
-    };
-    const up = () => {
-      window.removeEventListener("pointermove", move);
-      setSegments((current) => {
-        saveEdit({ segments: current });
-        return current;
-      });
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up, { once: true });
-  }
 }
 
 function formatClock(seconds: number) {
@@ -629,38 +1232,4 @@ function formatClock(seconds: number) {
   const minutes = Math.floor(safe / 60);
   const remain = Math.floor(safe % 60);
   return `${String(minutes).padStart(2, "0")}:${String(remain).padStart(2, "0")}`;
-}
-
-function CaptionOverlay({
-  word,
-  nearby,
-  style,
-}: {
-  word: { word: string; composedStart: number; composedEnd: number } | null;
-  nearby: { word: string; composedStart: number; composedEnd: number }[];
-  style: CaptionStyle;
-}) {
-  if (!word) return null;
-  const index = nearby.indexOf(word);
-  const group = nearby.slice(Math.max(0, index - 2), index + 3);
-  const font = style.font === "Georgia" ? "Georgia, serif" : style.font === "Impact" ? "Impact, 'Arial Black', sans-serif" : '"DM Sans", "Segoe UI", sans-serif';
-  const place = style.position === "top" ? "top-6" : style.position === "middle" ? "top-1/2 -translate-y-1/2" : "bottom-8";
-  const shared = { fontFamily: font, fontSize: `${Math.round(style.size / 3)}px`, color: style.color };
-  if (style.preset === "karaoke") {
-    return <p className={`pointer-events-none absolute left-0 right-0 text-center font-bold ${place}`} style={{ ...shared, fontSize: `${Math.round(style.size / 2.4)}px`, transform: "scale(1.06)" }}>{word.word}</p>;
-  }
-  return (
-    <p className={`pointer-events-none absolute left-3 right-3 text-center font-bold leading-tight ${place}`} style={shared}>
-      <span
-        className={style.preset === "boxed" ? "rounded bg-black/75 px-2 py-1" : ""}
-        style={style.preset === "outline" ? { WebkitTextStroke: "1px #1c1612" } : undefined}
-      >
-        {(style.preset === "highlight" || style.preset === "big" ? group : [word]).map((item) => (
-          <span key={`${item.composedStart}-${item.word}`} style={{ color: item === word ? style.highlight : style.color, marginRight: 6 }}>
-            {item.word}
-          </span>
-        ))}
-      </span>
-    </p>
-  );
 }

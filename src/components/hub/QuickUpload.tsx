@@ -38,7 +38,7 @@ export default function QuickUpload({ onFile }: { onFile?: (file: File | null) =
   }
 
   return (
-    <section className="rounded-md border border-dashed border-[#e4d5c6] bg-white p-3" aria-label="Quick upload">
+    <section className="rounded-md border border-dashed border-white/10 bg-[#12121A] p-3" aria-label="Quick upload">
       <label
         className="flex cursor-pointer items-center gap-3"
         onDragOver={(event) => event.preventDefault()}
@@ -47,7 +47,7 @@ export default function QuickUpload({ onFile }: { onFile?: (file: File | null) =
           take(event.dataTransfer.files?.[0] || null);
         }}
       >
-        <Upload className="h-4 w-4 text-[#6d5e53]" aria-hidden />
+        <Upload className="h-4 w-4 text-slate-400" aria-hidden />
         <span>
           <span className="block text-[13px] font-medium">Quick upload</span>
           <span className="block text-[12px] text-[#8A8A9A]">

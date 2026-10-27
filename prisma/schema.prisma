@@ -45,6 +45,7 @@ model User {
   notifications         Notification[]
   notificationSetting   NotificationSetting?
   hookProjects          HookProject[]
+  editorTemplates       EditorTemplate[]
 }
 
 model PasswordReset {
@@ -220,6 +221,18 @@ model HookProject {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   hooks        Hook[]
+
+  @@index([userId])
+}
+
+model EditorTemplate {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  docJson   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([userId])
 }

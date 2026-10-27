@@ -26,6 +26,14 @@ export function projectPath(userId: string, projectId: string) {
   return path.join(ROOT, "projects", userId, `${projectId}.mp4`);
 }
 
+export function assetPath(userId: string, projectId: string, assetId: string, ext: string) {
+  assertId(userId);
+  assertId(projectId);
+  assertId(assetId);
+  if (!/^[a-z0-9]{1,4}$/.test(ext)) throw new Error("Invalid file");
+  return path.join(ROOT, "projects", userId, `${projectId}-assets`, `${assetId}.${ext}`);
+}
+
 export function storageRoot() {
   return ROOT;
 }
