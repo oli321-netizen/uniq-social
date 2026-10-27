@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUserId, unauthorized } from "@/lib/session";
 import { serializeCreator } from "@/lib/serialize";
+import { voiceColumns } from "@/lib/voice";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,7 @@ export async function POST(req: NextRequest) {
       name: name.slice(0, 80),
       niche: String(body?.niche || "").trim().slice(0, 120),
       toneNotes: String(body?.toneNotes || "").trim().slice(0, 2000),
+      ...voiceColumns(body),
     },
   });
   return NextResponse.json({ creator: serializeCreator(creator) }, { status: 201 });

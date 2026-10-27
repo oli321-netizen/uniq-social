@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUserId, unauthorized } from "@/lib/session";
 import { serializeCreator } from "@/lib/serialize";
+import { voiceColumns } from "@/lib/voice";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       niche: body?.niche !== undefined ? String(body.niche).trim().slice(0, 120) : existing.niche,
       toneNotes:
         body?.toneNotes !== undefined ? String(body.toneNotes).trim().slice(0, 2000) : existing.toneNotes,
+      ...voiceColumns(body),
     },
   });
   return NextResponse.json({ creator: serializeCreator(creator) });

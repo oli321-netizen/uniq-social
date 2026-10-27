@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { Fingerprint, Loader2, LogOut, X, Zap } from "lucide-react";
+import NotificationsMenu from "@/components/hub/NotificationsMenu";
 
 const PACKS = [
   { credits: 20, price: "£5.20" },
@@ -120,6 +121,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </Link>
         </div>
         <div className="flex items-center gap-2">
+          <NotificationsMenu />
           <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 font-mono text-[12px]">
             {credits === null ? "…" : credits.toLocaleString()} credits
           </span>
