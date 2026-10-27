@@ -26,7 +26,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [topUpError, setTopUpError] = useState("");
   const [buying, setBuying] = useState<number | null>(null);
   const section = pathname?.startsWith("/hub/") ? pathname.split("/")[2]?.replace("-", " ") : "Process";
-  const editor = pathname?.startsWith("/hub/hook-lab");
+  const editor = pathname?.startsWith("/hub/editor-lab") || pathname?.startsWith("/hub/hook-lab");
 
   useEffect(() => {
     if (status === "unauthenticated") {

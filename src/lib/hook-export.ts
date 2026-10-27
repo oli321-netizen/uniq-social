@@ -3,9 +3,11 @@ import { mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import os from "os";
 import path from "path";
 import { buildAss, cuesForExport, type CaptionStyle } from "@/lib/caption-ass";
-import { composedDuration, clampSpeed, type Segment, type WordStamp } from "@/lib/edit-timeline";
+import { composedDuration, atempoChain, clampSpeed, type Segment, type WordStamp } from "@/lib/edit-timeline";
 import { parseCues, type CaptionCue } from "@/lib/caption-cues";
 import { hasAudio } from "@/lib/transcribe";
+import { canvasSize, isPlain, parseEditor, type EditorDoc } from "@/lib/editor-doc";
+import { composePlan, type ComposeAsset } from "@/lib/compose-export";
 
 export async function exportEdit(input: {
   videoPath: string;
@@ -13,6 +15,8 @@ export async function exportEdit(input: {
   segments: Segment[];
   style: CaptionStyle;
   cues?: CaptionCue[];
+  editor?: EditorDoc;
+  assets?: ComposeAsset[];
   onProgress?: (ratio: number) => void;
 }) {
   if (input.segments.length === 0) throw new Error("Nothing to export. Keep at least one segment.");
@@ -21,20 +25,28 @@ export async function exportEdit(input: {
   const output = path.join(dir, "export.mp4");
   try {
     const cues = cuesForExport(input.words, input.segments, parseCues(input.cues));
-    await writeFile(ass, buildAss(cues, input.style));
+    const editor = parseEditor(input.editor);
+    const plain = isPlain(editor, input.segments);
+    const canvas = canvasSize(editor);
+    await writeFile(ass, buildAss(cues, input.style, plain ? undefined : canvas));
     const audio = await hasAudio(input.videoPath);
-    const duration = Math.max(0.2, composedDuration(input.segments));
     const fontsDir = path.join(process.cwd(), "public", "fonts");
-    const args = [
-      "-i",
-      input.videoPath,
-      "-filter_complex",
-      filterGraph(input.segments, audio, ass, fontsDir),
-      "-map",
-      "[vout]",
-    ];
-    if (audio) args.push("-map", "[aout]", "-c:a", "aac", "-b:a", "160k");
-    args.push("-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-r", "30", output);
+    const rich = plain
+      ? null
+      : composePlan({
+          segments: input.segments,
+          editor,
+          assets: input.assets || [],
+          mainAudio: audio,
+          assPath: ass,
+          fontsDir,
+        });
+    const duration = rich ? rich.duration : Math.max(0.2, composedDuration(input.segments));
+    const args = ["-i", input.videoPath];
+    if (rich) args.push(...rich.inputArgs);
+    args.push("-filter_complex", rich ? rich.filter : filterGraph(input.segments, audio, ass, fontsDir), "-map", "[vout]");
+    if (rich || audio) args.push("-map", "[aout]", "-c:a", "aac", "-b:a", "160k");
+    args.push("-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-r", String(plain ? 30 : editor.fps), output);
     input.onProgress?.(0.02);
     await runFfmpeg(args, {
       timeout: 180000,
@@ -60,7 +72,7 @@ function filterGraph(segments: Segment[], audio: boolean, assPath: string, fonts
     );
     if (audio) {
       parts.push(
-        `[0:a]atrim=start=${start}:end=${end},asetpts=PTS-STARTPTS,atempo=${speed},aformat=sample_rates=48000:channel_layouts=stereo[a${index}]`
+        `[0:a]atrim=start=${start}:end=${end},asetpts=PTS-STARTPTS,${atempoChain(clampSpeed(seg.speed))},aformat=sample_rates=48000:channel_layouts=stereo[a${index}]`
       );
     }
     labels.push(audio ? `[v${index}][a${index}]` : `[v${index}]`);

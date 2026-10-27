@@ -1,7 +1,43 @@
-export type Segment = { id: string; start: number; end: number; speed?: number };
+export type SegmentFilter = "none" | "vivid" | "warm" | "cool" | "bw" | "fade";
+export type SegmentEffect = "none" | "punch" | "shake" | "blur";
+export type SegmentTransition = "none" | "fade" | "slide";
+export type SegmentKey = { t: number; x: number; y: number; scale: number };
+export type Segment = {
+  id: string;
+  start: number;
+  end: number;
+  speed?: number;
+  kind?: "video" | "image";
+  assetId?: string;
+  mediaDuration?: number;
+  reverse?: boolean;
+  freeze?: boolean;
+  volume?: number;
+  fadeIn?: number;
+  fadeOut?: number;
+  x?: number;
+  y?: number;
+  scale?: number;
+  rotate?: number;
+  flipX?: boolean;
+  flipY?: boolean;
+  crop?: number;
+  brightness?: number;
+  contrast?: number;
+  saturation?: number;
+  temperature?: number;
+  filter?: SegmentFilter;
+  effect?: SegmentEffect;
+  transition?: SegmentTransition;
+  keyframes?: SegmentKey[];
+};
 export type WordStamp = { word: string; start: number; end: number };
 export type TimedWord = WordStamp & { composedStart: number; composedEnd: number };
 export type SourceRange = { start: number; end: number };
+
+const FILTERS: SegmentFilter[] = ["none", "vivid", "warm", "cool", "bw", "fade"];
+const EFFECTS: SegmentEffect[] = ["none", "punch", "shake", "blur"];
+const TRANSITIONS: SegmentTransition[] = ["none", "fade", "slide"];
 
 const MIN = 0.12;
 const MAX_SEGMENTS = 80;
@@ -14,7 +50,23 @@ export function newId() {
 export function clampSpeed(speed: unknown) {
   const value = Number(speed);
   if (!Number.isFinite(value) || value <= 0) return 1;
-  return Math.max(0.5, Math.min(2, Math.round(value * 100) / 100));
+  return Math.max(0.25, Math.min(4, Math.round(value * 100) / 100));
+}
+
+export function atempoChain(speed: number) {
+  let remain = clampSpeed(speed);
+  const parts: string[] = [];
+  while (remain < 0.5 - 1e-6) {
+    parts.push("atempo=0.5");
+    remain /= 0.5;
+  }
+  while (remain > 2 + 1e-6) {
+    parts.push("atempo=2");
+    remain /= 2;
+  }
+  const last = Math.max(0.5, Math.min(2, Math.round(remain * 1000) / 1000));
+  parts.push(`atempo=${last.toFixed(3)}`);
+  return parts.join(",");
 }
 
 export function playDuration(seg: Segment) {
@@ -32,18 +84,37 @@ export function composedStart(segments: Segment[], index: number) {
 }
 
 export function clampSegments(raw: Segment[], duration: number, fallback = true): Segment[] {
-  const span = Math.max(0, duration);
+  const projectSpan = Math.max(0, duration);
   const out: Segment[] = [];
   for (const seg of raw) {
+    const own = Number(seg.mediaDuration);
+    const span = Number.isFinite(own) && own > 0 ? Math.min(600, own) : projectSpan;
     const start = Math.max(0, Math.min(span, Number(seg.start)));
     const end = Math.max(0, Math.min(span, Number(seg.end)));
     if (!(end - start >= MIN)) continue;
     const id = String(seg.id || "").slice(0, 80) || newId();
-    out.push({ id, start: round(start), end: round(end), speed: clampSpeed(seg.speed) });
+    out.push({ id, start: round(start), end: round(end), speed: clampSpeed(seg.speed), ...sanitizeLook(seg) });
     if (out.length >= MAX_SEGMENTS) break;
   }
-  if (out.length === 0 && fallback && span >= MIN) out.push({ id: newId(), start: 0, end: round(span), speed: 1 });
+  if (out.length === 0 && fallback && projectSpan >= MIN) out.push({ id: newId(), start: 0, end: round(projectSpan), speed: 1 });
   return out;
+}
+
+export function segmentIsPlain(seg: Segment) {
+  if (seg.assetId || seg.reverse || seg.freeze || seg.flipX || seg.flipY || seg.kind === "image") return false;
+  if ((seg.volume ?? 1) !== 1) return false;
+  if ((seg.fadeIn || 0) > 0 || (seg.fadeOut || 0) > 0) return false;
+  if ((seg.x || 0) !== 0 || (seg.y || 0) !== 0) return false;
+  if (Math.abs((seg.scale ?? 1) - 1) > 0.001) return false;
+  if ((seg.rotate || 0) !== 0 || (seg.crop || 0) > 0) return false;
+  if (Math.abs(seg.brightness || 0) > 0.001) return false;
+  if (Math.abs((seg.contrast ?? 1) - 1) > 0.001 || Math.abs((seg.saturation ?? 1) - 1) > 0.001) return false;
+  if (Math.abs(seg.temperature || 0) > 0.001) return false;
+  if (seg.filter && seg.filter !== "none") return false;
+  if (seg.effect && seg.effect !== "none") return false;
+  if (seg.transition && seg.transition !== "none") return false;
+  if (seg.keyframes && seg.keyframes.length > 0) return false;
+  return true;
 }
 
 export function splitAt(segments: Segment[], composed: number): Segment[] {
@@ -57,7 +128,7 @@ export function splitAt(segments: Segment[], composed: number): Segment[] {
     pos.index,
     1,
     { ...seg, end: round(pos.source) },
-    { id: newId(), start: round(pos.source), end: seg.end, speed: clampSpeed(seg.speed) }
+    { ...seg, id: newId(), start: round(pos.source), end: seg.end, speed: clampSpeed(seg.speed) }
   );
   return next;
 }
@@ -171,7 +242,7 @@ export function cutSourceRanges(segments: Segment[], ranges: SourceRange[], medi
     for (const seg of next) {
       const overlapStart = Math.max(seg.start, cut.start);
       const overlapEnd = Math.min(seg.end, cut.end);
-      if (overlapEnd - overlapStart < 0.02) {
+      if (seg.assetId || overlapEnd - overlapStart < 0.02) {
         produced.push(seg);
         continue;
       }
@@ -253,6 +324,66 @@ export function snapTime(time: number, points: number[], threshold: number) {
     }
   }
   return best;
+}
+
+function sanitizeLook(seg: Partial<Segment>): Partial<Segment> {
+  const look: Partial<Segment> = {};
+  if (seg.kind === "image" || seg.kind === "video") look.kind = seg.kind;
+  if (typeof seg.assetId === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(seg.assetId)) {
+    look.assetId = seg.assetId;
+  }
+  const media = Number(seg.mediaDuration);
+  if (Number.isFinite(media) && media > 0) look.mediaDuration = Math.min(600, round(media));
+  if (seg.reverse) look.reverse = true;
+  if (seg.freeze) look.freeze = true;
+  if (seg.flipX) look.flipX = true;
+  if (seg.flipY) look.flipY = true;
+  const volume = Number(seg.volume);
+  if (Number.isFinite(volume)) look.volume = Math.max(0, Math.min(1, round(volume)));
+  const fadeIn = Number(seg.fadeIn);
+  if (Number.isFinite(fadeIn) && fadeIn > 0) look.fadeIn = Math.min(5, round(fadeIn));
+  const fadeOut = Number(seg.fadeOut);
+  if (Number.isFinite(fadeOut) && fadeOut > 0) look.fadeOut = Math.min(5, round(fadeOut));
+  const x = Number(seg.x);
+  if (Number.isFinite(x) && x !== 0) look.x = Math.max(-800, Math.min(800, Math.round(x)));
+  const y = Number(seg.y);
+  if (Number.isFinite(y) && y !== 0) look.y = Math.max(-800, Math.min(800, Math.round(y)));
+  const scale = Number(seg.scale);
+  if (Number.isFinite(scale) && Math.abs(scale - 1) > 0.001) look.scale = Math.max(0.2, Math.min(3, round(scale)));
+  const rotate = Number(seg.rotate);
+  if (Number.isFinite(rotate) && rotate !== 0) look.rotate = Math.max(-180, Math.min(180, Math.round(rotate)));
+  const crop = Number(seg.crop);
+  if (Number.isFinite(crop) && crop > 0) look.crop = Math.max(0, Math.min(0.3, round(crop)));
+  const brightness = Number(seg.brightness);
+  if (Number.isFinite(brightness) && brightness !== 0) look.brightness = Math.max(-0.3, Math.min(0.3, round(brightness)));
+  const contrast = Number(seg.contrast);
+  if (Number.isFinite(contrast) && contrast !== 1) look.contrast = Math.max(0.4, Math.min(2, round(contrast)));
+  const saturation = Number(seg.saturation);
+  if (Number.isFinite(saturation) && saturation !== 1) look.saturation = Math.max(0, Math.min(3, round(saturation)));
+  const temperature = Number(seg.temperature);
+  if (Number.isFinite(temperature) && temperature !== 0) look.temperature = Math.max(-1, Math.min(1, round(temperature)));
+  if (seg.filter && FILTERS.includes(seg.filter) && seg.filter !== "none") look.filter = seg.filter;
+  if (seg.effect && EFFECTS.includes(seg.effect) && seg.effect !== "none") look.effect = seg.effect;
+  if (seg.transition && TRANSITIONS.includes(seg.transition) && seg.transition !== "none") look.transition = seg.transition;
+  if (Array.isArray(seg.keyframes)) {
+    const keys: SegmentKey[] = [];
+    for (const key of seg.keyframes) {
+      if (!key || keys.length >= 2) break;
+      const t = Number(key.t);
+      const kx = Number(key.x);
+      const ky = Number(key.y);
+      const ks = Number(key.scale);
+      if (!Number.isFinite(t) || !Number.isFinite(kx) || !Number.isFinite(ky) || !Number.isFinite(ks)) continue;
+      keys.push({
+        t: Math.max(0, Math.min(1, round(t))),
+        x: Math.max(-800, Math.min(800, Math.round(kx))),
+        y: Math.max(-800, Math.min(800, Math.round(ky))),
+        scale: Math.max(0.2, Math.min(3, round(ks))),
+      });
+    }
+    if (keys.length) look.keyframes = keys;
+  }
+  return look;
 }
 
 function normalize(word: string) {

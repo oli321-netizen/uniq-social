@@ -6,15 +6,19 @@ import { Loader2, Pause, Play, Star, Trash2 } from "lucide-react";
 import type { CreatorDTO, HookDTO } from "@/lib/serialize";
 import CaptionStudio from "@/components/hub/CaptionStudio";
 import EditorTimeline, { type FilmstripInfo } from "@/components/hub/editor/Timeline";
+import LookPanel from "@/components/hub/editor/LookPanel";
 import { applyPreset, DEFAULT_STYLE, PRESET_LIST, type CaptionStyle } from "@/lib/caption-ass";
 import { FONT_FACE_CSS, cssFamily, CAPTION_FONTS } from "@/lib/caption-fonts";
 import { breakCueLines, buildCues, type CaptionCue } from "@/lib/caption-cues";
 import {
   clampSpeed,
   composedDuration,
+  composedStart,
   cutSourceRanges,
   fillerIndexes,
   mapWords,
+  newId,
+  playDuration,
   rangesForIndexes,
   sentenceGroups,
   setSegmentSpeed,
@@ -24,6 +28,7 @@ import {
   type Segment,
   type WordStamp,
 } from "@/lib/edit-timeline";
+import { canvasSize, cssFilter, DEFAULT_EDITOR, transformAt, type EditorDoc } from "@/lib/editor-doc";
 
 type Project = {
   id: string;
@@ -34,12 +39,23 @@ type Project = {
   segments: Segment[];
   style: CaptionStyle;
   cues: CaptionCue[];
+  editor?: EditorDoc;
 };
 
-type Doc = { words: WordStamp[]; segments: Segment[]; cues: CaptionCue[]; style: CaptionStyle };
+type Doc = { words: WordStamp[]; segments: Segment[]; cues: CaptionCue[]; style: CaptionStyle; editor: EditorDoc };
 type LeftTab = "Media" | "Transcript" | "Hooks" | "Posts";
 
-const EMPTY: Doc = { words: [], segments: [], cues: [], style: DEFAULT_STYLE };
+const EMPTY: Doc = { words: [], segments: [], cues: [], style: DEFAULT_STYLE, editor: DEFAULT_EDITOR };
+
+function isSpecial(seg?: Segment) {
+  return Boolean(seg && (seg.reverse || seg.freeze || seg.kind === "image"));
+}
+
+function shownTime(seg: Segment, source: number) {
+  if (seg.freeze) return seg.start;
+  if (seg.reverse) return Math.max(seg.start, seg.end - (source - seg.start));
+  return source;
+}
 
 export default function HookLab() {
   const search = useSearchParams();
@@ -74,9 +90,15 @@ export default function HookLab() {
   const [downloadHref, setDownloadHref] = useState("");
   const [saveVariant, setSaveVariant] = useState(true);
   const [frameHeight, setFrameHeight] = useState(640);
+  const [frameWidth, setFrameWidth] = useState(360);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const blurRef = useRef<HTMLVideoElement>(null);
+  const musicRef = useRef<HTMLAudioElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const saveTimer = useRef<number | null>(null);
+  const playingRef = useRef(false);
+  const holdPlay = useRef(false);
+  const projectRef = useRef<Project | null>(null);
 
   useEffect(() => {
     fetch("/api/creators")
@@ -105,7 +127,10 @@ export default function HookLab() {
   useEffect(() => {
     const node = frameRef.current;
     if (!node) return;
-    const observer = new ResizeObserver(() => setFrameHeight(node.clientHeight || 640));
+    const observer = new ResizeObserver(() => {
+      setFrameHeight(node.clientHeight || 640);
+      setFrameWidth(node.clientWidth || 360);
+    });
     observer.observe(node);
     return () => observer.disconnect();
   }, [project?.id]);
@@ -120,9 +145,63 @@ export default function HookLab() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  useEffect(() => {
+    if (!playing) return;
+    let raf = 0;
+    let last = performance.now();
+    const tick = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      const list = docRef.current.segments;
+      const index = segRef.current;
+      const seg = list[index];
+      if (!seg || !isSpecial(seg)) {
+        raf = requestAnimationFrame(tick);
+        return;
+      }
+      const len = playDuration(seg);
+      let nextTime = timeRef.current + dt;
+      const video = videoRef.current;
+      if (seg.reverse && video && seg.kind !== "image") {
+        video.currentTime = Math.max(seg.start, (video.currentTime || seg.end) - dt * clampSpeed(seg.speed));
+      }
+      if (nextTime >= composedStart(list, index) + len - 0.02) {
+        const following = list[index + 1];
+        if (!following) {
+          holdPlay.current = false;
+          playingRef.current = false;
+          setPlaying(false);
+          timeRef.current = composedDuration(list);
+          setTime(timeRef.current);
+          return;
+        }
+        segRef.current = index + 1;
+        nextTime = composedStart(list, index + 1);
+        if (video && !isSpecial(following)) {
+          holdPlay.current = false;
+          video.playbackRate = clampSpeed(following.speed);
+          video.currentTime = following.reverse ? Math.max(following.start, following.end - 0.05) : following.start;
+          video.play().catch(() => {});
+        } else holdPlay.current = true;
+      }
+      timeRef.current = nextTime;
+      setTime(nextTime);
+      syncMusic(nextTime);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [playing]);
+
   function openProject(next: Project) {
     const cues = next.cues?.length ? next.cues : buildCues(next.words, next.segments);
-    const incoming: Doc = { words: next.words, segments: next.segments, cues, style: next.style || DEFAULT_STYLE };
+    const incoming: Doc = {
+      words: next.words,
+      segments: next.segments,
+      cues,
+      style: next.style || DEFAULT_STYLE,
+      editor: next.editor || DEFAULT_EDITOR,
+    };
     past.current = [];
     future.current = [];
     gestureBase.current = null;
@@ -185,6 +264,7 @@ export default function HookLab() {
           segments: next.segments,
           cues: next.cues,
           style: next.style,
+          editor: next.editor,
           transcript: next.words.map((word) => word.word).join(" "),
         }),
       });
@@ -273,10 +353,11 @@ export default function HookLab() {
     segRef.current = pos.index;
     const video = videoRef.current;
     const seg = list[pos.index];
-    if (video && seg) {
+    if (video && seg && seg.kind !== "image") {
       video.playbackRate = pos.speed;
       const cap = Math.max(seg.start, seg.end - 0.02);
-      video.currentTime = Math.min(cap, Math.max(seg.start, pos.source));
+      video.currentTime = Math.min(cap, Math.max(seg.start, shownTime(seg, pos.source)));
+      video.volume = seg.volume ?? 1;
     }
     timeRef.current = pos.composed;
     setTime(pos.composed);
@@ -287,16 +368,32 @@ export default function HookLab() {
     const list = docRef.current.segments;
     const index = segRef.current;
     const seg = list[index];
-    if (!video || !seg) return;
-    if (video.currentTime >= seg.end - 0.04) {
+    if (!video || !seg || isSpecial(seg)) return;
+    const local = Math.max(0, video.currentTime - seg.start) / clampSpeed(seg.speed);
+    let volume = seg.volume ?? 1;
+    if ((seg.fadeIn || 0) > 0 && local < (seg.fadeIn || 0)) volume *= local / (seg.fadeIn || 1);
+    const span = playDuration(seg);
+    if ((seg.fadeOut || 0) > 0 && span - local < (seg.fadeOut || 0)) volume *= Math.max(0, (span - local) / (seg.fadeOut || 1));
+    video.volume = Math.max(0, Math.min(1, volume));
+    syncMusic(cursorOf(list, index) + local);
+    if (video.currentTime >= (seg.reverse ? seg.start + 0.04 : seg.end - 0.04)) {
       const next = list[index + 1];
       if (next && !video.paused) {
         segRef.current = index + 1;
+        if (isSpecial(next) || next.assetId !== seg.assetId || next.kind === "image") {
+          holdPlay.current = isSpecial(next);
+          const composed = composedStart(list, index + 1);
+          timeRef.current = composed;
+          setTime(composed);
+          video.pause();
+          return;
+        }
         video.playbackRate = clampSpeed(next.speed);
-        video.currentTime = next.start;
+        video.currentTime = next.reverse ? Math.max(next.start, next.end - 0.04) : next.start;
         return;
       }
       video.pause();
+      playingRef.current = false;
       setPlaying(false);
       const end = composedDuration(list);
       timeRef.current = end;
@@ -311,14 +408,64 @@ export default function HookLab() {
   }
 
   function togglePlay() {
+    const list = docRef.current.segments;
+    if (list.length === 0) return;
+    if (playingRef.current) {
+      holdPlay.current = false;
+      playingRef.current = false;
+      setPlaying(false);
+      videoRef.current?.pause();
+      musicRef.current?.pause();
+      return;
+    }
+    const total = composedDuration(list);
+    if (timeRef.current >= total - 0.05) seek(0);
+    else seek(timeRef.current);
+    const pos = sourceAt(list, timeRef.current);
+    const seg = list[pos.index];
+    playingRef.current = true;
+    setPlaying(true);
+    if (isSpecial(seg)) {
+      holdPlay.current = true;
+      videoRef.current?.pause();
+      return;
+    }
+    holdPlay.current = false;
+    videoRef.current?.play().catch(() => setPlaying(false));
+  }
+
+  function cursorOf(list: Segment[], index: number) {
+    let cursor = 0;
+    for (let i = 0; i < index; i++) cursor += playDuration(list[i]);
+    return cursor;
+  }
+
+  function syncMusic(composed: number) {
+    const music = musicRef.current;
+    const current = projectRef.current;
+    if (!music || !current) return;
+    const layer = docRef.current.editor.audios.find((item) => composed >= item.start && composed < item.start + Math.max(0.12, item.out - item.in));
+    if (!layer) {
+      music.pause();
+      return;
+    }
+    const url = `/api/hooks/projects/${current.id}/assets/${layer.assetId}`;
+    if (!music.src.includes(layer.assetId)) music.src = url;
+    const local = layer.in + (composed - layer.start);
+    if (Math.abs((music.currentTime || 0) - local) > 0.35) music.currentTime = Math.max(0, local);
+    const span = Math.max(0.12, layer.out - layer.in);
+    const into = composed - layer.start;
+    let vol = layer.volume ?? 0.8;
+    if ((layer.fadeIn || 0) > 0 && into < (layer.fadeIn || 0)) vol *= into / (layer.fadeIn || 1);
+    if ((layer.fadeOut || 0) > 0 && span - into < (layer.fadeOut || 0)) vol *= Math.max(0, (span - into) / (layer.fadeOut || 1));
+    music.volume = Math.max(0, Math.min(1, vol));
+    if (playingRef.current) music.play().catch(() => {});
+    else music.pause();
+    const blur = blurRef.current;
     const video = videoRef.current;
-    if (!video || docRef.current.segments.length === 0) return;
-    if (video.paused) {
-      const total = composedDuration(docRef.current.segments);
-      if (timeRef.current >= total - 0.05) seek(0);
-      else seek(timeRef.current);
-      video.play().catch(() => {});
-    } else video.pause();
+    if (blur && video && docRef.current.editor.background === "blur" && Math.abs(blur.currentTime - video.currentTime) > 0.25) {
+      blur.currentTime = video.currentTime;
+    }
   }
 
   function doSplit() {
@@ -441,7 +588,7 @@ export default function HookLab() {
       setSelectedHook(data.hooks?.[0]?.id || null);
       setNotice(data.notice || "");
       setLeft("Transcript");
-      window.history.replaceState(null, "", `/hub/hook-lab?project=${data.project.id}`);
+      window.history.replaceState(null, "", `/hub/editor-lab?project=${data.project.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not transcribe that video.");
     } finally {
@@ -489,6 +636,7 @@ export default function HookLab() {
           segments: current.segments,
           style: current.style,
           cues: current.cues,
+          editor: current.editor,
           saveVariant,
         }),
       });
@@ -519,7 +667,8 @@ export default function HookLab() {
       if (!download) throw new Error("Export finished without a file.");
       setDownloadHref(download);
       setExportProgress(1);
-      setNotice(variantId ? "Exported 1080×1920. A copy was saved under Variants." : "Exported 1080×1920.");
+      const size = canvasSize(docRef.current.editor);
+      setNotice(variantId ? `Exported ${size.width}×${size.height}. A copy was saved under Variants.` : `Exported ${size.width}×${size.height}.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Export failed.");
       setExportProgress(null);
@@ -551,7 +700,100 @@ export default function HookLab() {
     commit({ ...docRef.current, style });
   }
 
+  function applyChange(change: { editor?: EditorDoc; segments?: Segment[]; cues?: CaptionCue[]; style?: CaptionStyle }) {
+    let next: Doc = { ...docRef.current, ...change };
+    if (change.segments && !change.cues) next = { ...next, cues: buildCues(next.words, next.segments) };
+    commit(next);
+  }
+
+  async function importFile(file: File | null, slot: "main" | "overlay" | "audio") {
+    if (!file || !project) return;
+    setError("");
+    const body = new FormData();
+    body.append("file", file);
+    const res = await fetch(`/api/hooks/projects/${project.id}/assets`, { method: "POST", body });
+    const data = await res.json();
+    if (!res.ok) {
+      setError(data.error || "Could not import that file.");
+      return;
+    }
+    const asset = data.asset as EditorDoc["assets"][number];
+    const editor: EditorDoc = { ...docRef.current.editor, assets: [...docRef.current.editor.assets, asset].slice(0, 16) };
+    const span = asset.kind === "image" ? 3 : Math.max(0.4, Math.min(slot === "audio" ? 60 : 30, asset.duration || 3));
+    if (slot === "main") {
+      if (asset.kind === "audio") {
+        setError("Add audio on the music track.");
+        return;
+      }
+      applyChange({
+        editor,
+        segments: [
+          ...docRef.current.segments,
+          {
+            id: newId(),
+            start: 0,
+            end: span,
+            speed: 1,
+            kind: asset.kind === "image" ? "image" : "video",
+            assetId: asset.id,
+            mediaDuration: span,
+          },
+        ],
+      });
+      setNotice(asset.kind === "image" ? "Image added as a 3s clip." : "Clip added after the current edit.");
+      return;
+    }
+    if (slot === "overlay") {
+      if (asset.kind === "audio") {
+        setError("Audio goes on the music track.");
+        return;
+      }
+      applyChange({
+        editor: {
+          ...editor,
+          overlays: [...editor.overlays, { id: newId(), assetId: asset.id, start: timeRef.current, in: 0, out: Math.min(span, 8), scale: 0.45 }].slice(0, 4),
+        },
+      });
+      setNotice("Overlay added.");
+      return;
+    }
+    applyChange({
+      editor: {
+        ...editor,
+        audios: [...editor.audios, { id: newId(), assetId: asset.id, start: timeRef.current, in: 0, out: span, volume: 0.7, fadeIn: 0.15, fadeOut: 0.3 }].slice(0, 4),
+      },
+    });
+    setNotice("Audio added on the music track.");
+  }
+
   const duration = composedDuration(doc.segments);
+  projectRef.current = project;
+  playingRef.current = playing;
+  const canvas = canvasSize(doc.editor);
+  const playPos = doc.segments.length ? sourceAt(doc.segments, Math.min(time, duration)) : { index: 0, source: 0, composed: 0, speed: 1 };
+  const active = doc.segments[playPos.index];
+  const imageMode = active?.kind === "image" && Boolean(active.assetId);
+  const videoSrc = project ? `/api/hooks/projects/${project.id}/${active?.assetId && !imageMode ? `assets/${active.assetId}` : "file"}` : "";
+  const imageSrc = project && imageMode ? `/api/hooks/projects/${project.id}/assets/${active?.assetId}` : "";
+  const clipRatio = active ? Math.max(0, Math.min(1, (time - composedStart(doc.segments, playPos.index)) / Math.max(0.001, playDuration(active)))) : 0;
+  const motion = active ? transformAt(active, clipRatio) : { x: 0, y: 0, scale: 1 };
+  const localPlay = active ? clipRatio * playDuration(active) : 0;
+  const fit = !active || (doc.editor.background !== "blur" && doc.editor.aspect === "9:16" && Math.abs(motion.scale - 1) < 0.02 && !motion.x && !motion.y && !active.rotate && !(active.crop || 0))
+    ? "cover"
+    : doc.editor.background === "blur"
+      ? "blur"
+      : "contain";
+  const punch = fit === "cover" && active?.effect === "punch" ? 1 + 0.16 * Math.min(1, localPlay / 0.45) : 1;
+  const shakeX = fit === "cover" && active?.effect === "shake" ? Math.sin(localPlay * 16) * 10 : 0;
+  const shakeY = fit === "cover" && active?.effect === "shake" ? Math.cos(localPlay * 19) * 7 : 0;
+  const slide = active?.transition === "slide" && localPlay < 0.35 ? (1 - localPlay / 0.35) * 15 : 0;
+  const fade = active?.transition === "fade" && localPlay < 0.35 ? Math.max(0, localPlay / 0.35) : 1;
+  const frameStyle = {
+    filter: active ? cssFilter(active) : undefined,
+    opacity: fade,
+    transform: `translate(calc(${slide}% + ${(motion.x + shakeX) * (frameWidth / canvas.width)}px), ${(motion.y + shakeY) * (frameHeight / canvas.height)}px) scale(${motion.scale * punch * (active?.flipX ? -1 : 1)}, ${motion.scale * punch * (active?.flipY ? -1 : 1)}) rotate(${active?.rotate || 0}deg)`,
+    clipPath: active?.crop ? `inset(${active.crop * 100}%)` : undefined,
+  };
   const activeCue = doc.cues.find((cue) => time >= cue.start && time < cue.end) || null;
   const logged = (hooks || []).filter((hook) => hook.loggedResults > 0);
   const selected = hooks?.find((hook) => hook.id === selectedHook) || null;
@@ -559,10 +801,10 @@ export default function HookLab() {
   const sentences = useMemo(() => sentenceGroups(doc.words), [doc.words]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#010313] text-white" data-editor="hook-lab">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#010313] text-white" data-editor="editor-lab">
       <style>{`${FONT_FACE_CSS}@keyframes hookPop{from{transform:scale(.82)}to{transform:scale(1)}}@keyframes hookScale{from{transform:scale(.94)}to{transform:scale(1.04)}}`}</style>
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-white/10 px-3 py-2">
-        <p className="min-w-0 truncate text-[15px]">{project?.fileName || "Hook Lab"}</p>
+        <p className="min-w-0 truncate text-[15px]">{project?.fileName || "Editor Lab"}</p>
         <span className="text-[13px] text-slate-400">{saveLabel}</span>
         <button type="button" onClick={undo} className="rounded-md border border-white/10 px-2 py-1 text-[13px]">Undo</button>
         <button type="button" onClick={redo} className="rounded-md border border-white/10 px-2 py-1 text-[13px]">Redo</button>
@@ -572,7 +814,7 @@ export default function HookLab() {
           Save to Variants
         </label>
         <button type="button" onClick={exportVideo} disabled={!project || exportProgress !== null && exportProgress < 1} className="rounded-md bg-purple-600 px-3 py-1.5 text-[14px] disabled:opacity-40">
-          Export 1080×1920
+          Export {canvas.width}×{canvas.height}
         </button>
         {downloadHref && (
           <a href={downloadHref} className="rounded-md border border-white/10 px-3 py-1.5 text-[14px]">Download</a>
@@ -615,7 +857,19 @@ export default function HookLab() {
                   <span className="mt-1 text-[13px] text-slate-400">MP4, MOV, or WebM. Speech is transcribed.</span>
                   <input type="file" accept="video/mp4,video/quicktime,video/webm" className="sr-only" onChange={(event) => onUpload(event.target.files?.[0] || null)} />
                 </label>
-                <p className="text-[13px] text-slate-400">Reframe and B-roll are not part of this editor. Splits, speed, and captions export on their own and do not use the processor.</p>
+                <label className="block text-[13px]">
+                  Add video or image
+                  <input type="file" accept="video/mp4,video/quicktime,video/webm,image/png,image/jpeg,image/webp" className="mt-1 block w-full text-[12px]" onChange={(event) => importFile(event.target.files?.[0] || null, "main")} />
+                </label>
+                <label className="block text-[13px]">
+                  Overlay
+                  <input type="file" accept="video/mp4,video/quicktime,video/webm,image/png,image/jpeg,image/webp" className="mt-1 block w-full text-[12px]" onChange={(event) => importFile(event.target.files?.[0] || null, "overlay")} />
+                </label>
+                <label className="block text-[13px]">
+                  Music or audio
+                  <input type="file" accept="audio/mpeg,audio/wav,audio/mp4,audio/*" className="mt-1 block w-full text-[12px]" onChange={(event) => importFile(event.target.files?.[0] || null, "audio")} />
+                </label>
+                <p className="text-[13px] text-slate-400">Aspect, blur fill, and colour live in the properties. This editor does not call the processor, and it does not invent B-roll.</p>
               </div>
             )}
             {left === "Transcript" && (
@@ -701,23 +955,69 @@ export default function HookLab() {
         <section className="flex min-h-0 min-w-0 flex-col bg-[#07080f]">
           <div className="flex min-h-0 flex-1 items-center justify-center p-3">
             {project ? (
-              <div ref={frameRef} className="relative h-full max-h-full w-auto max-w-full overflow-hidden rounded-md border border-white/10 bg-black" style={{ aspectRatio: "9 / 16" }}>
-                <video
-                  ref={videoRef}
-                  src={`/api/hooks/projects/${project.id}/file`}
-                  className="h-full w-full object-cover"
-                  playsInline
-                  onTimeUpdate={onTimeUpdate}
-                  onPlay={() => setPlaying(true)}
-                  onPause={() => setPlaying(false)}
-                />
+              <div ref={frameRef} className="relative h-full max-h-full w-auto max-w-full overflow-hidden rounded-md border border-white/10 bg-black" style={{ aspectRatio: `${canvas.width} / ${canvas.height}` }}>
+                {fit === "blur" && !imageMode && (
+                  <video ref={blurRef} src={videoSrc} muted className="absolute inset-0 h-full w-full scale-110 object-cover blur-xl" playsInline />
+                )}
+                {imageMode ? (
+                  <>
+                    {fit === "blur" && <img src={imageSrc} alt="" className="absolute inset-0 h-full w-full scale-110 object-cover blur-xl" />}
+                    <img src={imageSrc} alt="" className={`h-full w-full ${fit === "cover" ? "object-cover" : "object-contain"}`} style={frameStyle} />
+                  </>
+                ) : (
+                  <video
+                    ref={videoRef}
+                    src={videoSrc}
+                    className={`h-full w-full ${fit === "cover" ? "object-cover" : "object-contain"}`}
+                    style={frameStyle}
+                    playsInline
+                    onTimeUpdate={onTimeUpdate}
+                    onLoadedData={() => {
+                      const list = docRef.current.segments;
+                      const pos = sourceAt(list, timeRef.current);
+                      const seg = list[pos.index];
+                      const video = videoRef.current;
+                      if (!video || !seg || seg.kind === "image") return;
+                      video.playbackRate = clampSpeed(seg.speed);
+                      video.currentTime = shownTime(seg, pos.source);
+                      if (playingRef.current && !isSpecial(seg)) video.play().catch(() => {});
+                    }}
+                    onPlay={() => {
+                      playingRef.current = true;
+                      setPlaying(true);
+                    }}
+                    onPause={() => {
+                      if (!holdPlay.current) {
+                        playingRef.current = false;
+                        setPlaying(false);
+                      }
+                    }}
+                  />
+                )}
                 <div className="pointer-events-none absolute inset-0">
                   <div className="absolute inset-x-0 top-0 h-[12%] border-b border-dashed border-white/40" />
                   <div className="absolute inset-x-0 bottom-0 h-[20%] border-t border-dashed border-white/40" />
                   <div className="absolute inset-y-0 left-0 w-[6%] border-r border-dashed border-white/30" />
                   <div className="absolute inset-y-0 right-0 w-[6%] border-l border-dashed border-white/30" />
                 </div>
-                <CaptionOverlay cue={activeCue} time={time} style={doc.style} frameHeight={frameHeight} />
+                {doc.editor.texts.filter((text) => time >= text.start && time < text.end).map((text) => (
+                  <div
+                    key={text.id}
+                    className="pointer-events-none absolute font-bold"
+                    style={{
+                      left: `calc(50% + ${text.x * (frameWidth / canvas.width)}px)`,
+                      top: `calc(50% + ${text.y * (frameHeight / canvas.height)}px)`,
+                      transform: "translate(-50%, -50%)",
+                      color: text.color,
+                      fontSize: Math.max(12, (text.size * frameHeight) / canvas.height),
+                      fontFamily: text.emoji ? "sans-serif" : cssFamily("Montserrat"),
+                    }}
+                  >
+                    {text.text}
+                  </div>
+                ))}
+                <CaptionOverlay cue={activeCue} time={time} style={doc.style} frameHeight={frameHeight} canvasHeight={canvas.height} />
+                <audio ref={musicRef} />
               </div>
             ) : (
               <label
@@ -755,14 +1055,28 @@ export default function HookLab() {
         </section>
 
         <aside className="max-h-48 overflow-y-auto border-t border-white/10 p-3 lg:max-h-none lg:border-l lg:border-t-0">
-          <h2 className="text-[14px] font-medium">Properties</h2>
+          <LookPanel
+            projectId={project?.id || null}
+            editor={doc.editor}
+            clip={clip}
+            segments={doc.segments}
+            cues={doc.cues}
+            style={doc.style}
+            peaks={peaks}
+            sourceDuration={project?.durationSec || 0}
+            time={time}
+            onChange={applyChange}
+            onNotice={setNotice}
+            onError={setError}
+          />
+          <h2 className="mt-3 text-[14px] font-medium">Properties</h2>
           {clip ? (
             <label className="mt-3 block text-[13px]">
               Clip speed {clampSpeed(clip.speed).toFixed(2)}×
               <input
                 type="range"
-                min={0.5}
-                max={2}
+                min={0.25}
+                max={4}
                 step={0.05}
                 value={clampSpeed(clip.speed)}
                 onPointerDown={beginGesture}
@@ -844,6 +1158,12 @@ export default function HookLab() {
           onCues={previewCues}
           onGestureStart={beginGesture}
           onGestureEnd={endGesture}
+          marks={doc.editor.beats}
+          layers={[
+            ...doc.editor.overlays.map((layer) => ({ id: layer.id, start: layer.start, end: layer.start + Math.max(0.12, layer.out - layer.in), label: "Overlay" })),
+            ...doc.editor.audios.map((layer) => ({ id: layer.id, start: layer.start, end: layer.start + Math.max(0.12, layer.out - layer.in), label: "Audio" })),
+            ...doc.editor.texts.map((layer) => ({ id: layer.id, start: layer.start, end: layer.end, label: layer.text })),
+          ]}
         />
       )}
     </div>
@@ -865,12 +1185,12 @@ export default function HookLab() {
   }
 }
 
-function CaptionOverlay({ cue, time, style, frameHeight }: { cue: CaptionCue | null; time: number; style: CaptionStyle; frameHeight: number }) {
+function CaptionOverlay({ cue, time, style, frameHeight, canvasHeight }: { cue: CaptionCue | null; time: number; style: CaptionStyle; frameHeight: number; canvasHeight: number }) {
   if (!cue) return null;
   const active = cue.words.findIndex((word) => time >= word.start && time < word.end);
   const lines = breakCueLines(cue.words);
-  const fontSize = Math.max(13, (style.size * frameHeight) / 1920);
-  const stroke = (style.strokeWidth * frameHeight) / 1920;
+  const fontSize = Math.max(13, (style.size * frameHeight) / canvasHeight);
+  const stroke = (style.strokeWidth * frameHeight) / canvasHeight;
   const place = style.position === "top" ? { top: "14%" } : style.position === "middle" ? { top: "42%" } : { bottom: "18%" };
   const animation = style.animation === "pop" ? "hookPop 140ms ease-out" : style.animation === "scale" ? "hookScale 160ms ease-out" : undefined;
   return (

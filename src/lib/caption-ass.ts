@@ -91,7 +91,7 @@ export function parseStyle(raw: unknown): CaptionStyle {
   };
 }
 
-export function buildAss(cues: CaptionCue[], style: CaptionStyle) {
+export function buildAss(cues: CaptionCue[], style: CaptionStyle, canvas?: { width: number; height: number }) {
   const align = style.position === "top" ? 8 : style.position === "middle" ? 5 : 2;
   const boxed = style.preset === "boxed";
   const border = boxed ? 3 : 1;
@@ -101,17 +101,21 @@ export function buildAss(cues: CaptionCue[], style: CaptionStyle) {
   const hi = assColour(style.highlight);
   const stroke = assColour(style.stroke);
   const back = boxed ? "&H00000000&" : "&H00000000&";
-  const marginV = style.position === "middle" ? 0 : style.position === "top" ? 220 : 280;
+  const width = canvas?.width || 1080;
+  const height = canvas?.height || 1920;
+  const scale = height / 1920;
+  const marginV = Math.round((style.position === "middle" ? 0 : style.position === "top" ? 220 : 280) * scale);
+  const fontSize = Math.max(8, Math.round(style.size * scale));
   const header = `[Script Info]
 ScriptType: v4.00+
-PlayResX: 1080
-PlayResY: 1920
+PlayResX: ${width}
+PlayResY: ${height}
 WrapStyle: 0
 ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Cap,${style.font},${style.size},${primary},${hi},${stroke},${back},-1,0,0,0,100,100,0,0,${border},${outline},${shadow},${align},70,70,${marginV},1
+Style: Cap,${style.font},${fontSize},${primary},${hi},${stroke},${back},-1,0,0,0,100,100,0,0,${border},${Math.max(0, Math.round(outline * scale))},${Math.round(shadow * scale)},${align},${Math.round(70 * scale)},${Math.round(70 * scale)},${marginV},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

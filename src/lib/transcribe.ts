@@ -34,7 +34,7 @@ export async function transcribeFile(videoPath: string, durationSec: number, tra
     const key = process.env.OPENAI_API_KEY || "";
     const localStub = !transport && !key && process.env.HOOK_LAB_STUB === "1";
     if (!key && !localStub && !transport) {
-      throw new Error("OPENAI_API_KEY is not set. Hook Lab needs it to transcribe the video and will not invent a transcript.");
+      throw new Error("OPENAI_API_KEY is not set. Editor Lab needs it to transcribe the video and will not invent a transcript.");
     }
     const send = transport || (key ? liveTransport(key) : stubTransport);
     const pieces = info.size > WHISPER_LIMIT ? await splitAudio(dir, audio) : [audio];
@@ -88,7 +88,7 @@ async function stubTransport(request: WhisperRequest) {
   assertWhisperRequest(request);
   const script = process.env.HOOK_LAB_STUB_TEXT || "";
   if (script.trim().length < 8) {
-    throw new Error("Local stub is on, but HOOK_LAB_STUB_TEXT is empty. Hook Lab will not invent a transcript.");
+    throw new Error("Local stub is on, but HOOK_LAB_STUB_TEXT is empty. Editor Lab will not invent a transcript.");
   }
   const audio = extractAudio(request);
   const dir = await mkdtemp(path.join(os.tmpdir(), "hook-stub-"));

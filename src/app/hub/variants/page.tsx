@@ -83,7 +83,7 @@ export default function VariantsPage() {
         <div>
           <h1 className="text-xl font-medium">Variants</h1>
           <p className="mt-1 max-w-2xl text-[15px] text-slate-400">
-            Cards are renders the existing processor already logged, plus caption exports from Hook Lab. The processor does not keep its mp4 unless you attach the file you downloaded.
+            Cards are renders the existing processor already logged, plus caption exports from Editor Lab. The processor does not keep its mp4 unless you attach the file you downloaded.
           </p>
         </div>
         <div className="flex gap-2">

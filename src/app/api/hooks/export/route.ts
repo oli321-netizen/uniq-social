@@ -1,12 +1,16 @@
 import path from "path";
+import { access } from "fs/promises";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUserId, unauthorized } from "@/lib/session";
-import { saveBytes, storageRoot, variantPath } from "@/lib/storage";
+import { assetPath, saveBytes, storageRoot, variantPath } from "@/lib/storage";
 import { exportEdit } from "@/lib/hook-export";
-import { clampSegments, composedDuration, parseWords } from "@/lib/edit-timeline";
+import { clampSegments, composedDuration, parseWords, type Segment } from "@/lib/edit-timeline";
 import { parseStyle } from "@/lib/caption-ass";
 import { parseCues } from "@/lib/caption-cues";
+import { parseEditor, type EditorDoc } from "@/lib/editor-doc";
+import { hasAudio } from "@/lib/transcribe";
+import type { ComposeAsset } from "@/lib/compose-export";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +22,7 @@ export async function POST(req: NextRequest) {
   const existing = await prisma.hookProject.findFirst({ where: { id: projectId, userId } });
   if (!existing?.storageKey) return Response.json({ error: "Upload a video first." }, { status: 404 });
 
-  const storedStyle = safeJson(existing.styleJson) as { cues?: unknown } | null;
+  const storedStyle = safeJson(existing.styleJson) as { cues?: unknown; editor?: unknown } | null;
   const words = parseWords(body?.words !== undefined ? body.words : safeJson(existing.wordsJson));
   const segments = clampSegments(
     Array.isArray(body?.segments) ? body.segments : safeJson(existing.segmentsJson),
@@ -26,15 +30,23 @@ export async function POST(req: NextRequest) {
   );
   const style = parseStyle(body?.style !== undefined ? body.style : storedStyle);
   const cues = parseCues(body?.cues !== undefined ? body.cues : storedStyle?.cues);
+  const editor = parseEditor(body?.editor !== undefined ? body.editor : storedStyle?.editor);
   if (words.length === 0) return Response.json({ error: "There are no caption words to burn in." }, { status: 400 });
   if (segments.length === 0) return Response.json({ error: "Keep at least one segment." }, { status: 400 });
+  let assets: ComposeAsset[] = [];
+  try {
+    assets = await resolveAssets(userId, existing.id, editor, segments);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "An imported file is missing.";
+    return Response.json({ error: message }, { status: 400 });
+  }
 
   await prisma.hookProject.update({
     where: { id: existing.id },
     data: {
       wordsJson: JSON.stringify(words),
       segmentsJson: JSON.stringify(segments),
-      styleJson: JSON.stringify({ ...style, cues }),
+      styleJson: JSON.stringify({ ...style, cues, editor }),
     },
   });
 
@@ -49,6 +61,8 @@ export async function POST(req: NextRequest) {
           segments,
           style,
           cues,
+          editor,
+          assets,
           onProgress: (progress) => send({ progress }),
         });
         const exportPath = path.join(path.dirname(existing.storageKey), `${existing.id}-export.mp4`);
@@ -99,6 +113,29 @@ function safeJson(raw: unknown) {
   } catch {
     return null;
   }
+}
+
+async function resolveAssets(userId: string, projectId: string, editor: EditorDoc, segments: Segment[]) {
+  const needed = new Set<string>();
+  for (const seg of segments) if (seg.assetId) needed.add(seg.assetId);
+  for (const layer of editor.overlays) needed.add(layer.assetId);
+  for (const layer of editor.audios) needed.add(layer.assetId);
+  const files: ComposeAsset[] = [];
+  for (const asset of editor.assets) {
+    if (!needed.has(asset.id)) continue;
+    const file = assetPath(userId, projectId, asset.id, asset.ext);
+    try {
+      await access(file);
+    } catch {
+      throw new Error(`Imported file ${asset.name} is missing. Import it again.`);
+    }
+    const audio = asset.kind === "image" ? false : asset.kind === "audio" ? true : await hasAudio(file);
+    files.push({ id: asset.id, path: file, kind: asset.kind, duration: asset.duration, audio });
+  }
+  for (const id of Array.from(needed)) {
+    if (!files.some((file) => file.id === id)) throw new Error("An imported clip is missing from this project.");
+  }
+  return files;
 }
 
 function insideStorage(filePath: string) {

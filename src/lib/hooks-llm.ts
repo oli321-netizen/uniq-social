@@ -62,7 +62,7 @@ export async function generateHooks(input: {
     return {
       hooks: [],
       mode: "transcript",
-      notice: "Transcribe a video first. Hook Lab will not invent lines without the words that were said.",
+      notice: "Transcribe a video first. Editor Lab will not invent lines without the words that were said.",
     };
   }
   const quoted = hooksFromTranscript(transcript, count);

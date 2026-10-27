@@ -26,6 +26,6 @@ export async function GET(req: NextRequest, { params }: Ctx) {
   } catch {
     return NextResponse.json({ error: "Export the video before downloading." }, { status: 404 });
   }
-  const name = `${(project.fileName || "hook-lab").replace(/"/g, "")}-captions.mp4`;
+  const name = `${(project.fileName || "editor-lab").replace(/"/g, "")}-captions.mp4`;
   return fileResponse(file, req, "video/mp4", name);
 }

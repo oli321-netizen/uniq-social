@@ -77,7 +77,7 @@ export default function CreatorsPage() {
       return;
     }
     setCreators((prev) => prev?.map((item) => (item.id === data.creator.id ? data.creator : item)) ?? []);
-    setVoiceNote("Voice saved. Hook Lab and captions use it on the next generate.");
+    setVoiceNote("Voice saved. Editor Lab and captions use it on the next generate.");
   }
 
   async function onCreate(e: FormEvent) {
@@ -117,7 +117,7 @@ export default function CreatorsPage() {
     <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
       <h1 className="text-2xl font-medium">Brand voice</h1>
       <p className="mt-2 max-w-2xl text-[16px] text-slate-400">
-        Define how a creator sounds, then write captions in that voice. Hook Lab uses the same profile when it tightens a transcript. Transcription needs an OpenAI key and does not invent words.
+        Define how a creator sounds, then write captions in that voice. Editor Lab uses the same profile when it tightens a transcript. Transcription needs an OpenAI key and does not invent words.
       </p>
 
       {error && (
@@ -147,8 +147,8 @@ export default function CreatorsPage() {
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
-                <Link href={`/hub/hook-lab?creator=${creator.id}`} className="mt-1 inline-block px-1 text-[14px] text-purple-300">
-                  Open Hook Lab
+                <Link href={`/hub/editor-lab?creator=${creator.id}`} className="mt-1 inline-block px-1 text-[14px] text-purple-300">
+                  Open Editor Lab
                 </Link>
               </li>
             ))}

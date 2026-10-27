@@ -34,6 +34,8 @@ type Props = {
   onCues: (cues: CaptionCue[]) => void;
   onGestureStart: () => void;
   onGestureEnd: (kind: "clips" | "cues") => void;
+  marks?: number[];
+  layers?: { id: string; start: number; end: number; label: string }[];
 };
 
 const LABEL = 72;
@@ -62,6 +64,7 @@ export default function EditorTimeline(props: Props) {
     for (const cue of props.cues) {
       if (cue.id !== exceptCue) marks.push(cue.start, cue.end);
     }
+    for (const mark of props.marks || []) marks.push(mark);
     return marks;
   }
 
@@ -194,6 +197,9 @@ export default function EditorTimeline(props: Props) {
                 {formatTick(second)}
               </span>
             ))}
+            {(props.marks || []).map((mark) => (
+              <span key={mark} className="absolute top-0 h-full w-px bg-amber-300/80" style={{ left: LABEL + mark * props.zoom }} />
+            ))}
           </button>
           <Track label="Video">
             {clips.map(({ seg, left, span }, index) => (
@@ -208,7 +214,11 @@ export default function EditorTimeline(props: Props) {
                 }}
               >
                 <Filmstrip seg={seg} span={span} zoom={props.zoom} filmstrip={props.filmstrip} sourceDuration={props.sourceDuration} />
-                <span className="pointer-events-none absolute left-2 top-0.5 text-[11px] text-white">Clip {index + 1}{clampSpeed(seg.speed) !== 1 ? ` · ${clampSpeed(seg.speed)}x` : ""}</span>
+                <span className="pointer-events-none absolute left-2 top-0.5 text-[11px] text-white">
+                  {seg.kind === "image" ? "Image" : `Clip ${index + 1}`}
+                  {seg.reverse ? " · rev" : ""}
+                  {clampSpeed(seg.speed) !== 1 ? ` · ${clampSpeed(seg.speed)}x` : ""}
+                </span>
                 <button type="button" aria-label="Trim clip start" className="absolute left-0 top-0 h-full w-2 cursor-ew-resize bg-white/30" onPointerDown={(event) => trim(event, index, "start")} />
                 <button type="button" aria-label="Trim clip end" className="absolute right-0 top-0 h-full w-2 cursor-ew-resize bg-white/30" onPointerDown={(event) => trim(event, index, "end")} />
               </div>
@@ -221,6 +231,19 @@ export default function EditorTimeline(props: Props) {
               </div>
             ))}
           </Track>
+          {props.layers && props.layers.length > 0 && (
+            <Track label="Layers" short>
+              {props.layers.map((layer) => (
+                <div
+                  key={layer.id}
+                  className="absolute top-0.5 flex h-7 items-center overflow-hidden rounded-sm bg-amber-700/80 px-2 text-[12px] text-white"
+                  style={{ left: layer.start * props.zoom, width: Math.max(16, (layer.end - layer.start) * props.zoom) }}
+                >
+                  <span className="truncate">{layer.label}</span>
+                </div>
+              ))}
+            </Track>
+          )}
           <Track label="Captions" short>
             {props.cues.map((cue) => (
               <div
