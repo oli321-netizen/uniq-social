@@ -149,9 +149,9 @@ function videoLines(
   if (fit === "blur") {
     lines.push(`${chain},split[bg${clip}][fgraw${clip}]`);
     lines.push(`[bg${clip}]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},gblur=sigma=22,fps=${fps},format=yuv420p[bgf${clip}]`);
-    lines.push(`[fgraw${clip}]scale=${boxW}:${boxH}:force_original_aspect_ratio=decrease,fps=${fps},format=yuv420p[fg${clip}]`);
+    lines.push(`[fgraw${clip}]scale=${boxW}:${boxH}:force_original_aspect_ratio=decrease,${fgTail(seg, fps, clip)}`);
   } else {
-    lines.push(`${chain},scale=${boxW}:${boxH}:force_original_aspect_ratio=decrease,fps=${fps},format=yuv420p[fg${clip}]`);
+    lines.push(`${chain},scale=${boxW}:${boxH}:force_original_aspect_ratio=decrease,${fgTail(seg, fps, clip)}`);
     lines.push(`color=c=black:s=${W}x${H}:r=${fps}:d=${play.toFixed(3)},format=yuv420p[bgf${clip}]`);
   }
   const slide = seg.transition === "slide" ? `+${W}*0.15*max(0\\,(0.35-t)/0.35)` : "";
@@ -208,10 +208,23 @@ function drawText(text: TextLayer, height: number, fontsDir: string) {
 }
 
 function fitMode(editor: EditorDoc, seg: Segment) {
+  if (opacityOf(seg) < 0.999) return editor.background === "blur" ? "blur" : "contain";
   if (editor.background === "blur") return "blur";
   if (editor.aspect !== "9:16") return "contain";
   if (hasMotion(seg) || (seg.scale && Math.abs(seg.scale - 1) > 0.001) || seg.rotate || (seg.crop || 0) > 0) return "contain";
   return "cover";
+}
+
+function opacityOf(seg: Segment) {
+  const value = Number(seg.opacity);
+  if (!Number.isFinite(value)) return 1;
+  return Math.max(0, Math.min(1, value));
+}
+
+function fgTail(seg: Segment, fps: number, clip: number) {
+  const opacity = opacityOf(seg);
+  if (opacity >= 0.999) return `fps=${fps},format=yuv420p[fg${clip}]`;
+  return `fps=${fps},format=yuva420p,colorchannelmixer=aa=${opacity.toFixed(3)}[fg${clip}]`;
 }
 
 function hasMotion(seg: Segment) {

@@ -1,14 +1,15 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Loader2, Pause, Play, Star, Trash2 } from "lucide-react";
+import { Clapperboard, Download, LayoutGrid, Loader2, Maximize, Pause, Play, Redo2, Undo2 } from "lucide-react";
 import type { CreatorDTO, HookDTO } from "@/lib/serialize";
-import CaptionStudio from "@/components/hub/CaptionStudio";
+import { SECTIONS } from "@/components/hub/SectionNav";
+import AssetBin, { type RailTab } from "@/components/hub/editor/AssetBin";
+import Inspector from "@/components/hub/editor/Inspector";
 import EditorTimeline, { type FilmstripInfo } from "@/components/hub/editor/Timeline";
-import LookPanel from "@/components/hub/editor/LookPanel";
-import { applyPreset, DEFAULT_STYLE, PRESET_LIST, type CaptionStyle } from "@/lib/caption-ass";
-import { FONT_FACE_CSS, cssFamily, CAPTION_FONTS } from "@/lib/caption-fonts";
+import { DEFAULT_STYLE, type CaptionStyle } from "@/lib/caption-ass";
+import { FONT_FACE_CSS, cssFamily } from "@/lib/caption-fonts";
 import { breakCueLines, buildCues, type CaptionCue } from "@/lib/caption-cues";
 import {
   clampSpeed,
@@ -20,8 +21,6 @@ import {
   newId,
   playDuration,
   rangesForIndexes,
-  sentenceGroups,
-  setSegmentSpeed,
   silenceRanges,
   sourceAt,
   splitAt,
@@ -43,8 +42,6 @@ type Project = {
 };
 
 type Doc = { words: WordStamp[]; segments: Segment[]; cues: CaptionCue[]; style: CaptionStyle; editor: EditorDoc };
-type LeftTab = "Media" | "Transcript" | "Hooks" | "Posts";
-
 const EMPTY: Doc = { words: [], segments: [], cues: [], style: DEFAULT_STYLE, editor: DEFAULT_EDITOR };
 
 function isSpecial(seg?: Segment) {
@@ -59,7 +56,9 @@ function shownTime(seg: Segment, source: number) {
 
 export default function HookLab() {
   const search = useSearchParams();
-  const [left, setLeft] = useState<LeftTab>("Transcript");
+  const [rail, setRail] = useState<RailTab>("Media");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [replacing, setReplacing] = useState(false);
   const [creators, setCreators] = useState<CreatorDTO[]>([]);
   const [creatorId, setCreatorId] = useState(search.get("creator") || "");
   const [project, setProject] = useState<Project | null>(null);
@@ -88,13 +87,15 @@ export default function HookLab() {
   const [peaks, setPeaks] = useState<number[]>([]);
   const [exportProgress, setExportProgress] = useState<number | null>(null);
   const [downloadHref, setDownloadHref] = useState("");
-  const [saveVariant, setSaveVariant] = useState(true);
+  const saveVariant = true;
   const [frameHeight, setFrameHeight] = useState(640);
   const [frameWidth, setFrameWidth] = useState(360);
   const videoRef = useRef<HTMLVideoElement>(null);
   const blurRef = useRef<HTMLVideoElement>(null);
   const musicRef = useRef<HTMLAudioElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const saveTimer = useRef<number | null>(null);
   const playingRef = useRef(false);
   const holdPlay = useRef(false);
@@ -125,15 +126,28 @@ export default function HookLab() {
   }, [search]);
 
   useEffect(() => {
-    const node = frameRef.current;
+    const node = stageRef.current;
     if (!node) return;
-    const observer = new ResizeObserver(() => {
-      setFrameHeight(node.clientHeight || 640);
-      setFrameWidth(node.clientWidth || 360);
-    });
+    const fit = () => {
+      const box = canvasSize(docRef.current.editor);
+      const aspect = box.width / Math.max(1, box.height);
+      const maxW = Math.max(0, node.clientWidth - 24);
+      const maxH = Math.max(0, node.clientHeight - 24);
+      if (maxW < 8 || maxH < 8) return;
+      let height = maxH;
+      let width = height * aspect;
+      if (width > maxW) {
+        width = maxW;
+        height = width / aspect;
+      }
+      setFrameWidth(Math.max(1, Math.floor(width)));
+      setFrameHeight(Math.max(1, Math.floor(height)));
+    };
+    const observer = new ResizeObserver(fit);
     observer.observe(node);
+    fit();
     return () => observer.disconnect();
-  }, [project?.id]);
+  }, [doc.editor.aspect, doc.editor.resolution]);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -335,13 +349,6 @@ export default function HookLab() {
 
   function previewCues(cues: CaptionCue[]) {
     const next = { ...docRef.current, cues };
-    docRef.current = next;
-    setDoc(next);
-  }
-
-  function previewStyle(partial: Partial<CaptionStyle>) {
-    if (!gestureBase.current) gestureBase.current = docRef.current;
-    const next = { ...docRef.current, style: { ...docRef.current.style, ...partial } };
     docRef.current = next;
     setDoc(next);
   }
@@ -587,7 +594,7 @@ export default function HookLab() {
       setHooks(data.hooks || []);
       setSelectedHook(data.hooks?.[0]?.id || null);
       setNotice(data.notice || "");
-      setLeft("Transcript");
+      setRail("Media");
       window.history.replaceState(null, "", `/hub/editor-lab?project=${data.project.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not transcribe that video.");
@@ -696,10 +703,6 @@ export default function HookLab() {
     setNotice(`Removed ${indexes.size} filler words.`);
   }
 
-  function setStyle(style: CaptionStyle) {
-    commit({ ...docRef.current, style });
-  }
-
   function applyChange(change: { editor?: EditorDoc; segments?: Segment[]; cues?: CaptionCue[]; style?: CaptionStyle }) {
     let next: Doc = { ...docRef.current, ...change };
     if (change.segments && !change.cues) next = { ...next, cues: buildCues(next.words, next.segments) };
@@ -790,382 +793,296 @@ export default function HookLab() {
   const fade = active?.transition === "fade" && localPlay < 0.35 ? Math.max(0, localPlay / 0.35) : 1;
   const frameStyle = {
     filter: active ? cssFilter(active) : undefined,
-    opacity: fade,
+    opacity: fade * (active?.opacity ?? 1),
     transform: `translate(calc(${slide}% + ${(motion.x + shakeX) * (frameWidth / canvas.width)}px), ${(motion.y + shakeY) * (frameHeight / canvas.height)}px) scale(${motion.scale * punch * (active?.flipX ? -1 : 1)}, ${motion.scale * punch * (active?.flipY ? -1 : 1)}) rotate(${active?.rotate || 0}deg)`,
     clipPath: active?.crop ? `inset(${active.crop * 100}%)` : undefined,
   };
   const activeCue = doc.cues.find((cue) => time >= cue.start && time < cue.end) || null;
-  const logged = (hooks || []).filter((hook) => hook.loggedResults > 0);
-  const selected = hooks?.find((hook) => hook.id === selectedHook) || null;
   const clip = doc.segments.find((seg) => seg.id === selectedClip) || null;
-  const sentences = useMemo(() => sentenceGroups(doc.words), [doc.words]);
+  const clipNames = doc.segments.map((seg) => {
+    if (!seg.assetId) return project?.fileName || "Video";
+    return doc.editor.assets.find((asset) => asset.id === seg.assetId)?.name || "Clip";
+  });
+  const status = error || notice || phase || saveLabel;
+
+  function pickVideo(replace: boolean) {
+    setReplacing(replace);
+    const input = fileRef.current;
+    if (!input) return;
+    input.value = "";
+    input.click();
+  }
+
+  function onPicked(file: File | null) {
+    if (!file) return;
+    if (!project || replacing) onUpload(file);
+    else importFile(file, "main");
+    setReplacing(false);
+  }
+
+  function toggleFull() {
+    const node = frameRef.current;
+    if (!node) return;
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void node.requestFullscreen().catch(() => {});
+  }
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#010313] text-white" data-editor="editor-lab">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#121418] text-[#f2f2f2]" data-editor="editor-lab">
       <style>{`${FONT_FACE_CSS}@keyframes hookPop{from{transform:scale(.82)}to{transform:scale(1)}}@keyframes hookScale{from{transform:scale(.94)}to{transform:scale(1.04)}}`}</style>
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-white/10 px-3 py-2">
-        <p className="min-w-0 truncate text-[15px]">{project?.fileName || "Editor Lab"}</p>
-        <span className="text-[13px] text-slate-400">{saveLabel}</span>
-        <button type="button" onClick={undo} className="rounded-md border border-white/10 px-2 py-1 text-[13px]">Undo</button>
-        <button type="button" onClick={redo} className="rounded-md border border-white/10 px-2 py-1 text-[13px]">Redo</button>
-        <button type="button" onClick={doSplit} disabled={!project} className="rounded-md border border-white/10 px-2 py-1 text-[13px] disabled:opacity-40">Split</button>
-        <label className="ml-auto flex items-center gap-2 text-[13px] text-slate-300">
-          <input type="checkbox" checked={saveVariant} onChange={(event) => setSaveVariant(event.target.checked)} />
-          Save to Variants
-        </label>
-        <button type="button" onClick={exportVideo} disabled={!project || exportProgress !== null && exportProgress < 1} className="rounded-md bg-purple-600 px-3 py-1.5 text-[14px] disabled:opacity-40">
-          Export {canvas.width}×{canvas.height}
-        </button>
-        {downloadHref && (
-          <a href={downloadHref} className="rounded-md border border-white/10 px-3 py-1.5 text-[14px]">Download</a>
-        )}
-      </div>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="video/mp4,video/quicktime,video/webm,image/png,image/jpeg,image/webp"
+        className="sr-only"
+        onChange={(event) => onPicked(event.target.files?.[0] || null)}
+      />
+      <header className="flex h-10 shrink-0 items-center gap-2 border-b border-[#2c3038] bg-[#16181d] px-3">
+        <Clapperboard className="h-4 w-4 shrink-0 text-[#3ad6e4]" />
+        <p className="shrink-0 text-[13px] font-medium">Editor Lab</p>
+        <p className={`min-w-0 flex-1 truncate text-center text-[11px] ${error ? "text-[#f0b4b4]" : "text-[#8e939c]"}`} role={error ? "alert" : undefined}>{status}</p>
+        <div className="flex shrink-0 items-center gap-1">
+          {downloadHref && (
+            <a href={downloadHref} title="Download" className="flex h-7 w-7 items-center justify-center rounded text-[#d5d8de] hover:bg-white/10">
+              <Download className="h-3.5 w-3.5" />
+            </a>
+          )}
+          <button
+            type="button"
+            onClick={exportVideo}
+            disabled={!project || (exportProgress !== null && exportProgress < 1)}
+            className="inline-flex h-7 items-center gap-1.5 rounded-md bg-[#22d3ee] px-3 text-[12px] font-medium text-[#062126] disabled:opacity-40"
+          >
+            Export
+          </button>
+          <button type="button" title="Undo" aria-label="Undo" onClick={undo} className="flex h-7 w-7 items-center justify-center rounded text-[#d5d8de] hover:bg-white/10">
+            <Undo2 className="h-3.5 w-3.5" />
+          </button>
+          <button type="button" title="Redo" aria-label="Redo" onClick={redo} className="flex h-7 w-7 items-center justify-center rounded text-[#d5d8de] hover:bg-white/10">
+            <Redo2 className="h-3.5 w-3.5" />
+          </button>
+          <div className="relative">
+            <button type="button" aria-label="Sections" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)} className="flex h-7 w-7 items-center justify-center rounded text-[#d5d8de] hover:bg-white/10">
+              <LayoutGrid className="h-3.5 w-3.5" />
+            </button>
+            {menuOpen && (
+              <div className="absolute right-0 top-8 z-30 w-40 rounded-md border border-[#2c3038] bg-[#1a1d24] py-1 shadow-lg">
+                {SECTIONS.map((item) => (
+                  <a key={item.href} href={item.href} className="block truncate px-3 py-1.5 text-[12px] text-[#d5d8de] hover:bg-white/5">{item.label}</a>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </header>
       {exportProgress !== null && (
-        <div className="h-1 bg-white/10">
-          <div className="h-full bg-purple-500" style={{ width: `${Math.round(exportProgress * 100)}%` }} />
+        <div className="h-0.5 shrink-0 bg-[#2c3038]">
+          <div className="h-full bg-[#22d3ee]" style={{ width: `${Math.round(exportProgress * 100)}%` }} />
         </div>
       )}
-      {phase && (
-        <p className="flex items-center gap-2 border-b border-white/10 bg-[#0a0a1a] px-3 py-2 text-[14px]">
-          <Loader2 className="h-4 w-4 animate-spin" /> {phase}
-        </p>
-      )}
-      {error && <p className="border-b border-white/10 bg-purple-500/10 px-3 py-2 text-[14px] text-purple-200" role="alert">{error}</p>}
-      {notice && !error && <p className="border-b border-white/10 px-3 py-2 text-[14px] text-slate-400">{notice}</p>}
-
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)_240px]">
-        <aside className="flex max-h-40 flex-col overflow-hidden border-b border-white/10 lg:max-h-none lg:border-b-0 lg:border-r">
-          <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-white/10 px-2" role="tablist">
-            {(["Media", "Transcript", "Hooks", "Posts"] as LeftTab[]).map((tab) => (
-              <button key={tab} type="button" role="tab" aria-selected={left === tab} onClick={() => setLeft(tab)} className={`shrink-0 border-b-2 px-2 py-2 text-[13px] ${left === tab ? "border-purple-500" : "border-transparent text-slate-400"}`}>
-                {tab}
-              </button>
-            ))}
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto p-3">
-            {left === "Media" && (
-              <div className="space-y-3 text-[14px]">
-                <label className="block">
-                  Creator
-                  <select value={creatorId} onChange={(event) => setCreatorId(event.target.value)} className="mt-1 w-full rounded-md border border-white/10 bg-[#12121A] px-2 py-2">
-                    <option value="">No creator</option>
-                    {creators.map((creator) => <option key={creator.id} value={creator.id}>{creator.name}</option>)}
-                  </select>
-                </label>
-                <label className="flex cursor-pointer flex-col items-center rounded-md border border-dashed border-white/20 bg-[#12121A] px-3 py-8 text-center">
-                  <span>{project ? "Replace video" : "Upload a video"}</span>
-                  <span className="mt-1 text-[13px] text-slate-400">MP4, MOV, or WebM. Speech is transcribed.</span>
-                  <input type="file" accept="video/mp4,video/quicktime,video/webm" className="sr-only" onChange={(event) => onUpload(event.target.files?.[0] || null)} />
-                </label>
-                <label className="block text-[13px]">
-                  Add video or image
-                  <input type="file" accept="video/mp4,video/quicktime,video/webm,image/png,image/jpeg,image/webp" className="mt-1 block w-full text-[12px]" onChange={(event) => importFile(event.target.files?.[0] || null, "main")} />
-                </label>
-                <label className="block text-[13px]">
-                  Overlay
-                  <input type="file" accept="video/mp4,video/quicktime,video/webm,image/png,image/jpeg,image/webp" className="mt-1 block w-full text-[12px]" onChange={(event) => importFile(event.target.files?.[0] || null, "overlay")} />
-                </label>
-                <label className="block text-[13px]">
-                  Music or audio
-                  <input type="file" accept="audio/mpeg,audio/wav,audio/mp4,audio/*" className="mt-1 block w-full text-[12px]" onChange={(event) => importFile(event.target.files?.[0] || null, "audio")} />
-                </label>
-                <p className="text-[13px] text-slate-400">Aspect, blur fill, and colour live in the properties. This editor does not call the processor, and it does not invent B-roll.</p>
-              </div>
-            )}
-            {left === "Transcript" && (
-              <div>
-                <div className="mb-3 flex flex-wrap gap-2">
-                  <button type="button" onClick={removeSilences} disabled={!project} className="rounded-md border border-white/10 px-2 py-1 text-[13px] disabled:opacity-40">Remove silences</button>
-                  <button type="button" onClick={removeFillers} disabled={!project} className="rounded-md border border-white/10 px-2 py-1 text-[13px] disabled:opacity-40">Remove fillers</button>
-                </div>
-                {doc.words.length === 0 && <p className="text-[14px] text-slate-400">Upload a talking video. Deleting a word cuts that moment out of the video.</p>}
-                <div className="space-y-3" aria-label="Transcript">
-                  {sentences.map((sentence, sentenceIndex) => (
-                    <div key={`${sentence[0]?.start}-${sentenceIndex}`} className="rounded-md border border-white/10 bg-[#12121A] p-2">
-                      <div className="mb-1 flex justify-end">
-                        <button type="button" className="text-[12px] text-slate-400" onClick={() => deleteWords(sentence.map((word) => doc.words.indexOf(word)).filter((index) => index >= 0))}>
-                          Delete sentence
-                        </button>
-                      </div>
-                      <div className="flex flex-wrap gap-1">
-                        {sentence.map((word) => {
-                          const index = doc.words.indexOf(word);
-                          return (
-                            <button
-                              key={`${word.start}-${index}`}
-                              type="button"
-                              onClick={() => {
-                                setSelectedWord(index);
-                                setEditingWord((current) => (current === index ? index : selectedWord === index ? index : null));
-                                const timed = mapWords([word], doc.segments)[0];
-                                if (timed) seek(timed.composedStart);
-                              }}
-                              onDoubleClick={() => setEditingWord(index)}
-                              className={`rounded px-1 py-0.5 text-[14px] ${selectedWord === index ? "bg-purple-600" : "bg-white/10"}`}
-                            >
-                              {editingWord === index ? (
-                                <input
-                                  autoFocus
-                                  defaultValue={word.word}
-                                  aria-label={`Edit ${word.word}`}
-                                  className="w-16 bg-transparent outline-none"
-                                  onClick={(event) => event.stopPropagation()}
-                                  onBlur={(event) => {
-                                    const text = event.target.value.trim() || word.word;
-                                    const words = docRef.current.words.map((item, itemIndex) => (itemIndex === index ? { ...item, word: text } : item));
-                                    commit({ ...docRef.current, words, cues: buildCues(words, docRef.current.segments) });
-                                    setEditingWord(null);
-                                  }}
-                                />
-                              ) : word.word}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {left === "Hooks" && (
-              <div className="space-y-2">
-                <button type="button" onClick={() => rewrite()} disabled={!project || Boolean(phase)} className="w-full rounded-md border border-white/10 bg-[#12121A] px-3 py-2 text-[14px] disabled:opacity-40">
-                  Write hooks from this transcript
-                </button>
-                {hooks?.length === 0 && <p className="text-[14px] text-slate-400">Hooks are quoted from the transcript.</p>}
-                {hooks?.map((hook) => (
-                  <article key={hook.id} className={`rounded-md border p-2 ${selected?.id === hook.id ? "border-purple-500 bg-purple-500/10" : "border-white/10 bg-[#12121A]"}`}>
-                    <button type="button" onClick={() => setSelectedHook(hook.id)} className="w-full text-left text-[14px]">{hook.text}</button>
-                    <div className="mt-2 flex items-center justify-between text-[12px] text-slate-400">
-                      <span title="Estimate, not a measured result">{hook.score}</span>
-                      <span className="flex gap-1">
-                        <button type="button" aria-label="Favourite hook" onClick={() => toggleFavourite(hook)}><Star className="h-4 w-4" fill={hook.favourite ? "currentColor" : "none"} /></button>
-                        <button type="button" aria-label="Delete hook" onClick={() => removeHook(hook)}><Trash2 className="h-4 w-4" /></button>
-                      </span>
-                    </div>
-                  </article>
-                ))}
-                <p className="text-[13px] text-slate-400">{logged.length ? `${logged.length} hooks have logged results.` : "No results logged for these hooks yet."}</p>
-              </div>
-            )}
-            {left === "Posts" && <CaptionStudio creatorId={creatorId} topicDefault={selected?.text || doc.words.map((word) => word.word).join(" ")} />}
-          </div>
-        </aside>
-
-        <section className="flex min-h-0 min-w-0 flex-col bg-[#07080f]">
-          <div className="flex min-h-0 flex-1 items-center justify-center p-3">
-            {project ? (
-              <div ref={frameRef} className="relative h-full max-h-full w-auto max-w-full overflow-hidden rounded-md border border-white/10 bg-black" style={{ aspectRatio: `${canvas.width} / ${canvas.height}` }}>
-                {fit === "blur" && !imageMode && (
-                  <video ref={blurRef} src={videoSrc} muted className="absolute inset-0 h-full w-full scale-110 object-cover blur-xl" playsInline />
-                )}
-                {imageMode ? (
-                  <>
-                    {fit === "blur" && <img src={imageSrc} alt="" className="absolute inset-0 h-full w-full scale-110 object-cover blur-xl" />}
-                    <img src={imageSrc} alt="" className={`h-full w-full ${fit === "cover" ? "object-cover" : "object-contain"}`} style={frameStyle} />
-                  </>
-                ) : (
-                  <video
-                    ref={videoRef}
-                    src={videoSrc}
-                    className={`h-full w-full ${fit === "cover" ? "object-cover" : "object-contain"}`}
-                    style={frameStyle}
-                    playsInline
-                    onTimeUpdate={onTimeUpdate}
-                    onLoadedData={() => {
-                      const list = docRef.current.segments;
-                      const pos = sourceAt(list, timeRef.current);
-                      const seg = list[pos.index];
-                      const video = videoRef.current;
-                      if (!video || !seg || seg.kind === "image") return;
-                      video.playbackRate = clampSpeed(seg.speed);
-                      video.currentTime = shownTime(seg, pos.source);
-                      if (playingRef.current && !isSpecial(seg)) video.play().catch(() => {});
-                    }}
-                    onPlay={() => {
-                      playingRef.current = true;
-                      setPlaying(true);
-                    }}
-                    onPause={() => {
-                      if (!holdPlay.current) {
-                        playingRef.current = false;
-                        setPlaying(false);
-                      }
-                    }}
-                  />
-                )}
-                <div className="pointer-events-none absolute inset-0">
-                  <div className="absolute inset-x-0 top-0 h-[12%] border-b border-dashed border-white/40" />
-                  <div className="absolute inset-x-0 bottom-0 h-[20%] border-t border-dashed border-white/40" />
-                  <div className="absolute inset-y-0 left-0 w-[6%] border-r border-dashed border-white/30" />
-                  <div className="absolute inset-y-0 right-0 w-[6%] border-l border-dashed border-white/30" />
-                </div>
-                {doc.editor.texts.filter((text) => time >= text.start && time < text.end).map((text) => (
-                  <div
-                    key={text.id}
-                    className="pointer-events-none absolute font-bold"
-                    style={{
-                      left: `calc(50% + ${text.x * (frameWidth / canvas.width)}px)`,
-                      top: `calc(50% + ${text.y * (frameHeight / canvas.height)}px)`,
-                      transform: "translate(-50%, -50%)",
-                      color: text.color,
-                      fontSize: Math.max(12, (text.size * frameHeight) / canvas.height),
-                      fontFamily: text.emoji ? "sans-serif" : cssFamily("Montserrat"),
-                    }}
-                  >
-                    {text.text}
-                  </div>
-                ))}
-                <CaptionOverlay cue={activeCue} time={time} style={doc.style} frameHeight={frameHeight} canvasHeight={canvas.height} />
-                <audio ref={musicRef} />
-              </div>
-            ) : (
-              <label
-                className="flex w-full max-w-md cursor-pointer flex-col items-center rounded-md border border-dashed border-white/20 bg-[#12121A] px-6 py-16 text-center"
+      <div className="flex min-h-0 flex-1">
+        <AssetBin
+          tab={rail}
+          onTab={setRail}
+          projectId={project?.id || null}
+          fileName={project?.fileName || ""}
+          duration={project?.durationSec || 0}
+          filmstrip={filmstrip}
+          creators={creators}
+          creatorId={creatorId}
+          onCreator={setCreatorId}
+          onPickVideo={() => pickVideo(false)}
+          onReplace={() => pickVideo(true)}
+          editor={doc.editor}
+          clip={clip}
+          segments={doc.segments}
+          words={doc.words}
+          cues={doc.cues}
+          style={doc.style}
+          peaks={peaks}
+          time={time}
+          hooks={hooks}
+          selectedHook={selectedHook}
+          onSelectHook={setSelectedHook}
+          onToggleHook={toggleFavourite}
+          onDeleteHook={removeHook}
+          onRewrite={() => rewrite()}
+          busy={Boolean(phase)}
+          selectedWord={selectedWord}
+          editingWord={editingWord}
+          onWord={(index) => {
+            setSelectedWord(index);
+            const timed = mapWords([doc.words[index]], doc.segments)[0];
+            if (timed) seek(timed.composedStart);
+          }}
+          onEditWord={(index, text) => {
+            const words = docRef.current.words.map((item, itemIndex) => (itemIndex === index ? { ...item, word: text } : item));
+            commit({ ...docRef.current, words, cues: buildCues(words, docRef.current.segments) });
+            setEditingWord(null);
+          }}
+          onStartEdit={setEditingWord}
+          onDeleteWords={deleteWords}
+          onSilences={removeSilences}
+          onFillers={removeFillers}
+          onImport={(file, slot) => importFile(file, slot)}
+          onChange={applyChange}
+          onNotice={setNotice}
+          onError={setError}
+        />
+        <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-[#101216]">
+          <div ref={stageRef} className="min-h-0 flex-1">
+            <div className="flex h-full w-full items-center justify-center">
+              <div
+                ref={frameRef}
+                className="relative overflow-hidden bg-black"
+                style={{ width: frameWidth, height: frameHeight }}
                 onDragOver={(event) => event.preventDefault()}
                 onDrop={(event) => {
                   event.preventDefault();
-                  onUpload(event.dataTransfer.files?.[0] || null);
+                  onPicked(event.dataTransfer.files?.[0] || null);
                 }}
               >
-                <span className="text-[18px]">Upload a talking video</span>
-                <span className="mt-2 text-[14px] text-slate-400">The editor opens a 9:16 canvas with the transcript on a timeline.</span>
-                <input type="file" accept="video/mp4,video/quicktime,video/webm" className="sr-only" onChange={(event) => onUpload(event.target.files?.[0] || null)} />
-              </label>
-            )}
-          </div>
-          {project && (
-            <div className="flex items-center gap-3 border-t border-white/10 px-3 py-2">
-              <button type="button" aria-label={playing ? "Pause" : "Play"} onClick={togglePlay} className="rounded-md bg-purple-600 p-2">
-                {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-              </button>
-              <input
-                aria-label="Scrub preview"
-                type="range"
-                min={0}
-                max={Math.max(duration, 0.01)}
-                step={0.01}
-                value={Math.min(time, duration)}
-                onChange={(event) => seek(Number(event.target.value))}
-                className="min-w-0 flex-1"
-              />
-              <span className="w-24 text-right text-[13px] text-slate-400">{formatClock(time)} / {formatClock(duration)}</span>
+                {project ? (
+                  <>
+                    {fit === "blur" && !imageMode && (
+                      <video ref={blurRef} src={videoSrc} muted className="absolute inset-0 h-full w-full scale-110 object-cover blur-xl" playsInline />
+                    )}
+                    {imageMode ? (
+                      <>
+                        {fit === "blur" && <img src={imageSrc} alt="" className="absolute inset-0 h-full w-full scale-110 object-cover blur-xl" />}
+                        <img src={imageSrc} alt="" className={`h-full w-full ${fit === "cover" ? "object-cover" : "object-contain"}`} style={frameStyle} />
+                      </>
+                    ) : (
+                      <video
+                        ref={videoRef}
+                        src={videoSrc}
+                        className={`h-full w-full ${fit === "cover" ? "object-cover" : "object-contain"}`}
+                        style={frameStyle}
+                        playsInline
+                        onTimeUpdate={onTimeUpdate}
+                        onLoadedData={() => {
+                          const list = docRef.current.segments;
+                          const pos = sourceAt(list, timeRef.current);
+                          const seg = list[pos.index];
+                          const video = videoRef.current;
+                          if (!video || !seg || seg.kind === "image") return;
+                          video.playbackRate = clampSpeed(seg.speed);
+                          video.currentTime = shownTime(seg, pos.source);
+                          if (playingRef.current && !isSpecial(seg)) video.play().catch(() => {});
+                        }}
+                        onPlay={() => {
+                          playingRef.current = true;
+                          setPlaying(true);
+                        }}
+                        onPause={() => {
+                          if (!holdPlay.current) {
+                            playingRef.current = false;
+                            setPlaying(false);
+                          }
+                        }}
+                      />
+                    )}
+                    {doc.editor.texts.filter((text) => time >= text.start && time < text.end).map((text) => (
+                      <div
+                        key={text.id}
+                        title={text.text}
+                        className="pointer-events-none absolute max-w-[88%] truncate text-center font-bold"
+                        style={{
+                          left: "50%",
+                          top: `calc(50% + ${text.y * (frameHeight / canvas.height)}px)`,
+                          transform: "translate(-50%, -50%)",
+                          color: text.color,
+                          fontSize: Math.max(12, (text.size * frameHeight) / canvas.height),
+                          fontFamily: text.emoji ? "sans-serif" : cssFamily("Montserrat"),
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {text.text}
+                      </div>
+                    ))}
+                    <CaptionOverlay cue={activeCue} time={time} style={doc.style} frameHeight={frameHeight} canvasHeight={canvas.height} />
+                    <audio ref={musicRef} />
+                    {phase && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-[12px]">
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        <span className="truncate">{phase}</span>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <button type="button" onClick={() => pickVideo(false)} className="flex h-full w-full flex-col items-center justify-center gap-2 text-[13px] text-[#9aa0a8]">
+                    <span className="text-[20px] leading-none text-[#3ad6e4]">+</span>
+                    Video
+                  </button>
+                )}
+              </div>
             </div>
-          )}
+          </div>
+          <div className="flex h-10 shrink-0 items-center gap-2 border-t border-[#2c3038] px-3">
+            <button type="button" aria-label={playing ? "Pause" : "Play"} disabled={!project} onClick={togglePlay} className="flex h-7 w-7 shrink-0 items-center justify-center text-white disabled:opacity-30">
+              {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+            </button>
+            <span className="w-[108px] shrink-0 text-[12px] tabular-nums text-[#d5d8de]">{formatClock(time)} / {formatClock(duration)}</span>
+            <input
+              aria-label="Scrub preview"
+              type="range"
+              min={0}
+              max={Math.max(duration, 0.01)}
+              step={0.01}
+              value={Math.min(time, duration || 0)}
+              disabled={!project}
+              onChange={(event) => seek(Number(event.target.value))}
+              className="min-w-0 flex-1 accent-[#22d3ee] disabled:opacity-30"
+            />
+            <button type="button" aria-label="Fullscreen" onClick={toggleFull} className="flex h-7 w-7 shrink-0 items-center justify-center text-[#d5d8de]">
+              <Maximize className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </section>
-
-        <aside className="max-h-48 overflow-y-auto border-t border-white/10 p-3 lg:max-h-none lg:border-l lg:border-t-0">
-          <LookPanel
-            projectId={project?.id || null}
-            editor={doc.editor}
-            clip={clip}
-            segments={doc.segments}
-            cues={doc.cues}
-            style={doc.style}
-            peaks={peaks}
-            sourceDuration={project?.durationSec || 0}
-            time={time}
-            onChange={applyChange}
-            onNotice={setNotice}
-            onError={setError}
-          />
-          <h2 className="mt-3 text-[14px] font-medium">Properties</h2>
-          {clip ? (
-            <label className="mt-3 block text-[13px]">
-              Clip speed {clampSpeed(clip.speed).toFixed(2)}×
-              <input
-                type="range"
-                min={0.25}
-                max={4}
-                step={0.05}
-                value={clampSpeed(clip.speed)}
-                onPointerDown={beginGesture}
-                onChange={(event) => {
-                  const segments = setSegmentSpeed(docRef.current.segments, clip.id, Number(event.target.value));
-                  previewSegments(segments);
-                }}
-                onPointerUp={() => endGesture("clips")}
-                className="w-full"
-              />
-            </label>
-          ) : (
-            <p className="mt-2 text-[13px] text-slate-400">Select a clip to change its speed.</p>
-          )}
-          <h2 className="mt-4 text-[14px] font-medium">Caption preset</h2>
-          <div className="mt-2 grid grid-cols-2 gap-1">
-            {PRESET_LIST.map((preset) => (
-              <button
-                key={preset.id}
-                type="button"
-                aria-pressed={doc.style.preset === preset.id}
-                onClick={() => setStyle(applyPreset(preset.id))}
-                className={`rounded-md border px-2 py-1 text-left text-[12px] ${doc.style.preset === preset.id ? "border-purple-500 bg-purple-500/15" : "border-white/10 bg-[#12121A]"}`}
-              >
-                {preset.label}
-              </button>
-            ))}
-          </div>
-          <label className="mt-3 block text-[13px]">
-            Font
-            <select value={doc.style.font} onChange={(event) => setStyle({ ...doc.style, font: event.target.value as CaptionStyle["font"] })} className="mt-1 w-full rounded-md border border-white/10 bg-[#12121A] px-2 py-2">
-              {CAPTION_FONTS.map((font) => <option key={font.id}>{font.id}</option>)}
-            </select>
-          </label>
-          <label className="mt-3 block text-[13px]">
-            Size {doc.style.size}
-            <input type="range" min={32} max={120} value={doc.style.size} onPointerDown={beginGesture} onChange={(event) => previewStyle({ size: Number(event.target.value) })} onPointerUp={() => endGesture("cues")} onKeyUp={() => endGesture("cues")} onBlur={() => endGesture("cues")} className="w-full" />
-          </label>
-          <div className="mt-3 grid grid-cols-2 gap-2 text-[13px]">
-            <label>Colour<input type="color" value={doc.style.color} onChange={(event) => setStyle({ ...docRef.current.style, color: event.target.value })} className="mt-1 block h-8 w-full bg-transparent" /></label>
-            <label>Active word<input type="color" value={doc.style.highlight} onChange={(event) => setStyle({ ...docRef.current.style, highlight: event.target.value })} className="mt-1 block h-8 w-full bg-transparent" /></label>
-            <label>Stroke<input type="color" value={doc.style.stroke} onChange={(event) => setStyle({ ...docRef.current.style, stroke: event.target.value })} className="mt-1 block h-8 w-full bg-transparent" /></label>
-            <label>Stroke {doc.style.strokeWidth}<input type="range" min={0} max={12} value={doc.style.strokeWidth} onPointerDown={beginGesture} onChange={(event) => previewStyle({ strokeWidth: Number(event.target.value) })} onPointerUp={() => endGesture("cues")} onKeyUp={() => endGesture("cues")} onBlur={() => endGesture("cues")} className="w-full" /></label>
-          </div>
-          <label className="mt-3 block text-[13px]">
-            Shadow {doc.style.shadow}
-            <input type="range" min={0} max={10} value={doc.style.shadow} onPointerDown={beginGesture} onChange={(event) => previewStyle({ shadow: Number(event.target.value) })} onPointerUp={() => endGesture("cues")} onKeyUp={() => endGesture("cues")} onBlur={() => endGesture("cues")} className="w-full" />
-          </label>
-          <div className="mt-3 flex flex-wrap gap-1">
-            {(["top", "middle", "bottom"] as const).map((position) => (
-              <button key={position} type="button" aria-pressed={doc.style.position === position} onClick={() => setStyle({ ...docRef.current.style, position })} className={`rounded-md border px-2 py-1 text-[12px] ${doc.style.position === position ? "border-purple-500" : "border-white/10"}`}>{position}</button>
-            ))}
-            {(["none", "pop", "scale"] as const).map((animation) => (
-              <button key={animation} type="button" aria-pressed={doc.style.animation === animation} onClick={() => setStyle({ ...docRef.current.style, animation })} className={`rounded-md border px-2 py-1 text-[12px] ${doc.style.animation === animation ? "border-purple-500" : "border-white/10"}`}>{animation}</button>
-            ))}
-          </div>
-          <p className="mt-3 text-[12px] text-slate-400">Longer words and emphasis words render larger in the highlight colour. Lines wrap automatically. The same fonts are burned in on export.</p>
-        </aside>
-      </div>
-
-      {project && (
-        <EditorTimeline
+        <Inspector
+          clip={clip}
           segments={doc.segments}
-          cues={doc.cues}
-          time={time}
-          sourceDuration={project.durationSec}
-          zoom={zoom}
-          snap={snap}
-          peaks={peaks}
-          filmstrip={filmstrip}
-          selectedClip={selectedClip}
-          selectedCue={selectedCue}
-          onZoom={setZoom}
-          onSnap={setSnap}
-          onSeek={seek}
-          onSelectClip={setSelectedClip}
-          onSelectCue={setSelectedCue}
-          onSegments={previewSegments}
-          onCues={previewCues}
+          editor={doc.editor}
+          style={doc.style}
+          onChange={applyChange}
+          onPreview={previewSegments}
           onGestureStart={beginGesture}
           onGestureEnd={endGesture}
-          marks={doc.editor.beats}
-          layers={[
-            ...doc.editor.overlays.map((layer) => ({ id: layer.id, start: layer.start, end: layer.start + Math.max(0.12, layer.out - layer.in), label: "Overlay" })),
-            ...doc.editor.audios.map((layer) => ({ id: layer.id, start: layer.start, end: layer.start + Math.max(0.12, layer.out - layer.in), label: "Audio" })),
-            ...doc.editor.texts.map((layer) => ({ id: layer.id, start: layer.start, end: layer.end, label: layer.text })),
-          ]}
+          onNotice={setNotice}
+          onError={setError}
         />
-      )}
+      </div>
+      <EditorTimeline
+        segments={doc.segments}
+        cues={doc.cues}
+        time={time}
+        sourceDuration={project?.durationSec || 0}
+        zoom={zoom}
+        snap={snap}
+        peaks={peaks}
+        filmstrip={filmstrip}
+        selectedClip={selectedClip}
+        selectedCue={selectedCue}
+        clipNames={clipNames}
+        overlays={doc.editor.overlays.map((layer) => ({ id: layer.id, start: layer.start, end: layer.start + Math.max(0.12, layer.out - layer.in), label: "Overlay" }))}
+        extraAudio={doc.editor.audios.map((layer) => ({ id: layer.id, start: layer.start, end: layer.start + Math.max(0.12, layer.out - layer.in), label: "Audio" }))}
+        texts={doc.editor.texts.map((layer) => ({ id: layer.id, start: layer.start, end: layer.end, label: layer.text }))}
+        enabled={Boolean(project)}
+        onZoom={setZoom}
+        onSnap={setSnap}
+        onSeek={seek}
+        onSelectClip={setSelectedClip}
+        onSelectCue={setSelectedCue}
+        onSegments={previewSegments}
+        onCues={previewCues}
+        onGestureStart={beginGesture}
+        onGestureEnd={endGesture}
+        onSplit={doSplit}
+        onDelete={rippleDelete}
+        onUndo={undo}
+        onRedo={redo}
+        marks={doc.editor.beats}
+      />
     </div>
   );
 

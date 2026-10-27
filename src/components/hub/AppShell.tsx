@@ -86,6 +86,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
+  if (editor) {
+    return (
+      <div className="flex h-screen flex-col bg-[#121418] text-white">
+        <a href="#hub-main" className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:bg-[#121418] focus:px-3 focus:py-2">
+          Skip to content
+        </a>
+        <main id="hub-main" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {children}
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen bg-[#010313] text-white">
       <a href="#hub-main" className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:bg-[#12121A] focus:px-3 focus:py-2">

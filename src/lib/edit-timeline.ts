@@ -30,6 +30,7 @@ export type Segment = {
   effect?: SegmentEffect;
   transition?: SegmentTransition;
   keyframes?: SegmentKey[];
+  opacity?: number;
 };
 export type WordStamp = { word: string; start: number; end: number };
 export type TimedWord = WordStamp & { composedStart: number; composedEnd: number };
@@ -114,6 +115,7 @@ export function segmentIsPlain(seg: Segment) {
   if (seg.effect && seg.effect !== "none") return false;
   if (seg.transition && seg.transition !== "none") return false;
   if (seg.keyframes && seg.keyframes.length > 0) return false;
+  if ((seg.opacity ?? 1) < 0.999) return false;
   return true;
 }
 
@@ -365,6 +367,8 @@ function sanitizeLook(seg: Partial<Segment>): Partial<Segment> {
   if (seg.filter && FILTERS.includes(seg.filter) && seg.filter !== "none") look.filter = seg.filter;
   if (seg.effect && EFFECTS.includes(seg.effect) && seg.effect !== "none") look.effect = seg.effect;
   if (seg.transition && TRANSITIONS.includes(seg.transition) && seg.transition !== "none") look.transition = seg.transition;
+  const opacity = Number(seg.opacity);
+  if (Number.isFinite(opacity) && opacity < 0.999) look.opacity = Math.max(0, Math.min(1, round(opacity)));
   if (Array.isArray(seg.keyframes)) {
     const keys: SegmentKey[] = [];
     for (const key of seg.keyframes) {
