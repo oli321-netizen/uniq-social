@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "postinstall": "prisma generate",
-    "build": "npm ci --include=dev && prisma generate && next build",
+    "build": "prisma generate && next build",
     "start": "node scripts/deploy-database.mjs && next start",
     "lint": "next lint"
   },
