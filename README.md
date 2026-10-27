@@ -55,8 +55,14 @@ Hook Lab is at `/hub/hook-lab` after sign-in. Demo mode needs no model key.
 
 - Home page: a list of services. Video processor links straight to `/dashboard`.
 - A short top bar on the other services, with a link back to that list
-- Hook Lab: creators, generate, edit, favourite, delete, per-creator history, mock mode
+- Hook Lab: hook list, preview, timeline, live metrics, generate, edit, favourite, delete, per-creator history, mock mode. Reframe and B-roll stay coming soon.
+- Creators: brand voice (tone, words to use, words to avoid, sample lines) used by Hook Lab and captions.
+- Captions: text only, no hashtags. Mock templates when `OPENAI_API_KEY` is unset.
+- Variants: cards for renders the existing processor already logged. The processor does not keep the mp4. Attach the downloaded file to preview, compare, or download it. Delete removes that card. Rendering is unchanged.
+- Quick upload: one local drop zone on Hook Lab and Creators. It does not call `/api/process` and it is not an asset library.
+- Notifications: in-app bell, mark read, email and in-app toggles.
+- Results: manual entry and CSV import. Presets: save, load into the form, delete.
+- Team stays a stub.
 - The processor at `/dashboard` and `src/app/api/process/route.ts` are unchanged. Do not edit CapCut, Snapchat, iPhone, anti-detect, or edit-parameter controls.
-- Coming-soon states for variants, results, presets, and team
 
-Variant cards, results import, Postiz, brand voice, and notifications are follow-ups on this branch.
+`OPENAI_API_KEY` also covers captions. Notifications can email through `RESEND_API_KEY` when email is enabled; a missing key only skips the email. Attached variant files are stored under `VARIANT_STORAGE_DIR` or `./storage` (not committed).

@@ -4,6 +4,8 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Loader2, Plus, Star, Trash2 } from "lucide-react";
 import type { CreatorDTO, HookDTO } from "@/lib/serialize";
+import CaptionStudio from "@/components/hub/CaptionStudio";
+import QuickUpload from "@/components/hub/QuickUpload";
 
 const TABS = ["Hook Lab", "Captions", "Reframe", "B-roll", "Metrics"] as const;
 type Tab = (typeof TABS)[number];
@@ -248,7 +250,17 @@ export default function HookLab() {
         ))}
       </div>
 
-      {tab !== "Hook Lab" && tab !== "Metrics" && (
+      {tab === "Captions" && (
+        <div className="mx-auto max-w-2xl px-4 py-6" role="tabpanel">
+          <h1 className="text-2xl font-medium">Captions</h1>
+          <p className="mt-2 mb-4 text-[14px] text-[#8A8A9A]">
+            Text only, in the selected creator&apos;s voice. Nothing is burned into the video. Hashtags are not written.
+          </p>
+          <CaptionStudio creatorId={creatorId} topicDefault={selected?.text || topic} />
+        </div>
+      )}
+
+      {(tab === "Reframe" || tab === "B-roll") && (
         <div className="mx-auto max-w-lg px-6 py-16" role="tabpanel">
           <p className="text-[12px] font-medium uppercase tracking-wide text-[#8B5CF6]">Coming soon</p>
           <h1 className="mt-2 text-2xl font-medium">{tab}</h1>
@@ -494,7 +506,10 @@ export default function HookLab() {
               <span className="ml-auto font-mono text-[12px] text-[#8A8A9A]">{clock}</span>
             </div>
             <div className="rounded-[10px] border border-[#23232F] bg-[#12121A] p-3">
-              <div className="mb-2 flex flex-wrap items-center gap-2">
+              <div className="mb-2">
+              <QuickUpload onFile={onPreviewFile} />
+            </div>
+            <div className="mb-2 flex flex-wrap items-center gap-2">
                 <label className="cursor-pointer rounded-lg border border-[#23232F] px-3 py-1.5 text-[12px] hover:bg-white/5">
                   Attach preview clip
                   <input

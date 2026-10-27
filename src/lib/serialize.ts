@@ -1,4 +1,5 @@
-import type { Creator, Hook } from "@prisma/client";
+import type { Creator, Hook, Preset } from "@prisma/client";
+import { parseJsonList } from "@/lib/voice";
 
 export function serializeCreator(c: Creator) {
   return {
@@ -6,6 +7,12 @@ export function serializeCreator(c: Creator) {
     name: c.name,
     niche: c.niche,
     toneNotes: c.toneNotes,
+    handle: c.handle,
+    toneChips: parseJsonList(c.toneChips),
+    slangPhrases: parseJsonList(c.slangPhrases),
+    avoidWords: parseJsonList(c.avoidWords),
+    examplePosts: parseJsonList(c.examplePosts),
+    voiceStrength: c.voiceStrength,
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
   };
@@ -42,5 +49,28 @@ export function serializeHook(h: Hook) {
   };
 }
 
+export function serializePreset(p: Preset) {
+  let dimensions: string[] = [];
+  let variantsPerVideo = 3;
+  try {
+    const parsed = JSON.parse(p.configJson) as { dimensions?: unknown; variantsPerVideo?: unknown };
+    if (Array.isArray(parsed.dimensions)) dimensions = parsed.dimensions.map(String);
+    const count = Number(parsed.variantsPerVideo);
+    if (Number.isFinite(count)) variantsPerVideo = Math.min(12, Math.max(1, Math.round(count)));
+  } catch {
+    dimensions = [];
+  }
+  return {
+    id: p.id,
+    name: p.name,
+    creatorId: p.creatorId,
+    dimensions,
+    variantsPerVideo,
+    createdAt: p.createdAt.toISOString(),
+    updatedAt: p.updatedAt.toISOString(),
+  };
+}
+
 export type HookDTO = ReturnType<typeof serializeHook>;
 export type CreatorDTO = ReturnType<typeof serializeCreator>;
+export type PresetDTO = ReturnType<typeof serializePreset>;

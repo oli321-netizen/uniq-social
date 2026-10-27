@@ -41,6 +41,9 @@ model User {
   integration           IntegrationSetting?
   activity              ActivityLog[]
   scheduledPushes       ScheduledPush[]
+  captions              Caption[]
+  notifications         Notification[]
+  notificationSetting   NotificationSetting?
 }
 
 model PasswordReset {
@@ -180,14 +183,21 @@ model Creator {
   id        String             @id @default(uuid())
   userId    String
   user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name      String
-  niche     String             @default("")
-  toneNotes String             @default("")
-  createdAt DateTime           @default(now())
-  updatedAt DateTime           @updatedAt
-  hooks     Hook[]
-  presets   Preset[]
-  variants  CreativeVariant[]
+  name          String
+  niche         String             @default("")
+  toneNotes     String             @default("")
+  handle        String             @default("")
+  toneChips     String             @default("[]")
+  slangPhrases  String             @default("[]")
+  avoidWords    String             @default("[]")
+  examplePosts  String             @default("[]")
+  voiceStrength Int                @default(60)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  hooks         Hook[]
+  presets       Preset[]
+  variants      CreativeVariant[]
+  captions      Caption[]
 
   @@index([userId])
 }
@@ -259,9 +269,49 @@ model CreativeVariant {
   updatedAt      DateTime        @updatedAt
   results        VariantResult[]
   pushes         ScheduledPush[]
+  captions       Caption[]
 
   @@index([userId, deletedAt])
   @@index([userId, batchKey])
+}
+
+model Caption {
+  id        String           @id @default(uuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  creatorId String?
+  creator   Creator?         @relation(fields: [creatorId], references: [id], onDelete: SetNull)
+  variantId String?
+  variant   CreativeVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  topic     String           @default("")
+  text      String
+  createdAt DateTime         @default(now())
+
+  @@index([userId, creatorId])
+}
+
+model Notification {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      String
+  title     String
+  body      String    @default("")
+  href      String    @default("/")
+  readAt    DateTime?
+  ref       String    @default("")
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
+  @@index([userId, ref])
+}
+
+model NotificationSetting {
+  id           String  @id @default(uuid())
+  userId       String  @unique
+  user         User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emailEnabled Boolean @default(true)
+  inAppEnabled Boolean @default(true)
 }
 
 model VariantResult {

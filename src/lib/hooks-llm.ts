@@ -1,3 +1,5 @@
+import { applyVoice, stripHashtags, type VoiceProfile } from "@/lib/voice";
+
 export type GeneratedHook = {
   text: string;
   score: number;
@@ -68,15 +70,17 @@ export function mockHooks(input: {
   transcript: string;
   count: number;
   likeText?: string;
+  voice?: VoiceProfile | null;
 }): GeneratedHook[] {
   const phrase = phraseFrom(input.topic, input.transcript);
-  const seed = hash(`${phrase}|${input.likeText || ""}|${input.count}`);
+  const seed = hash(`${phrase}|${input.likeText || ""}|${input.count}|${input.voice?.slangPhrases.join(",") || ""}`);
   const count = Math.min(8, Math.max(1, input.count));
   const hooks: GeneratedHook[] = [];
   for (let i = 0; i < count; i++) {
-    const text = input.likeText
+    const raw = input.likeText
       ? varyLike(input.likeText, phrase, seed + i * 5)
       : TEMPLATES[(seed + i) % TEMPLATES.length](phrase);
+    const text = applyVoice(raw, input.voice);
     const score = 68 + ((seed + i * 17) % 27);
     hooks.push({ text, score, sparkline: sparkline(seed + i * 13, score) });
   }
@@ -89,7 +93,7 @@ function clampHooks(raw: unknown, count: number): GeneratedHook[] {
   const hooks: GeneratedHook[] = [];
   for (const item of raw) {
     if (!item || typeof item !== "object") continue;
-    const text = String((item as { text?: unknown }).text || "").trim();
+    const text = stripHashtags(String((item as { text?: unknown }).text || "")).trim();
     if (!text || text.includes("#")) continue;
     const scoreRaw = Number((item as { score?: unknown }).score);
     const score = Number.isFinite(scoreRaw) ? Math.max(1, Math.min(99, Math.round(scoreRaw))) : 70;
@@ -113,6 +117,7 @@ export async function generateHooks(input: {
   count: number;
   likeText?: string;
   toneNotes?: string;
+  voice?: VoiceProfile | null;
 }): Promise<{ hooks: GeneratedHook[]; mode: GenerationMode; notice: string }> {
   const key = process.env.OPENAI_API_KEY;
   if (!key) {
@@ -150,6 +155,7 @@ export async function generateHooks(input: {
               count: input.count,
               likeText: input.likeText || "",
               toneNotes: input.toneNotes || "",
+              voice: input.voice || null,
             }),
           },
         ],
