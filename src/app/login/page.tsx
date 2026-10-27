@@ -44,7 +44,7 @@ function LoginForm() {
         }
       }
 
-      const callbackUrl = searchParams.get("callbackUrl") || "/hub";
+      const callbackUrl = searchParams.get("callbackUrl") || "/";
       await signIn("credentials", {
         email,
         password,
@@ -73,7 +73,7 @@ function LoginForm() {
             {isSignUp ? "Create your account" : "Welcome back"}
           </h1>
           <p className="text-sm text-slate-500">
-            {isSignUp ? "Get 5 free credits when your email is verified" : "Sign in to the creator hub"}
+            {isSignUp ? "Get 5 free credits when your email is verified" : "Sign in to continue"}
           </p>
         </div>
 

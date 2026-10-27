@@ -1,6 +1,6 @@
 # Uniq
 
-Creator hub for short-form video. Hook Lab writes and stores estimated hook lines per creator. Rendering still goes through the existing processor.
+Uniq Social. The home page is a list of services. Hook Lab writes and stores estimated hook lines per creator. Rendering still goes through the existing processor at `/dashboard`.
 
 ## Go live on Railway
 
@@ -51,12 +51,12 @@ Health check: `GET /api/health`.
 
 Hook Lab is at `/hub/hook-lab` after sign-in. Demo mode needs no model key.
 
-## What the first hub deploy includes
+## What is on main
 
-- Dark app shell with credits and top up
-- Public home page
+- Home page: a list of services. Video processor links straight to `/dashboard`.
+- A short top bar on the other services, with a link back to that list
 - Hook Lab: creators, generate, edit, favourite, delete, per-creator history, mock mode
-- Link out to the existing processor at `/dashboard` (unchanged)
+- The processor at `/dashboard` and `src/app/api/process/route.ts` are unchanged. Do not edit CapCut, Snapchat, iPhone, anti-detect, or edit-parameter controls.
 - Coming-soon states for variants, results, presets, and team
 
 Variant cards, results import, Postiz, brand voice, and notifications are follow-ups on this branch.
