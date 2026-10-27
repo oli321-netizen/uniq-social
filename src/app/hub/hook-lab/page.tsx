@@ -3,8 +3,10 @@ import HookLab from "@/components/hub/HookLab";
 
 export default function HookLabPage() {
   return (
-    <Suspense fallback={<div className="p-6 text-sm text-[#8A8A9A]">Loading Hook Lab…</div>}>
-      <HookLab />
-    </Suspense>
+    <div className="flex h-full min-h-0 flex-1 flex-col">
+      <Suspense fallback={<div className="p-6 text-sm text-slate-400">Loading Hook Lab…</div>}>
+        <HookLab />
+      </Suspense>
+    </div>
   );
 }

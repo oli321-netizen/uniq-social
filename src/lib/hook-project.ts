@@ -1,4 +1,5 @@
 import { parseStyle, type CaptionStyle } from "@/lib/caption-ass";
+import { parseCues, type CaptionCue } from "@/lib/caption-cues";
 import { clampSegments, parseWords, type Segment, type WordStamp } from "@/lib/edit-timeline";
 
 export type ProjectRecord = {
@@ -16,6 +17,7 @@ export function readProject(project: ProjectRecord) {
   let words: WordStamp[] = [];
   let segments: Segment[] = [];
   let style: CaptionStyle = parseStyle(null);
+  let cues: CaptionCue[] = [];
   try {
     words = parseWords(JSON.parse(project.wordsJson));
   } catch {
@@ -28,9 +30,12 @@ export function readProject(project: ProjectRecord) {
     segments = clampSegments([], project.durationSec);
   }
   try {
-    style = parseStyle(JSON.parse(project.styleJson));
+    const parsed = JSON.parse(project.styleJson) as { cues?: unknown };
+    style = parseStyle(parsed);
+    cues = parseCues(parsed?.cues);
   } catch {
     style = parseStyle(null);
+    cues = [];
   }
   return {
     id: project.id,
@@ -41,5 +46,6 @@ export function readProject(project: ProjectRecord) {
     words,
     segments,
     style,
+    cues,
   };
 }

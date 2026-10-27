@@ -1,0 +1,8 @@
+Caption fonts used by Hook Lab preview and ffmpeg export. Each is licensed under the SIL Open Font License 1.1 (OFL.txt).
+
+- Anton, Copyright 2012 The Anton Project Authors
+- Bebas Neue, Copyright 2010 Dharma Type / Ryoichi Tsunekawa
+- Inter, Copyright 2016 The Inter Project Authors
+- Lilita One, Copyright 2011 The Lilita Project Authors
+- Montserrat, Copyright 2011 The Montserrat Project Authors
+- Poppins, Copyright 2014 Indian Type Foundry

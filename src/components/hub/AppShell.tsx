@@ -26,6 +26,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [topUpError, setTopUpError] = useState("");
   const [buying, setBuying] = useState<number | null>(null);
   const section = pathname?.startsWith("/hub/") ? pathname.split("/")[2]?.replace("-", " ") : "Process";
+  const editor = pathname?.startsWith("/hub/hook-lab");
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -118,7 +119,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <div className="md:hidden">
           <SectionNav variant="strip" />
         </div>
-        <main id="hub-main" className="min-h-0 flex-1 overflow-y-auto">
+        <main id="hub-main" className={editor ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "min-h-0 flex-1 overflow-y-auto"}>
           {children}
         </main>
       </div>
