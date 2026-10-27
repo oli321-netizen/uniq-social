@@ -18,7 +18,7 @@ export function serializeCreator(c: Creator) {
   };
 }
 
-export function serializeHook(h: Hook) {
+export function serializeHook(h: Hook & { project?: { transcript: string } | null }) {
   let sparkline: number[] = [];
   try {
     const parsed = JSON.parse(h.sparkline);
@@ -45,6 +45,8 @@ export function serializeHook(h: Hook) {
     follows: h.follows,
     loggedResults: h.loggedResults,
     generationMode: h.generationMode,
+    projectId: h.projectId,
+    transcript: h.project?.transcript || "",
     createdAt: h.createdAt.toISOString(),
   };
 }

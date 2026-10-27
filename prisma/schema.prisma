@@ -44,6 +44,7 @@ model User {
   captions              Caption[]
   notifications         Notification[]
   notificationSetting   NotificationSetting?
+  hookProjects          HookProject[]
 }
 
 model PasswordReset {
@@ -198,6 +199,27 @@ model Creator {
   presets       Preset[]
   variants      CreativeVariant[]
   captions      Caption[]
+  hookProjects  HookProject[]
+
+  @@index([userId])
+}
+
+model HookProject {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  creatorId    String?
+  creator      Creator? @relation(fields: [creatorId], references: [id], onDelete: SetNull)
+  fileName     String   @default("")
+  storageKey   String   @default("")
+  durationSec  Float    @default(0)
+  transcript   String   @default("")
+  wordsJson    String   @default("[]")
+  segmentsJson String   @default("[]")
+  styleJson    String   @default("{}")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  hooks        Hook[]
 
   @@index([userId])
 }
@@ -208,6 +230,8 @@ model Hook {
   user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   creatorId      String?
   creator        Creator?           @relation(fields: [creatorId], references: [id], onDelete: SetNull)
+  projectId      String?
+  project        HookProject?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
   text           String
   topic          String             @default("")
   score          Int                @default(0)

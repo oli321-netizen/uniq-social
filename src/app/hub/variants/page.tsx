@@ -10,6 +10,7 @@ type Card = {
   testsDimension: string;
   status: string;
   hasFile: boolean;
+  hookText: string;
   startTrim: number;
   zoomPct: number;
   createdAt: string;
@@ -81,8 +82,8 @@ export default function VariantsPage() {
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-medium">Variants</h1>
-          <p className="mt-1 max-w-2xl text-[13px] text-[#8A8A9A]">
-            These cards are the renders already written by the existing processor. The file itself is not stored unless you attach the mp4 you downloaded. Nothing here changes how a render is made.
+          <p className="mt-1 max-w-2xl text-[15px] text-[#6d5e53]">
+            Cards are renders the existing processor already logged, plus caption exports from Hook Lab. The processor does not keep its mp4 unless you attach the file you downloaded.
           </p>
         </div>
         <div className="flex gap-2">
@@ -134,7 +135,10 @@ export default function VariantsPage() {
                   No file kept. Attach the downloaded mp4 to preview it.
                 </div>
               )}
-              <p className="absolute bottom-2 left-2 rounded bg-black/60 px-2 py-0.5 text-[10px] text-[#C4B5FD]">tests: {card.testsDimension}</p>
+              {card.hookText ? (
+                <p className="absolute bottom-8 left-2 right-2 text-[15px] font-medium leading-snug text-white">{card.hookText}</p>
+              ) : null}
+              <p className="absolute bottom-2 left-2 rounded bg-black/60 px-2 py-0.5 text-[13px] text-white">tests: {card.testsDimension}</p>
             </div>
             <div className="space-y-1 p-2 text-[12px]">
               <p className="truncate font-medium">{card.name}</p>

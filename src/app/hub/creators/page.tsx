@@ -114,98 +114,65 @@ export default function CreatorsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
-      <h1 className="text-2xl font-medium tracking-tight">Creators</h1>
-      <p className="mt-2 max-w-xl text-[14px] text-[#8A8A9A]">
-        Hook history is stored per creator. Tone notes are passed into Hook Lab when a model key is set. With no key, generation stays in labelled demo mode.
+    <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
+      <h1 className="text-2xl font-medium">Brand voice</h1>
+      <p className="mt-2 max-w-2xl text-[16px] text-[#6d5e53]">
+        Define how a creator sounds, then write captions in that voice. Hook Lab uses the same profile when it tightens a transcript. Transcription needs an OpenAI key and does not invent words.
       </p>
 
-      <form onSubmit={onCreate} className="mt-6 space-y-3 rounded-[10px] border border-[#23232F] bg-[#12121A] p-4">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="block text-[13px]">
-            <span className="mb-1 block text-[#8A8A9A]">Name</span>
-            <input
-              required
-              minLength={2}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-lg border border-[#23232F] bg-[#0A0A0F] px-3 py-2 text-[14px] outline-none focus:border-[#8B5CF6]"
-            />
-          </label>
-          <label className="block text-[13px]">
-            <span className="mb-1 block text-[#8A8A9A]">Niche</span>
-            <input
-              value={niche}
-              onChange={(e) => setNiche(e.target.value)}
-              className="w-full rounded-lg border border-[#23232F] bg-[#0A0A0F] px-3 py-2 text-[14px] outline-none focus:border-[#8B5CF6]"
-            />
-          </label>
-        </div>
-        <label className="block text-[13px]">
-          <span className="mb-1 block text-[#8A8A9A]">Tone notes</span>
-          <textarea
-            value={toneNotes}
-            onChange={(e) => setToneNotes(e.target.value)}
-            rows={3}
-            placeholder="Direct, specific, no hype words."
-            className="w-full rounded-lg border border-[#23232F] bg-[#0A0A0F] px-3 py-2 text-[14px] outline-none focus:border-[#8B5CF6]"
-          />
-        </label>
-        {error && (
-          <p className="text-[13px] text-[#F87171]" role="alert">
-            {error}
-          </p>
-        )}
-        <button
-          type="submit"
-          disabled={saving}
-          className="rounded-lg bg-[#8B5CF6] px-4 py-2 text-[13px] font-medium text-white hover:bg-[#7C3AED] disabled:opacity-50"
-        >
-          {saving ? "Saving…" : "Add creator"}
-        </button>
-      </form>
+      {error && (
+        <p className="mt-4 text-[15px] text-[#9a3412]" role="alert">
+          {error}
+        </p>
+      )}
 
-      <div className="mt-6 space-y-2">
-        {creators === null && (
-          <p className="flex items-center gap-2 text-[13px] text-[#8A8A9A]">
-            <Loader2 className="h-4 w-4 animate-spin" /> Loading creators
-          </p>
-        )}
-        {creators?.length === 0 && (
-          <p className="rounded-[10px] border border-dashed border-[#23232F] px-4 py-8 text-center text-[13px] text-[#8A8A9A]">
-            No creators yet. Add one to keep Hook Lab history separate.
-          </p>
-        )}
-        {creators?.map((creator) => (
-          <article key={creator.id} className={`flex items-start justify-between gap-3 rounded-[10px] border px-4 py-3 ${selectedId === creator.id ? "border-[#8B5CF6] bg-[#12121A]" : "border-[#23232F] bg-[#12121A]"}`}>
-            <div>
-              <h2 className="text-[14px] font-medium">{creator.name}</h2>
-              <p className="text-[12px] text-[#8A8A9A]">{creator.niche || "No niche yet"}</p>
-              {creator.toneNotes && <p className="mt-1 text-[13px] text-[#E8E8F0]/80">{creator.toneNotes}</p>}
-              <div className="mt-2 flex gap-3">
-                <button type="button" onClick={() => setSelectedId(creator.id)} className="text-[13px] text-[#C4B5FD] hover:underline">
-                  Brand voice
-                </button>
-                <Link href={`/hub/hook-lab?creator=${creator.id}`} className="text-[13px] text-[#8B5CF6] hover:underline">
+      <section className="mt-6 grid items-start gap-4 lg:grid-cols-[240px_minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="space-y-3 rounded-md border border-[#e4d5c6] bg-white p-3">
+          <h2 className="text-[16px] font-medium">Creators</h2>
+          {creators === null && (
+            <p className="flex items-center gap-2 text-[15px] text-[#6d5e53]">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading
+            </p>
+          )}
+          {creators?.length === 0 && <p className="text-[15px] text-[#6d5e53]">No creators yet.</p>}
+          <ul className="space-y-2">
+            {creators?.map((creator) => (
+              <li key={creator.id}>
+                <div className={`flex w-full items-start justify-between gap-2 rounded-md border px-3 py-2 text-left ${selectedId === creator.id ? "border-[#9a3412] bg-[#fff4ef]" : "border-[#e4d5c6]"}`}>
+                  <button type="button" onClick={() => setSelectedId(creator.id)} className="min-w-0 flex-1 text-left">
+                    <span className="block text-[15px] font-medium">{creator.name}</span>
+                    <span className="block text-[14px] text-[#6d5e53]">{creator.handle ? `@${creator.handle.replace(/^@/, "")}` : creator.niche || "No niche yet"}</span>
+                  </button>
+                  <button type="button" aria-label={`Delete ${creator.name}`} className="rounded p-1 text-[#6d5e53]" onClick={() => remove(creator.id)}>
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+                <Link href={`/hub/hook-lab?creator=${creator.id}`} className="mt-1 inline-block px-1 text-[14px] text-[#9a3412]">
                   Open Hook Lab
                 </Link>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => remove(creator.id)}
-              className="rounded-md p-2 text-[#8A8A9A] hover:bg-white/5 hover:text-[#F87171]"
-              aria-label={`Delete ${creator.name}`}
-            >
-              <Trash2 className="h-4 w-4" />
+              </li>
+            ))}
+          </ul>
+          <form onSubmit={onCreate} className="space-y-2 border-t border-[#e4d5c6] pt-3">
+            <label className="block text-[15px]">
+              Name
+              <input required minLength={2} value={name} onChange={(e) => setName(e.target.value)} className="mt-1 w-full rounded-md border border-[#e4d5c6] px-2 py-2" />
+            </label>
+            <label className="block text-[15px]">
+              Niche
+              <input value={niche} onChange={(e) => setNiche(e.target.value)} className="mt-1 w-full rounded-md border border-[#e4d5c6] px-2 py-2" />
+            </label>
+            <label className="block text-[15px]">
+              Tone notes
+              <textarea value={toneNotes} onChange={(e) => setToneNotes(e.target.value)} rows={2} className="mt-1 w-full rounded-md border border-[#e4d5c6] px-2 py-2" />
+            </label>
+            <button type="submit" disabled={saving} className="w-full rounded-md bg-[#9a3412] px-3 py-2 text-[15px] text-[#fffdfb] disabled:opacity-50">
+              {saving ? "Saving…" : "Add creator"}
             </button>
-          </article>
-        ))}
-      </div>
-
-      <section className="mt-8 space-y-4">
-        <h2 className="text-lg font-medium">Brand voice</h2>
-        <QuickUpload />
+          </form>
+        </div>
+        <div className="space-y-4">
+        <h2 className="text-[16px] font-medium">Voice profile</h2>
         {!selected ? (
           <p className="text-[13px] text-[#8A8A9A]">Add a creator to edit tone, words to use, words to avoid, and sample lines.</p>
         ) : (
@@ -238,14 +205,21 @@ export default function CreatorsPage() {
               </label>
             ))}
             <label className="block text-[13px]">
-              <span className="mb-1 flex justify-between text-[#8A8A9A]">Voice strength <span className="font-mono text-[#E8E8F0]">{strength}</span></span>
+              <span className="mb-1 flex justify-between text-[#8A8A9A]">Voice strength <span>{strength}</span></span>
               <input type="range" min={0} max={100} value={strength} onChange={(event) => setStrength(Number(event.target.value))} className="w-full" />
             </label>
             {voiceNote && <p className="text-[13px] text-[#34D399]">{voiceNote}</p>}
             <button type="submit" className="rounded-lg bg-[#8B5CF6] px-4 py-2 text-[13px] font-medium text-white hover:bg-[#7C3AED]">Save voice</button>
           </form>
         )}
-        <CaptionStudio creatorId={selectedId} />
+        </div>
+        <div className="space-y-4">
+          <h2 className="text-lg font-medium">Captions</h2>
+          <CaptionStudio creatorId={selectedId} />
+        </div>
+        <div className="lg:col-span-3">
+          <QuickUpload />
+        </div>
       </section>
     </div>
   );

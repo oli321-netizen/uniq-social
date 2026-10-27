@@ -36,7 +36,7 @@ export async function listSavedRenders(userId: string) {
     });
     byKey.set(key, created);
   }
-  return history.map((row) => {
+  const fromHistory = history.map((row) => {
     const variant = byKey.get(historyKey(row.id))!;
     return {
       id: variant.id,
@@ -51,4 +51,23 @@ export async function listSavedRenders(userId: string) {
       createdAt: row.createdAt.toISOString(),
     };
   });
+  const exports = await prisma.creativeVariant.findMany({
+    where: { userId, deletedAt: null, batchKey: { startsWith: "export:" } },
+    orderBy: { createdAt: "desc" },
+  });
+  const extra = exports
+    .filter((variant) => !fromHistory.some((card) => card.id === variant.id))
+    .map((variant) => ({
+      id: variant.id,
+      historyId: "",
+      name: variant.name,
+      testsDimension: variant.testsDimension,
+      status: variant.storageKey ? "ready" : "logged",
+      hasFile: Boolean(variant.storageKey),
+      hookText: variant.hookText,
+      startTrim: 0,
+      zoomPct: 0,
+      createdAt: variant.createdAt.toISOString(),
+    }));
+  return [...fromHistory, ...extra];
 }
