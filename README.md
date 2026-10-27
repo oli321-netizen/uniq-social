@@ -1,6 +1,6 @@
 # Uniq
 
-Uniq Social. The home page is a list of services. Hook Lab writes and stores estimated hook lines per creator. Rendering still goes through the existing processor at `/dashboard`.
+Uniq Social. The public home page is the original marketing page. Signing in lands on the processor at `/dashboard`.
 
 ## Go live on Railway
 
@@ -53,8 +53,8 @@ Hook Lab is at `/hub/hook-lab` after sign-in. Transcription needs `OPENAI_API_KE
 
 ## What is on main
 
-- Home page: a list of services. Video processor links straight to `/dashboard`.
-- A short top bar on the other services, with a link back to that list
+- Home page: the original public marketing page. After sign-in, people land on `/dashboard`.
+- A section nav (Process, Hook Lab, Variants, Creators, Results, Presets, Team, Settings) on the processor and the other sections.
 - Hook Lab: upload a talking video, transcribe it with Whisper (`whisper-1`, word timestamps), edit splits on a timeline, preview caption styles in sync, and export an mp4 with ffmpeg. That export is a separate route. It does not use `/api/process`. Without `OPENAI_API_KEY`, transcription stops and says a key is needed. `HOOK_LAB_STUB=1` still builds the whisper-1 request, then answers it locally. It does not call OpenAI and is not for production.
 - Creators: brand voice (tone, words to use, words to avoid, sample lines) used by Hook Lab and captions.
 - Captions: text only, no hashtags. Mock templates when `OPENAI_API_KEY` is unset.

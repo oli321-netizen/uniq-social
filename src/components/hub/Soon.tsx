@@ -13,7 +13,7 @@ export default function Soon({
 }) {
   return (
     <div className="mx-auto flex max-w-xl flex-col gap-3 px-6 py-16">
-      <p className="text-[15px] text-[#9a3412]">Coming soon</p>
+      <p className="text-[15px] text-purple-300">Coming soon</p>
       <h1 className="text-2xl font-medium tracking-tight">{title}</h1>
       <p className="text-[14px] leading-relaxed text-[#8A8A9A]">{body}</p>
       {href && action && (

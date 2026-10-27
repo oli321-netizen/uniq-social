@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import Providers from "./providers";
 import "./globals.css";
-import "./surface.css";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -10,12 +9,12 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "Uniq Social",
-  description: "Uniq Social services: the video processor, Hook Lab, variants, creators, results, presets, team, and settings.",
+  title: "Uniq Social — Make Every Video Unique",
+  description: "Transform your videos into unique, ready-to-use content. Batch process with randomized edits, metadata injection, and more.",
   metadataBase: new URL("https://uniqsocial.com"),
   openGraph: {
-    title: "Uniq Social",
-    description: "Uniq Social services: the video processor, Hook Lab, variants, creators, results, presets, team, and settings.",
+    title: "Uniq Social — Make Every Video Unique",
+    description: "Transform your videos into unique, ready-to-use content. Batch process with randomized edits, metadata injection, and more.",
     url: "https://uniqsocial.com",
     siteName: "Uniq Social",
     images: [
@@ -30,8 +29,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Uniq Social",
-    description: "Uniq Social services.",
+    title: "Uniq Social — Make Every Video Unique",
+    description: "Transform your videos into unique, ready-to-use content.",
     images: ["/og-image.png"],
   },
   manifest: "/manifest.json",

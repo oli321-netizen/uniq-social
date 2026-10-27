@@ -298,8 +298,8 @@ export default function HookLab() {
   const showEditor = tab === "Hook Lab" || tab === "Captions";
 
   return (
-    <div className="flex min-h-[calc(100dvh-3.5rem)] flex-col bg-[#f4efe8] text-[#2c241c]">
-      <div className="flex items-center gap-1 overflow-x-auto border-b border-[#e4d5c6] px-3" role="tablist">
+    <div className="flex h-full min-h-0 flex-col bg-[#010313] text-white">
+      <div className="flex items-center gap-1 overflow-x-auto border-b border-white/10 px-3" role="tablist">
         {TABS.map((item) => (
           <button
             key={item}
@@ -307,33 +307,33 @@ export default function HookLab() {
             role="tab"
             aria-selected={tab === item}
             onClick={() => setTab(item)}
-            className={`shrink-0 border-b-2 px-3 py-3 text-[15px] ${tab === item ? "border-[#9a3412] font-medium" : "border-transparent text-[#6d5e53]"}`}
+            className={`shrink-0 border-b-2 px-3 py-3 text-[15px] ${tab === item ? "border-purple-500 font-medium" : "border-transparent text-slate-400"}`}
           >
             {item}
           </button>
         ))}
         <div className="ml-auto flex items-center gap-2 py-2">
-          <button type="button" disabled={!project || Boolean(phase)} onClick={() => exportVideo(false)} className="rounded-md bg-[#9a3412] px-3 py-1.5 text-[15px] text-[#fffdfb] disabled:opacity-40">
+          <button type="button" disabled={!project || Boolean(phase)} onClick={() => exportVideo(false)} className="rounded-md bg-purple-600 px-3 py-1.5 text-[15px] text-white disabled:opacity-40">
             Export
           </button>
-          <button type="button" disabled={!project || Boolean(phase)} onClick={() => exportVideo(true)} className="rounded-md border border-[#e4d5c6] bg-white px-3 py-1.5 text-[15px] disabled:opacity-40">
+          <button type="button" disabled={!project || Boolean(phase)} onClick={() => exportVideo(true)} className="rounded-md border border-white/10 bg-[#12121A] px-3 py-1.5 text-[15px] disabled:opacity-40">
             Export and save
           </button>
         </div>
       </div>
 
       {phase && (
-        <p className="flex items-center gap-2 border-b border-[#e4d5c6] bg-[#fffdfb] px-4 py-2 text-[15px]">
+        <p className="flex items-center gap-2 border-b border-white/10 bg-[#0a0a1a] px-4 py-2 text-[15px]">
           <Loader2 className="h-4 w-4 animate-spin" /> {phase}
         </p>
       )}
-      {error && <p className="border-b border-[#e4d5c6] bg-[#fff4ef] px-4 py-2 text-[15px] text-[#9a3412]" role="alert">{error}</p>}
-      {notice && !error && <p className="border-b border-[#e4d5c6] px-4 py-2 text-[15px] text-[#6d5e53]">{notice}</p>}
+      {error && <p className="border-b border-white/10 bg-purple-500/10 px-4 py-2 text-[15px] text-purple-300" role="alert">{error}</p>}
+      {notice && !error && <p className="border-b border-white/10 px-4 py-2 text-[15px] text-slate-400">{notice}</p>}
 
       {tab === "Reframe" || tab === "B-roll" ? (
         <div className="mx-auto max-w-lg px-6 py-16">
           <h1 className="text-2xl font-medium">{tab}</h1>
-          <p className="mt-2 text-[16px] leading-relaxed text-[#6d5e53]">
+          <p className="mt-2 text-[16px] leading-relaxed text-slate-400">
             {tab} is not part of this editor. Hook Lab can split the clip and burn captions. The existing processor is unchanged.
           </p>
         </div>
@@ -342,10 +342,10 @@ export default function HookLab() {
       {tab === "Metrics" && (
         <div className="mx-auto w-full max-w-3xl px-4 py-8">
           <h1 className="text-2xl font-medium">Metrics</h1>
-          <p className="mt-2 text-[16px] text-[#6d5e53]">Numbers come from results logged on these hooks. Estimates in the list are not measured retention.</p>
-          <div className="mt-4 overflow-x-auto rounded-md border border-[#e4d5c6] bg-white">
+          <p className="mt-2 text-[16px] text-slate-400">Numbers come from results logged on these hooks. Estimates in the list are not measured retention.</p>
+          <div className="mt-4 overflow-x-auto rounded-md border border-white/10 bg-[#12121A]">
             <table className="w-full text-left text-[15px]">
-              <thead className="text-[#6d5e53]">
+              <thead className="text-slate-400">
                 <tr>
                   <th className="px-3 py-2 font-medium">Hook</th>
                   <th className="px-3 py-2 font-medium">Views</th>
@@ -355,7 +355,7 @@ export default function HookLab() {
               </thead>
               <tbody>
                 {(hooks || []).map((hook) => (
-                  <tr key={hook.id} className="border-t border-[#e4d5c6]">
+                  <tr key={hook.id} className="border-t border-white/10">
                     <td className="px-3 py-2">{hook.text}</td>
                     <td className="px-3 py-2">{hook.views}</td>
                     <td className="px-3 py-2">{hook.watchTimeSec.toFixed(1)}s</td>
@@ -364,34 +364,34 @@ export default function HookLab() {
                 ))}
               </tbody>
             </table>
-            {hooks?.length === 0 && <p className="px-3 py-8 text-center text-[15px] text-[#6d5e53]">No hooks yet.</p>}
+            {hooks?.length === 0 && <p className="px-3 py-8 text-center text-[15px] text-slate-400">No hooks yet.</p>}
           </div>
         </div>
       )}
 
       {showEditor && (
         <div className="grid min-h-0 flex-1 lg:grid-cols-[280px_minmax(0,1fr)_280px]">
-          <aside className="overflow-y-auto border-b border-[#e4d5c6] lg:border-b-0 lg:border-r">
-            <div className="space-y-3 border-b border-[#e4d5c6] p-3">
+          <aside className="overflow-y-auto border-b border-white/10 lg:border-b-0 lg:border-r">
+            <div className="space-y-3 border-b border-white/10 p-3">
               <label className="block text-[15px]">
                 Creator
-                <select value={creatorId} onChange={(event) => setCreatorId(event.target.value)} className="mt-1 w-full rounded-md border border-[#e4d5c6] bg-white px-2 py-2">
+                <select value={creatorId} onChange={(event) => setCreatorId(event.target.value)} className="mt-1 w-full rounded-md border border-white/10 bg-[#12121A] px-2 py-2">
                   <option value="">No creator</option>
                   {creators.map((creator) => <option key={creator.id} value={creator.id}>{creator.name}</option>)}
                 </select>
               </label>
-              <button type="button" onClick={() => rewrite()} disabled={!project || Boolean(phase)} className="w-full rounded-md border border-[#e4d5c6] bg-white px-3 py-2 text-[15px] disabled:opacity-40">
+              <button type="button" onClick={() => rewrite()} disabled={!project || Boolean(phase)} className="w-full rounded-md border border-white/10 bg-[#12121A] px-3 py-2 text-[15px] disabled:opacity-40">
                 Write hooks from this transcript
               </button>
             </div>
             <div className="px-3 py-2 text-[15px] font-medium">Hooks · {hooks?.length ?? 0}</div>
             <div className="space-y-2 px-3 pb-4">
-              {hooks === null && project && <p className="text-[15px] text-[#6d5e53]">Loading hooks</p>}
-              {hooks?.length === 0 && <p className="rounded-md border border-dashed border-[#e4d5c6] px-3 py-6 text-center text-[15px] text-[#6d5e53]">Upload a talking video. Hooks are written from what they say.</p>}
+              {hooks === null && project && <p className="text-[15px] text-slate-400">Loading hooks</p>}
+              {hooks?.length === 0 && <p className="rounded-md border border-dashed border-white/10 px-3 py-6 text-center text-[15px] text-slate-400">Upload a talking video. Hooks are written from what they say.</p>}
               {hooks?.map((hook) => (
-                <article key={hook.id} className={`rounded-md border p-2 ${selected?.id === hook.id ? "border-[#9a3412] bg-[#fff4ef]" : "border-[#e4d5c6] bg-white"}`}>
+                <article key={hook.id} className={`rounded-md border p-2 ${selected?.id === hook.id ? "border-purple-500 bg-purple-500/10" : "border-white/10 bg-[#12121A]"}`}>
                   <button type="button" onClick={() => setSelectedId(hook.id)} className="w-full text-left text-[15px] leading-snug">{hook.text}</button>
-                  <div className="mt-2 flex items-center justify-between text-[14px] text-[#6d5e53]">
+                  <div className="mt-2 flex items-center justify-between text-[14px] text-slate-400">
                     <span title="Estimate, not a measured result">{hook.score}</span>
                     <span className="flex gap-1">
                       <button type="button" aria-label="Favourite hook" onClick={() => toggleFavourite(hook)} className="rounded p-1">
@@ -407,14 +407,14 @@ export default function HookLab() {
             </div>
           </aside>
 
-          <section className="flex min-h-[320px] flex-col bg-[#f7f2eb]">
+          <section className="flex min-h-[320px] flex-col bg-[#07080f]">
             <div className="relative flex flex-1 items-center justify-center p-4">
               {project ? (
                 <div className="relative max-h-[520px] w-full max-w-[360px]">
                   <video
                     ref={videoRef}
                     src={`/api/hooks/projects/${project.id}/file`}
-                    className="max-h-[520px] w-full bg-[#1c1612]"
+                    className="max-h-[520px] w-full bg-black"
                     playsInline
                     onTimeUpdate={onTimeUpdate}
                     onPlay={() => setPlaying(true)}
@@ -424,7 +424,7 @@ export default function HookLab() {
                 </div>
               ) : (
                 <label
-                  className="flex w-full max-w-xl cursor-pointer flex-col items-center rounded-md border border-dashed border-[#c8b6a4] bg-white px-6 py-16 text-center"
+                  className="flex w-full max-w-xl cursor-pointer flex-col items-center rounded-md border border-dashed border-white/20 bg-[#12121A] px-6 py-16 text-center"
                   onDragOver={(event) => event.preventDefault()}
                   onDrop={(event) => {
                     event.preventDefault();
@@ -432,13 +432,13 @@ export default function HookLab() {
                   }}
                 >
                   <span className="text-[18px] font-medium">Upload a video</span>
-                  <span className="mt-2 max-w-sm text-[16px] text-[#6d5e53]">MP4, MOV, or WebM. The audio is transcribed, then hooks are written from those words.</span>
+                  <span className="mt-2 max-w-sm text-[16px] text-slate-400">MP4, MOV, or WebM. The audio is transcribed, then hooks are written from those words.</span>
                   <input type="file" accept="video/mp4,video/quicktime,video/webm" className="sr-only" onChange={(event) => onUpload(event.target.files?.[0] || null)} />
                 </label>
               )}
             </div>
             {project && (
-              <div className="flex flex-wrap items-center gap-2 border-t border-[#e4d5c6] px-3 py-2">
+              <div className="flex flex-wrap items-center gap-2 border-t border-white/10 px-3 py-2">
                 <button
                   type="button"
                   onClick={() => {
@@ -449,13 +449,13 @@ export default function HookLab() {
                       video.play().catch(() => {});
                     } else video.pause();
                   }}
-                  className="rounded-md border border-[#e4d5c6] bg-white px-3 py-1.5 text-[15px]"
+                  className="rounded-md border border-white/10 bg-[#12121A] px-3 py-1.5 text-[15px]"
                 >
                   {playing ? "Pause" : "Play"}
                 </button>
-                <button type="button" onClick={doSplit} className="rounded-md border border-[#e4d5c6] bg-white px-3 py-1.5 text-[15px]">Split at playhead</button>
-                <span className="text-[15px] text-[#6d5e53]">{formatClock(time)} / {formatClock(duration)}</span>
-                <label className="ml-auto cursor-pointer text-[15px] text-[#9a3412]">
+                <button type="button" onClick={doSplit} className="rounded-md border border-white/10 bg-[#12121A] px-3 py-1.5 text-[15px]">Split at playhead</button>
+                <span className="text-[15px] text-slate-400">{formatClock(time)} / {formatClock(duration)}</span>
+                <label className="ml-auto cursor-pointer text-[15px] text-purple-300">
                   Replace video
                   <input type="file" accept="video/mp4,video/quicktime,video/webm" className="sr-only" onChange={(event) => onUpload(event.target.files?.[0] || null)} />
                 </label>
@@ -463,7 +463,7 @@ export default function HookLab() {
             )}
           </section>
 
-          <aside className="overflow-y-auto border-t border-[#e4d5c6] p-3 lg:border-l lg:border-t-0">
+          <aside className="overflow-y-auto border-t border-white/10 p-3 lg:border-l lg:border-t-0">
             <h2 className="text-[16px] font-medium">Caption style</h2>
             <div className="mt-2 flex flex-wrap gap-2">
               {PRESETS.map((preset) => (
@@ -476,7 +476,7 @@ export default function HookLab() {
                     setStyle(next);
                     saveEdit({ style: next });
                   }}
-                  className={`rounded-md border px-2 py-1 text-[14px] ${style.preset === preset.id ? "border-[#9a3412] bg-[#fff4ef]" : "border-[#e4d5c6] bg-white"}`}
+                  className={`rounded-md border px-2 py-1 text-[14px] ${style.preset === preset.id ? "border-purple-500 bg-purple-500/10" : "border-white/10 bg-[#12121A]"}`}
                 >
                   {preset.label}
                 </button>
@@ -484,7 +484,7 @@ export default function HookLab() {
             </div>
             <label className="mt-3 block text-[15px]">
               Font
-              <select value={style.font} onChange={(event) => { const next = { ...style, font: event.target.value as CaptionStyle["font"] }; setStyle(next); saveEdit({ style: next }); }} className="mt-1 w-full rounded-md border border-[#e4d5c6] bg-white px-2 py-2">
+              <select value={style.font} onChange={(event) => { const next = { ...style, font: event.target.value as CaptionStyle["font"] }; setStyle(next); saveEdit({ style: next }); }} className="mt-1 w-full rounded-md border border-white/10 bg-[#12121A] px-2 py-2">
                 <option>DM Sans</option>
                 <option>Georgia</option>
                 <option>Impact</option>
@@ -500,18 +500,18 @@ export default function HookLab() {
             </div>
             <div className="mt-3 flex gap-2">
               {(["top", "middle", "bottom"] as const).map((position) => (
-                <button key={position} type="button" aria-pressed={style.position === position} onClick={() => { const next = { ...style, position }; setStyle(next); saveEdit({ style: next }); }} className={`rounded-md border px-2 py-1 text-[14px] ${style.position === position ? "border-[#9a3412]" : "border-[#e4d5c6]"}`}>
+                <button key={position} type="button" aria-pressed={style.position === position} onClick={() => { const next = { ...style, position }; setStyle(next); saveEdit({ style: next }); }} className={`rounded-md border px-2 py-1 text-[14px] ${style.position === position ? "border-purple-500" : "border-white/10"}`}>
                   {position}
                 </button>
               ))}
             </div>
             <h2 className="mt-6 text-[16px] font-medium">Live metrics</h2>
             {totals.logs === 0 ? (
-              <p className="mt-2 text-[15px] text-[#6d5e53]">No results logged for these hooks yet.</p>
+              <p className="mt-2 text-[15px] text-slate-400">No results logged for these hooks yet.</p>
             ) : (
               <dl className="mt-2 space-y-2 text-[15px]">
-                <div className="flex justify-between rounded-md border border-[#e4d5c6] bg-white px-3 py-2"><dt>Views</dt><dd>{totals.views.toLocaleString()}</dd></div>
-                <div className="flex justify-between rounded-md border border-[#e4d5c6] bg-white px-3 py-2"><dt>Watch</dt><dd>{totals.watch.toFixed(1)}s</dd></div>
+                <div className="flex justify-between rounded-md border border-white/10 bg-[#12121A] px-3 py-2"><dt>Views</dt><dd>{totals.views.toLocaleString()}</dd></div>
+                <div className="flex justify-between rounded-md border border-white/10 bg-[#12121A] px-3 py-2"><dt>Watch</dt><dd>{totals.watch.toFixed(1)}s</dd></div>
               </dl>
             )}
           </aside>
@@ -519,10 +519,10 @@ export default function HookLab() {
       )}
 
       {showEditor && project && (
-        <div className="border-t border-[#e4d5c6] bg-[#fffdfb] px-3 py-3">
+        <div className="border-t border-white/10 bg-[#0a0a1a] px-3 py-3">
           <div
             ref={barRef}
-            className="relative h-16 cursor-pointer rounded-md bg-[#efe4d8]"
+            className="relative h-16 cursor-pointer rounded-md bg-white/10"
             onClick={(event) => {
               const rect = event.currentTarget.getBoundingClientRect();
               const ratio = (event.clientX - rect.left) / rect.width;
@@ -533,10 +533,10 @@ export default function HookLab() {
               {segments.map((seg, index) => {
                 const width = duration > 0 ? ((seg.end - seg.start) / duration) * 100 : 0;
                 return (
-                  <div key={seg.id} className="relative h-full rounded-sm bg-[#d8b79a]" style={{ width: `${width}%` }}>
+                  <div key={seg.id} className="relative h-full rounded-sm bg-purple-500/40" style={{ width: `${width}%` }}>
                     <button type="button" aria-label="Trim start" className="absolute left-0 top-0 h-full w-2 cursor-ew-resize" onPointerDown={(event) => trim(event, index, "start")} />
                     <button type="button" aria-label="Trim end" className="absolute right-0 top-0 h-full w-2 cursor-ew-resize" onPointerDown={(event) => trim(event, index, "end")} />
-                    <span className="absolute left-2 top-1 text-[12px] text-[#2c241c]">Clip {index + 1}</span>
+                    <span className="absolute left-2 top-1 text-[12px] text-white">Clip {index + 1}</span>
                     <span className="absolute bottom-1 right-2 flex gap-1 text-[12px]">
                       <button type="button" onClick={(event) => { event.stopPropagation(); moveSegment(index, -1); }}>Earlier</button>
                       <button type="button" onClick={(event) => { event.stopPropagation(); moveSegment(index, 1); }}>Later</button>
@@ -546,7 +546,7 @@ export default function HookLab() {
                 );
               })}
             </div>
-            <div className="absolute top-0 h-full w-px bg-[#9a3412]" style={{ left: `${duration > 0 ? (time / duration) * 100 : 0}%` }} />
+            <div className="absolute top-0 h-full w-px bg-purple-600" style={{ left: `${duration > 0 ? (time / duration) * 100 : 0}%` }} />
           </div>
           <div className="mt-3 flex max-h-24 flex-wrap gap-1 overflow-y-auto" aria-label="Transcript">
             {timed.map((word, index) => (
@@ -565,7 +565,7 @@ export default function HookLab() {
                   if (video) video.currentTime = word.start;
                   setEditing(index);
                 }}
-                className={`rounded px-1.5 py-0.5 text-[15px] ${active === word ? "bg-[#e07a3d] text-[#fffdfb]" : "bg-[#efe4d8]"}`}
+                className={`rounded px-1.5 py-0.5 text-[15px] ${active === word ? "bg-purple-600 text-white" : "bg-white/10"}`}
               >
                 {editing === index ? (
                   <input
@@ -588,7 +588,7 @@ export default function HookLab() {
       )}
 
       {tab === "Captions" && (
-        <div className="border-t border-[#e4d5c6] px-4 py-4">
+        <div className="border-t border-white/10 px-4 py-4">
           <CaptionStudio creatorId={creatorId} topicDefault={selected?.text || words.map((word) => word.word).join(" ")} />
         </div>
       )}
