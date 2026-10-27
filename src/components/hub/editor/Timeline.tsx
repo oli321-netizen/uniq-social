@@ -199,7 +199,7 @@ export default function EditorTimeline(props: Props) {
             {clips.map(({ seg, left, span }, index) => (
               <div
                 key={seg.id}
-                className={`absolute top-1 h-12 overflow-hidden rounded-sm border ${props.selectedClip === seg.id ? "border-purple-400" : "border-white/15"} bg-purple-950`}
+                className={`absolute top-0.5 h-10 overflow-hidden rounded-sm border ${props.selectedClip === seg.id ? "border-purple-400" : "border-white/15"} bg-purple-950`}
                 style={{ left: left * props.zoom, width: Math.max(18, span * props.zoom) }}
                 onPointerDown={(event) => {
                   props.onSelectClip(seg.id);
@@ -216,7 +216,7 @@ export default function EditorTimeline(props: Props) {
           </Track>
           <Track label="Audio" short>
             {clips.map(({ seg, left, span }) => (
-              <div key={seg.id} className="absolute top-1 h-8 overflow-hidden rounded-sm bg-purple-900/40" style={{ left: left * props.zoom, width: Math.max(18, span * props.zoom) }}>
+              <div key={seg.id} className="absolute top-0.5 h-7 overflow-hidden rounded-sm bg-purple-900/40" style={{ left: left * props.zoom, width: Math.max(18, span * props.zoom) }}>
                 <Wave peaks={props.peaks} seg={seg} sourceDuration={props.sourceDuration} />
               </div>
             ))}
@@ -225,7 +225,7 @@ export default function EditorTimeline(props: Props) {
             {props.cues.map((cue) => (
               <div
                 key={cue.id}
-                className={`absolute top-1 flex h-8 items-center overflow-hidden rounded-sm px-2 text-[12px] ${props.selectedCue === cue.id ? "bg-purple-500 text-white" : "bg-purple-700/80 text-white"}`}
+                className={`absolute top-0.5 flex h-7 items-center overflow-hidden rounded-sm px-2 text-[12px] ${props.selectedCue === cue.id ? "bg-purple-500 text-white" : "bg-purple-700/80 text-white"}`}
                 style={{ left: cue.start * props.zoom, width: Math.max(16, (cue.end - cue.start) * props.zoom) }}
                 onPointerDown={(event) => {
                   props.onSelectCue(cue.id);
@@ -248,7 +248,7 @@ export default function EditorTimeline(props: Props) {
 
 function Track({ label, children, short }: { label: string; children: ReactNode; short?: boolean }) {
   return (
-    <div className={`relative border-t border-white/10 ${short ? "h-10" : "h-14"}`}>
+    <div className={`relative border-t border-white/10 ${short ? "h-8" : "h-11"}`}>
       <div className="absolute inset-y-0 left-0 z-10 flex w-[72px] items-center border-r border-white/10 bg-[#0a0a1a] px-2 text-[12px] text-slate-400">{label}</div>
       <div className="absolute inset-y-0" style={{ left: LABEL, right: 0 }}>{children}</div>
     </div>

@@ -559,7 +559,7 @@ export default function HookLab() {
   const sentences = useMemo(() => sentenceGroups(doc.words), [doc.words]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[#010313] text-white" data-editor="hook-lab">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#010313] text-white" data-editor="hook-lab">
       <style>{`${FONT_FACE_CSS}@keyframes hookPop{from{transform:scale(.82)}to{transform:scale(1)}}@keyframes hookScale{from{transform:scale(.94)}to{transform:scale(1.04)}}`}</style>
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-white/10 px-3 py-2">
         <p className="min-w-0 truncate text-[15px]">{project?.fileName || "Hook Lab"}</p>
@@ -591,8 +591,8 @@ export default function HookLab() {
       {error && <p className="border-b border-white/10 bg-purple-500/10 px-3 py-2 text-[14px] text-purple-200" role="alert">{error}</p>}
       {notice && !error && <p className="border-b border-white/10 px-3 py-2 text-[14px] text-slate-400">{notice}</p>}
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[250px_minmax(0,1fr)_270px]">
-        <aside className="flex max-h-56 flex-col overflow-hidden border-b border-white/10 xl:max-h-none xl:border-b-0 xl:border-r">
+      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)_240px]">
+        <aside className="flex max-h-40 flex-col overflow-hidden border-b border-white/10 lg:max-h-none lg:border-b-0 lg:border-r">
           <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-white/10 px-2" role="tablist">
             {(["Media", "Transcript", "Hooks", "Posts"] as LeftTab[]).map((tab) => (
               <button key={tab} type="button" role="tab" aria-selected={left === tab} onClick={() => setLeft(tab)} className={`shrink-0 border-b-2 px-2 py-2 text-[13px] ${left === tab ? "border-purple-500" : "border-transparent text-slate-400"}`}>
@@ -698,7 +698,7 @@ export default function HookLab() {
           </div>
         </aside>
 
-        <section className="flex min-h-[360px] min-w-0 flex-col bg-[#07080f]">
+        <section className="flex min-h-0 min-w-0 flex-col bg-[#07080f]">
           <div className="flex min-h-0 flex-1 items-center justify-center p-3">
             {project ? (
               <div ref={frameRef} className="relative h-full max-h-full w-auto max-w-full overflow-hidden rounded-md border border-white/10 bg-black" style={{ aspectRatio: "9 / 16" }}>
@@ -754,7 +754,7 @@ export default function HookLab() {
           )}
         </section>
 
-        <aside className="max-h-64 overflow-y-auto border-t border-white/10 p-3 xl:max-h-none xl:border-l xl:border-t-0">
+        <aside className="max-h-48 overflow-y-auto border-t border-white/10 p-3 lg:max-h-none lg:border-l lg:border-t-0">
           <h2 className="text-[14px] font-medium">Properties</h2>
           {clip ? (
             <label className="mt-3 block text-[13px]">
