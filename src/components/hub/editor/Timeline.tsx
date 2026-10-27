@@ -1,6 +1,7 @@
 "use client";
 
-import { PointerEvent as ReactPointerEvent, useEffect, useRef, type ReactNode } from "react";
+import { PointerEvent as ReactPointerEvent, useEffect, useRef, useState, type ReactNode } from "react";
+import { Magnet, Redo2, Scissors, Trash2, Undo2, ZoomIn, ZoomOut } from "lucide-react";
 import { moveCue, resizeCue, type CaptionCue } from "@/lib/caption-cues";
 import {
   clampSpeed,
@@ -13,6 +14,7 @@ import {
 } from "@/lib/edit-timeline";
 
 export type FilmstripInfo = { url: string; frames: number; interval: number } | null;
+export type TimelineSpan = { id: string; start: number; end: number; label: string };
 
 type Props = {
   segments: Segment[];
@@ -25,6 +27,11 @@ type Props = {
   filmstrip: FilmstripInfo;
   selectedClip: string | null;
   selectedCue: string | null;
+  clipNames?: string[];
+  overlays?: TimelineSpan[];
+  extraAudio?: TimelineSpan[];
+  texts?: TimelineSpan[];
+  enabled?: boolean;
   onZoom: (zoom: number) => void;
   onSnap: (snap: boolean) => void;
   onSeek: (time: number) => void;
@@ -34,21 +41,40 @@ type Props = {
   onCues: (cues: CaptionCue[]) => void;
   onGestureStart: () => void;
   onGestureEnd: (kind: "clips" | "cues") => void;
+  onSplit: () => void;
+  onDelete: () => void;
+  onUndo: () => void;
+  onRedo: () => void;
   marks?: number[];
-  layers?: { id: string; start: number; end: number; label: string }[];
 };
 
-const LABEL = 72;
+const RULER = 20;
+const VIDEO_H = 48;
+const ROW_H = 32;
 
 export default function EditorTimeline(props: Props) {
   const scroller = useRef<HTMLDivElement>(null);
+  const [view, setView] = useState(640);
   const duration = Math.max(0.2, composedDuration(props.segments));
-  const width = Math.max(640, duration * props.zoom);
+  const width = Math.max(view, duration * props.zoom);
+  const overlays = props.overlays || [];
+  const texts = props.texts || [];
+  const extraAudio = props.extraAudio || [];
 
   useEffect(() => {
     const node = scroller.current;
     if (!node) return;
-    const target = LABEL + props.time * props.zoom - node.clientWidth * 0.5;
+    const measure = () => setView(node.clientWidth);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const node = scroller.current;
+    if (!node) return;
+    const target = props.time * props.zoom - node.clientWidth * 0.5;
     if (props.time * props.zoom < node.scrollLeft + 40 || props.time * props.zoom > node.scrollLeft + node.clientWidth - 80) {
       node.scrollLeft = Math.max(0, target);
     }
@@ -72,7 +98,7 @@ export default function EditorTimeline(props: Props) {
     const node = scroller.current;
     if (!node) return;
     const rect = node.getBoundingClientRect();
-    const x = clientX - rect.left + node.scrollLeft - LABEL;
+    const x = clientX - rect.left + node.scrollLeft;
     props.onSeek(Math.max(0, Math.min(duration, x / props.zoom)));
   }
 
@@ -89,11 +115,11 @@ export default function EditorTimeline(props: Props) {
       let start = seg.start;
       let end = seg.end;
       if (edge === "start") start = Math.min(seg.end - 0.12, Math.max(0, seg.start + delta * speed));
-      else end = Math.max(seg.start + 0.12, Math.min(props.sourceDuration, seg.end + delta * speed));
+      else end = Math.max(seg.start + 0.12, Math.min(props.sourceDuration || seg.end, seg.end + delta * speed));
       if (props.snap && edge === "end") {
         const composedEnd = base + (end - start) / speed;
         const snapped = snapTime(composedEnd, points(seg.id), 10 / props.zoom);
-        end = Math.min(props.sourceDuration, start + Math.max(0.12, snapped - base) * speed);
+        end = Math.min(props.sourceDuration || seg.end, start + Math.max(0.12, snapped - base) * speed);
       }
       const next = props.segments.map((item, itemIndex) => (itemIndex === index ? { ...item, start, end } : item));
       props.onSegments(next);
@@ -114,7 +140,7 @@ export default function EditorTimeline(props: Props) {
       if (!moved) return;
       const node = scroller.current;
       if (!node) return;
-      const x = ev.clientX - node.getBoundingClientRect().left + node.scrollLeft - LABEL;
+      const x = ev.clientX - node.getBoundingClientRect().left + node.scrollLeft;
       const at = Math.max(0, x / props.zoom);
       let cursor = 0;
       let target = props.segments.length - 1;
@@ -164,116 +190,162 @@ export default function EditorTimeline(props: Props) {
   }
 
   let cursor = 0;
-  const clips = props.segments.map((seg) => {
+  const clips = props.segments.map((seg, index) => {
     const left = cursor;
     const span = playDuration(seg);
     cursor += span;
-    return { seg, left, span };
+    return { seg, left, span, name: props.clipNames?.[index] || `Clip ${index + 1}` };
   });
+  const tick = props.zoom < 48 ? 5 : props.zoom < 90 ? 2 : 1;
+  const iconBtn = "flex h-7 w-7 shrink-0 items-center justify-center rounded text-[#c8ccd2] hover:bg-white/10 disabled:opacity-30";
 
   return (
-    <section className="shrink-0 border-t border-white/10 bg-[#07080f]" aria-label="Timeline">
-      <div className="flex items-center gap-2 border-b border-white/10 px-3 py-1.5 text-[13px] text-slate-400">
-        <span className="text-slate-300">Timeline</span>
-        <button type="button" onClick={() => props.onZoom(Math.max(36, props.zoom / 1.25))} className="rounded border border-white/10 px-2 py-0.5">−</button>
-        <input aria-label="Zoom timeline" type="range" min={36} max={280} value={props.zoom} onChange={(event) => props.onZoom(Number(event.target.value))} className="w-28" />
-        <button type="button" onClick={() => props.onZoom(Math.min(280, props.zoom * 1.25))} className="rounded border border-white/10 px-2 py-0.5">+</button>
-        <button type="button" aria-pressed={props.snap} onClick={() => props.onSnap(!props.snap)} className={`rounded border px-2 py-0.5 ${props.snap ? "border-purple-500 text-purple-200" : "border-white/10"}`}>
-          Snap
+    <section className="shrink-0 border-t border-[#2c3038] bg-[#14161c]" aria-label="Timeline">
+      <div className="flex h-8 items-center gap-1 border-b border-[#2c3038] px-2">
+        <button type="button" title="Split (S)" aria-label="Split" disabled={!props.enabled} onClick={props.onSplit} className={iconBtn}>
+          <Scissors className="h-3.5 w-3.5" />
         </button>
-        <span className="ml-auto hidden sm:inline">Space play · S split · Del ripple · arrows nudge · ⌘Z undo</span>
-      </div>
-      <div
-        ref={scroller}
-        className="relative overflow-x-auto overflow-y-hidden"
-        onPointerDown={(event) => {
-          if (event.target === event.currentTarget) props.onSeek(0);
-        }}
-      >
-        <div className="relative" style={{ width: width + LABEL }}>
-          <button type="button" aria-label="Scrub timeline" className="relative block h-6 w-full text-left" onPointerDown={(event) => seekFromEvent(event.clientX)}>
-            {Array.from({ length: Math.ceil(duration) + 1 }, (_, second) => (
-              <span key={second} className="absolute top-1 text-[11px] text-slate-500" style={{ left: LABEL + second * props.zoom }}>
-                {formatTick(second)}
-              </span>
-            ))}
-            {(props.marks || []).map((mark) => (
-              <span key={mark} className="absolute top-0 h-full w-px bg-amber-300/80" style={{ left: LABEL + mark * props.zoom }} />
-            ))}
+        <button type="button" title="Delete" aria-label="Delete" disabled={!props.enabled} onClick={props.onDelete} className={iconBtn}>
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+        <button type="button" title="Undo (Ctrl+Z)" aria-label="Undo" disabled={!props.enabled} onClick={props.onUndo} className={iconBtn}>
+          <Undo2 className="h-3.5 w-3.5" />
+        </button>
+        <button type="button" title="Redo" aria-label="Redo" disabled={!props.enabled} onClick={props.onRedo} className={iconBtn}>
+          <Redo2 className="h-3.5 w-3.5" />
+        </button>
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          <button type="button" aria-label="Zoom out" onClick={() => props.onZoom(Math.max(36, props.zoom / 1.25))} className={iconBtn}>
+            <ZoomOut className="h-3.5 w-3.5" />
           </button>
-          <Track label="Video">
-            {clips.map(({ seg, left, span }, index) => (
-              <div
-                key={seg.id}
-                className={`absolute top-0.5 h-10 overflow-hidden rounded-sm border ${props.selectedClip === seg.id ? "border-purple-400" : "border-white/15"} bg-purple-950`}
-                style={{ left: left * props.zoom, width: Math.max(18, span * props.zoom) }}
-                onPointerDown={(event) => {
-                  props.onSelectClip(seg.id);
-                  props.onSelectCue(null);
-                  dragClip(event, index);
-                }}
-              >
-                <Filmstrip seg={seg} span={span} zoom={props.zoom} filmstrip={props.filmstrip} sourceDuration={props.sourceDuration} />
-                <span className="pointer-events-none absolute left-2 top-0.5 text-[11px] text-white">
-                  {seg.kind === "image" ? "Image" : `Clip ${index + 1}`}
-                  {seg.reverse ? " · rev" : ""}
-                  {clampSpeed(seg.speed) !== 1 ? ` · ${clampSpeed(seg.speed)}x` : ""}
-                </span>
-                <button type="button" aria-label="Trim clip start" className="absolute left-0 top-0 h-full w-2 cursor-ew-resize bg-white/30" onPointerDown={(event) => trim(event, index, "start")} />
-                <button type="button" aria-label="Trim clip end" className="absolute right-0 top-0 h-full w-2 cursor-ew-resize bg-white/30" onPointerDown={(event) => trim(event, index, "end")} />
-              </div>
-            ))}
-          </Track>
-          <Track label="Audio" short>
-            {clips.map(({ seg, left, span }) => (
-              <div key={seg.id} className="absolute top-0.5 h-7 overflow-hidden rounded-sm bg-purple-900/40" style={{ left: left * props.zoom, width: Math.max(18, span * props.zoom) }}>
-                <Wave peaks={props.peaks} seg={seg} sourceDuration={props.sourceDuration} />
-              </div>
-            ))}
-          </Track>
-          {props.layers && props.layers.length > 0 && (
-            <Track label="Layers" short>
-              {props.layers.map((layer) => (
+          <input aria-label="Zoom timeline" type="range" min={36} max={280} value={props.zoom} onChange={(event) => props.onZoom(Number(event.target.value))} className="w-24 accent-[#22d3ee]" />
+          <button type="button" aria-label="Zoom in" onClick={() => props.onZoom(Math.min(280, props.zoom * 1.25))} className={iconBtn}>
+            <ZoomIn className="h-3.5 w-3.5" />
+          </button>
+          <button type="button" title="Snap" aria-label="Snap" aria-pressed={props.snap} onClick={() => props.onSnap(!props.snap)} className={`${iconBtn} ${props.snap ? "text-[#22d3ee]" : ""}`}>
+            <Magnet className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+      <div className="flex">
+        <div className="w-[92px] shrink-0 border-r border-[#2c3038] bg-[#121418] text-[11px] text-[#9aa0a8]">
+          <div style={{ height: RULER }} />
+          <Label height={VIDEO_H}>Video 1</Label>
+          <Label height={ROW_H}>Audio 1</Label>
+          {overlays.length > 0 && <Label height={ROW_H}>Overlay</Label>}
+          <Label height={ROW_H}>Captions</Label>
+        </div>
+        <div ref={scroller} className="relative min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
+          <div className="relative" style={{ width }}>
+            <button type="button" aria-label="Scrub timeline" className="relative block w-full text-left" style={{ height: RULER }} onPointerDown={(event) => seekFromEvent(event.clientX)}>
+              {Array.from({ length: Math.ceil(duration) + 1 }, (_, second) =>
+                second % tick === 0 ? (
+                  <span key={second} className="absolute top-0.5 whitespace-nowrap text-[10px] text-[#9aa0a8]" style={{ left: second * props.zoom + 2 }}>
+                    {formatTick(second)}
+                  </span>
+                ) : null
+              )}
+              {(props.marks || []).map((mark) => (
+                <span key={mark} className="absolute top-0 h-full w-px bg-[#c4a35a]/80" style={{ left: mark * props.zoom }} />
+              ))}
+            </button>
+            <Track height={VIDEO_H}>
+              {clips.map(({ seg, left, span, name }, index) => (
                 <div
-                  key={layer.id}
-                  className="absolute top-0.5 flex h-7 items-center overflow-hidden rounded-sm bg-amber-700/80 px-2 text-[12px] text-white"
-                  style={{ left: layer.start * props.zoom, width: Math.max(16, (layer.end - layer.start) * props.zoom) }}
+                  key={seg.id}
+                  title={name}
+                  className={`absolute top-1 overflow-hidden rounded-sm border ${props.selectedClip === seg.id ? "border-[#22d3ee]" : "border-white/10"} bg-[#2a3344]`}
+                  style={{ left: left * props.zoom, width: Math.max(18, span * props.zoom), height: VIDEO_H - 8 }}
+                  onPointerDown={(event) => {
+                    props.onSelectClip(seg.id);
+                    props.onSelectCue(null);
+                    dragClip(event, index);
+                  }}
                 >
-                  <span className="truncate">{layer.label}</span>
+                  <Filmstrip seg={seg} span={span} zoom={props.zoom} filmstrip={props.filmstrip} sourceDuration={props.sourceDuration} />
+                  <span className="pointer-events-none absolute inset-x-0 bottom-0 truncate bg-black/55 px-1 text-[10px] leading-4 text-white">
+                    {name}
+                    {seg.reverse ? " · rev" : ""}
+                    {clampSpeed(seg.speed) !== 1 ? ` · ${clampSpeed(seg.speed)}×` : ""}
+                  </span>
+                  <button type="button" aria-label="Trim clip start" className="absolute left-0 top-0 h-full w-1.5 cursor-ew-resize bg-white/40" onPointerDown={(event) => trim(event, index, "start")} />
+                  <button type="button" aria-label="Trim clip end" className="absolute right-0 top-0 h-full w-1.5 cursor-ew-resize bg-white/40" onPointerDown={(event) => trim(event, index, "end")} />
                 </div>
               ))}
             </Track>
-          )}
-          <Track label="Captions" short>
-            {props.cues.map((cue) => (
-              <div
-                key={cue.id}
-                className={`absolute top-0.5 flex h-7 items-center overflow-hidden rounded-sm px-2 text-[12px] ${props.selectedCue === cue.id ? "bg-purple-500 text-white" : "bg-purple-700/80 text-white"}`}
-                style={{ left: cue.start * props.zoom, width: Math.max(16, (cue.end - cue.start) * props.zoom) }}
-                onPointerDown={(event) => {
-                  props.onSelectCue(cue.id);
-                  props.onSelectClip(null);
-                  dragCue(event, cue);
-                }}
-              >
-                <button type="button" aria-label="Trim caption start" className="absolute left-0 top-0 h-full w-1.5 cursor-ew-resize bg-white/40" onPointerDown={(event) => resizeCaption(event, cue, "start")} />
-                <span className="pointer-events-none truncate">{cue.words.map((word) => word.text).join(" ")}</span>
-                <button type="button" aria-label="Trim caption end" className="absolute right-0 top-0 h-full w-1.5 cursor-ew-resize bg-white/40" onPointerDown={(event) => resizeCaption(event, cue, "end")} />
-              </div>
-            ))}
-          </Track>
-          <div className="pointer-events-none absolute bottom-0 top-6 w-px bg-purple-300" style={{ left: LABEL + props.time * props.zoom }} />
+            <Track height={ROW_H}>
+              {clips.map(({ seg, left, span }) => (
+                <div key={seg.id} className="absolute top-1 overflow-hidden rounded-sm bg-[#163528]" style={{ left: left * props.zoom, width: Math.max(18, span * props.zoom), height: ROW_H - 8 }}>
+                  <Wave peaks={props.peaks} seg={seg} sourceDuration={props.sourceDuration} />
+                </div>
+              ))}
+              {extraAudio.map((layer) => (
+                <Block key={layer.id} span={layer} zoom={props.zoom} className="bg-[#1f6b45] text-[10px] text-white" />
+              ))}
+            </Track>
+            {overlays.length > 0 && (
+              <Track height={ROW_H}>
+                {overlays.map((layer) => (
+                  <Block key={layer.id} span={layer} zoom={props.zoom} className="bg-[#3d5a73] text-[10px] text-white" />
+                ))}
+              </Track>
+            )}
+            <Track height={ROW_H}>
+              {props.cues.map((cue) => (
+                <div
+                  key={cue.id}
+                  title={cue.words.map((word) => word.text).join(" ")}
+                  className={`absolute top-1 flex items-center overflow-hidden rounded-sm px-1.5 text-[11px] text-[#f6edd4] ${props.selectedCue === cue.id ? "bg-[#b08a3e] ring-1 ring-[#22d3ee]" : "bg-[#8d6b32]"}`}
+                  style={{ left: cue.start * props.zoom, width: Math.max(16, (cue.end - cue.start) * props.zoom), height: ROW_H - 8 }}
+                  onPointerDown={(event) => {
+                    props.onSelectCue(cue.id);
+                    props.onSelectClip(null);
+                    dragCue(event, cue);
+                  }}
+                >
+                  <button type="button" aria-label="Trim caption start" className="absolute left-0 top-0 h-full w-1 cursor-ew-resize bg-white/35" onPointerDown={(event) => resizeCaption(event, cue, "start")} />
+                  <span className="pointer-events-none truncate">{cue.words.map((word) => word.text).join(" ")}</span>
+                  <button type="button" aria-label="Trim caption end" className="absolute right-0 top-0 h-full w-1 cursor-ew-resize bg-white/35" onPointerDown={(event) => resizeCaption(event, cue, "end")} />
+                </div>
+              ))}
+              {texts.map((layer) => (
+                <Block key={layer.id} span={layer} zoom={props.zoom} className="bg-[#3a4a5c] text-[10px] text-white" />
+              ))}
+            </Track>
+            <div className="pointer-events-none absolute bottom-0 z-20 w-px bg-[#ff3344]" style={{ left: props.time * props.zoom, top: 0 }}>
+              <span className="absolute -left-[4px] top-0 h-2 w-2 rounded-full bg-[#ff3344]" />
+            </div>
+          </div>
         </div>
       </div>
     </section>
   );
 }
 
-function Track({ label, children, short }: { label: string; children: ReactNode; short?: boolean }) {
+function Label({ children, height }: { children: string; height: number }) {
   return (
-    <div className={`relative border-t border-white/10 ${short ? "h-8" : "h-11"}`}>
-      <div className="absolute inset-y-0 left-0 z-10 flex w-[72px] items-center border-r border-white/10 bg-[#0a0a1a] px-2 text-[12px] text-slate-400">{label}</div>
-      <div className="absolute inset-y-0" style={{ left: LABEL, right: 0 }}>{children}</div>
+    <div className="flex items-center border-t border-[#2c3038] px-2" style={{ height }}>
+      <span className="truncate">{children}</span>
+    </div>
+  );
+}
+
+function Track({ children, height }: { children: ReactNode; height: number }) {
+  return (
+    <div className="relative border-t border-[#2c3038] bg-[#1b1e25]" style={{ height }}>
+      {children}
+    </div>
+  );
+}
+
+function Block({ span, zoom, className }: { span: TimelineSpan; zoom: number; className: string }) {
+  return (
+    <div
+      title={span.label}
+      className={`absolute top-1 flex items-center overflow-hidden rounded-sm px-1.5 ${className}`}
+      style={{ left: span.start * zoom, width: Math.max(16, (span.end - span.start) * zoom), height: ROW_H - 8 }}
+    >
+      <span className="truncate">{span.label}</span>
     </div>
   );
 }
@@ -291,7 +363,7 @@ function Filmstrip({
   filmstrip: FilmstripInfo;
   sourceDuration: number;
 }) {
-  if (!filmstrip || filmstrip.frames < 1 || sourceDuration <= 0) return null;
+  if (!filmstrip || filmstrip.frames < 1 || sourceDuration <= 0 || seg.assetId) return null;
   const cells = Math.max(1, Math.round((span * zoom) / 36));
   return (
     <div className="absolute inset-0 flex">
@@ -315,14 +387,15 @@ function Filmstrip({
 }
 
 function Wave({ peaks, seg, sourceDuration }: { peaks: number[]; seg: Segment; sourceDuration: number }) {
-  if (peaks.length === 0 || sourceDuration <= 0) return <div className="h-full w-full bg-purple-500/20" />;
+  if (peaks.length === 0 || sourceDuration <= 0 || seg.assetId) return <div className="h-full w-full bg-[#3ecf8e]/30" />;
   const start = Math.max(0, Math.floor((seg.start / sourceDuration) * peaks.length));
   const end = Math.max(start + 1, Math.ceil((seg.end / sourceDuration) * peaks.length));
   const slice = peaks.slice(start, end);
+  const shown = slice.length > 80 ? slice.filter((_, index) => index % Math.ceil(slice.length / 80) === 0) : slice;
   return (
-    <div className="flex h-full items-center gap-px px-1">
-      {slice.map((peak, index) => (
-        <span key={index} className="w-px flex-1 bg-purple-300/80" style={{ height: `${Math.max(8, peak * 100)}%` }} />
+    <div className="flex h-full items-center gap-px px-0.5">
+      {shown.map((peak, index) => (
+        <span key={index} className="w-px flex-1 bg-[#3ecf8e]" style={{ height: `${Math.max(12, peak * 100)}%` }} />
       ))}
     </div>
   );
@@ -340,5 +413,5 @@ function listen(move: (event: PointerEvent) => void, done: () => void) {
 function formatTick(seconds: number) {
   const minutes = Math.floor(seconds / 60);
   const remain = seconds % 60;
-  return `${minutes}:${String(remain).padStart(2, "0")}`;
+  return `${String(minutes).padStart(2, "0")}:${String(remain).padStart(2, "0")}`;
 }

@@ -1,10 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { X, Cookie } from "lucide-react";
 
 export default function CookieConsent() {
+  const pathname = usePathname();
   const [visible, setVisible] = useState(false);
+  const editor = pathname?.startsWith("/hub/editor-lab") || pathname?.startsWith("/hub/hook-lab");
 
   useEffect(() => {
     try {
@@ -33,7 +36,7 @@ export default function CookieConsent() {
     setVisible(false);
   }
 
-  if (!visible) return null;
+  if (!visible || editor) return null;
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-[200] p-4 sm:p-6 animate-in slide-in-from-bottom duration-500">
