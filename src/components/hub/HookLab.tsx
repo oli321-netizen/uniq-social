@@ -2,9 +2,9 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Clapperboard, Download, LayoutGrid, Loader2, Maximize, Pause, Play, Redo2, Undo2 } from "lucide-react";
+import { Download, LayoutGrid, Loader2, Maximize, Pause, Play, Redo2, Undo2 } from "lucide-react";
 import type { CreatorDTO, HookDTO } from "@/lib/serialize";
-import { SECTIONS } from "@/components/hub/SectionNav";
+import { SECTIONS, editorLabHref, rememberEditorProject } from "@/components/hub/SectionNav";
 import AssetBin, { type RailTab } from "@/components/hub/editor/AssetBin";
 import Inspector from "@/components/hub/editor/Inspector";
 import EditorTimeline, { type FilmstripInfo, type SelKind } from "@/components/hub/editor/Timeline";
@@ -110,6 +110,7 @@ export default function HookLab() {
   const projectRef = useRef<Project | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
+  const sectionMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetch("/api/creators")
@@ -168,6 +169,24 @@ export default function HookLab() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function down(event: PointerEvent) {
+      const target = event.target as Node | null;
+      if (target && sectionMenuRef.current?.contains(target)) return;
+      setMenuOpen(false);
+    }
+    function onEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setMenuOpen(false);
+    }
+    window.addEventListener("pointerdown", down);
+    window.addEventListener("keydown", onEscape);
+    return () => {
+      window.removeEventListener("pointerdown", down);
+      window.removeEventListener("keydown", onEscape);
+    };
+  }, [menuOpen]);
 
   useEffect(() => {
     if (!menu && !popover) return;
@@ -253,6 +272,7 @@ export default function HookLab() {
     docRef.current = incoming;
     setDoc(incoming);
     setProject(next);
+    rememberEditorProject(next.id);
     setTime(0);
     timeRef.current = 0;
     setSelectedClip(next.segments[0]?.id || null);
@@ -1307,9 +1327,38 @@ export default function HookLab() {
         className="sr-only"
         onChange={(event) => onPicked(event.target.files?.[0] || null)}
       />
-      <header className="flex h-10 shrink-0 items-center gap-2 border-b border-[#2c3038] bg-[#16181d] px-3">
-        <Clapperboard className="h-4 w-4 shrink-0 text-[#3ad6e4]" />
-        <p className="shrink-0 text-[13px] font-medium">Editor Lab</p>
+      <header className="relative z-30 flex h-10 shrink-0 items-center gap-2 border-b border-[#2c3038] bg-[#16181d] px-2">
+        <div ref={sectionMenuRef} className="relative shrink-0">
+          <button
+            type="button"
+            aria-label="Sections"
+            aria-expanded={menuOpen}
+            aria-haspopup="menu"
+            onClick={() => setMenuOpen((open) => !open)}
+            className="flex h-7 w-7 items-center justify-center rounded text-[#d5d8de] hover:bg-white/10"
+          >
+            <LayoutGrid className="h-3.5 w-3.5" />
+          </button>
+          {menuOpen && (
+            <div role="menu" aria-label="Section list" className="absolute left-0 top-8 z-40 w-40 rounded-md border border-[#2c3038] bg-[#1a1d24] py-1 shadow-lg">
+              {SECTIONS.map((item) => {
+                const here = item.href === "/hub/editor-lab";
+                return (
+                  <a
+                    key={item.href}
+                    role="menuitem"
+                    href={here ? editorLabHref(project?.id) : item.href}
+                    aria-current={here ? "page" : undefined}
+                    className={`block h-7 truncate whitespace-nowrap px-3 text-[12px] leading-7 ${here ? "text-[#22d3ee]" : "text-[#d5d8de] hover:bg-white/5"}`}
+                  >
+                    {item.label}
+                  </a>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        <a href="/dashboard" className="shrink-0 whitespace-nowrap text-[13px] font-medium text-[#f2f2f2] hover:text-white">Editor Lab</a>
         <p className={`min-w-0 flex-1 truncate text-center text-[11px] ${error ? "text-[#f0b4b4]" : "text-[#8e939c]"}`} role={error ? "alert" : undefined}>{status}</p>
         <div className="flex shrink-0 items-center gap-1">
           {downloadHref && (
@@ -1321,7 +1370,7 @@ export default function HookLab() {
             type="button"
             onClick={exportVideo}
             disabled={!project || (exportProgress !== null && exportProgress < 1)}
-            className="inline-flex h-7 items-center gap-1.5 rounded-md bg-[#22d3ee] px-3 text-[12px] font-medium text-[#062126] disabled:opacity-40"
+            className="inline-flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md bg-[#22d3ee] px-3 text-[12px] font-medium text-[#062126] disabled:opacity-40"
           >
             Export
           </button>
@@ -1331,18 +1380,6 @@ export default function HookLab() {
           <button type="button" title="Redo" aria-label="Redo" onClick={redo} className="flex h-7 w-7 items-center justify-center rounded text-[#d5d8de] hover:bg-white/10">
             <Redo2 className="h-3.5 w-3.5" />
           </button>
-          <div className="relative">
-            <button type="button" aria-label="Sections" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)} className="flex h-7 w-7 items-center justify-center rounded text-[#d5d8de] hover:bg-white/10">
-              <LayoutGrid className="h-3.5 w-3.5" />
-            </button>
-            {menuOpen && (
-              <div className="absolute right-0 top-8 z-30 w-40 rounded-md border border-[#2c3038] bg-[#1a1d24] py-1 shadow-lg">
-                {SECTIONS.map((item) => (
-                  <a key={item.href} href={item.href} className="block truncate px-3 py-1.5 text-[12px] text-[#d5d8de] hover:bg-white/5">{item.label}</a>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
       </header>
       {exportProgress !== null && (
