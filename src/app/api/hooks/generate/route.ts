@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const transcript = String(body?.transcript || "").trim();
   if (transcript.length < 8) {
-    return NextResponse.json({ error: "Transcribe a video first. Hook Lab will not invent lines." }, { status: 400 });
+    return NextResponse.json({ error: "Transcribe a video first. Editor Lab will not invent lines." }, { status: 400 });
   }
 
   const count = Math.min(8, Math.max(1, Number(body?.count) || 5));

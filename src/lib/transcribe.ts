@@ -34,7 +34,7 @@ export async function transcribeFile(videoPath: string, durationSec: number, tra
     const key = process.env.OPENAI_API_KEY || "";
     const localStub = !transport && !key && process.env.HOOK_LAB_STUB === "1";
     if (!key && !localStub && !transport) {
-      throw new Error("OPENAI_API_KEY is not set. Hook Lab needs it to transcribe the video and will not invent a transcript.");
+      throw new Error("OPENAI_API_KEY is not set. Editor Lab needs it to transcribe the video and will not invent a transcript.");
     }
     const send = transport || (key ? liveTransport(key) : stubTransport);
     const pieces = info.size > WHISPER_LIMIT ? await splitAudio(dir, audio) : [audio];
@@ -88,7 +88,7 @@ async function stubTransport(request: WhisperRequest) {
   assertWhisperRequest(request);
   const script = process.env.HOOK_LAB_STUB_TEXT || "";
   if (script.trim().length < 8) {
-    throw new Error("Local stub is on, but HOOK_LAB_STUB_TEXT is empty. Hook Lab will not invent a transcript.");
+    throw new Error("Local stub is on, but HOOK_LAB_STUB_TEXT is empty. Editor Lab will not invent a transcript.");
   }
   const audio = extractAudio(request);
   const dir = await mkdtemp(path.join(os.tmpdir(), "hook-stub-"));
@@ -106,12 +106,24 @@ async function stubTransport(request: WhisperRequest) {
   }
 }
 
+export function formatWhisperError(status: number, body: string) {
+  let detail = body.replace(/\s+/g, " ").trim().slice(0, 400);
+  try {
+    const data = JSON.parse(body) as { error?: { message?: string } };
+    if (data?.error?.message) detail = String(data.error.message).replace(/\s+/g, " ").trim().slice(0, 400);
+  } catch {
+    /* body is plain text */
+  }
+  if (status === 401) return `OpenAI 401: invalid API key. ${detail}`;
+  if (status === 429) return `OpenAI 429: quota or rate limit exceeded. ${detail}`;
+  if (status === 413) return `OpenAI 413: file too large. ${detail}`;
+  return `OpenAI ${status}: ${detail || "request failed"}`;
+}
+
 async function whisper(filePath: string, send: WhisperTransport): Promise<{ text: string; words: WordStamp[] }> {
   const request = await buildWhisperRequest(filePath);
   const res = await send(request);
-  if (!res.ok) {
-    throw new Error(`Whisper failed (${res.status}). ${res.body.slice(0, 240)}`);
-  }
+  if (!res.ok) throw new Error(formatWhisperError(res.status, res.body));
   return parseVerboseJson(res.body);
 }
 

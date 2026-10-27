@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 
 export const SECTIONS = [
   { href: "/dashboard", label: "Process" },
-  { href: "/hub/hook-lab", label: "Hook Lab" },
+  { href: "/hub/editor-lab", label: "Editor Lab" },
   { href: "/hub/variants", label: "Variants" },
   { href: "/hub/creators", label: "Creators" },
   { href: "/hub/results", label: "Results" },

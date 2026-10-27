@@ -1,10 +1,13 @@
-import { Suspense } from "react";
-import HookLab from "@/components/hub/HookLab";
+import { redirect } from "next/navigation";
 
-export default function HookLabPage() {
-  return (
-    <Suspense fallback={<div className="p-6 text-sm text-[#8A8A9A]">Loading Hook Lab…</div>}>
-      <HookLab />
-    </Suspense>
-  );
+export default function HookLabRedirect({
+  searchParams,
+}: {
+  searchParams?: { project?: string; creator?: string };
+}) {
+  const params = new URLSearchParams();
+  if (searchParams?.project) params.set("project", searchParams.project);
+  if (searchParams?.creator) params.set("creator", searchParams.creator);
+  const query = params.toString();
+  redirect(query ? `/hub/editor-lab?${query}` : "/hub/editor-lab");
 }
