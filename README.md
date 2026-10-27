@@ -29,7 +29,7 @@ FFmpeg stays installed via `nixpacks.toml` for the existing processor. This app 
 | `DATABASE_URL` | Yes | Postgres connection string |
 | `NEXTAUTH_SECRET` | Yes in production | Signs session cookies. The code falls back to a dev string if this is empty. Set a long random value before go-live. |
 | `NEXTAUTH_URL` | Yes in production | Public origin, no trailing slash, for example `https://your-app.up.railway.app` |
-| `OPENAI_API_KEY` | No | Live hook lines. If unset, Hook Lab uses labelled template estimates. |
+| `OPENAI_API_KEY` | For Hook Lab transcription | Whisper word timestamps, and tighter hook lines. If unset, upload stops and says a key is needed. Caption text still has a labelled mock. |
 | `OPENAI_MODEL` | No | Defaults to `gpt-4o-mini` |
 | `STRIPE_SECRET_KEY` | For top-up and plans | Checkout and subscriptions |
 | `STRIPE_WEBHOOK_SECRET` | For Stripe | Webhook signature |
@@ -49,17 +49,17 @@ npm run dev
 
 Health check: `GET /api/health`.
 
-Hook Lab is at `/hub/hook-lab` after sign-in. Demo mode needs no model key.
+Hook Lab is at `/hub/hook-lab` after sign-in. Transcription needs `OPENAI_API_KEY`.
 
 ## What is on main
 
 - Home page: a list of services. Video processor links straight to `/dashboard`.
 - A short top bar on the other services, with a link back to that list
-- Hook Lab: hook list, preview, timeline, live metrics, generate, edit, favourite, delete, per-creator history, mock mode. Reframe and B-roll stay coming soon.
+- Hook Lab: upload a talking video, transcribe it with Whisper (`whisper-1`, word timestamps), edit splits on a timeline, preview caption styles in sync, and export an mp4 with ffmpeg. That export is a separate route. It does not use `/api/process`. Without `OPENAI_API_KEY`, transcription stops and says a key is needed. `HOOK_LAB_STUB=1` is a local-only stand-in and is not for production.
 - Creators: brand voice (tone, words to use, words to avoid, sample lines) used by Hook Lab and captions.
 - Captions: text only, no hashtags. Mock templates when `OPENAI_API_KEY` is unset.
-- Variants: cards for renders the existing processor already logged. The processor does not keep the mp4. Attach the downloaded file to preview, compare, or download it. Delete removes that card. Rendering is unchanged.
-- Quick upload: one local drop zone on Hook Lab and Creators. It does not call `/api/process` and it is not an asset library.
+- Variants: cards for renders the existing processor already logged, plus caption exports saved from Hook Lab. The processor does not keep the mp4. Attach the downloaded file to preview, compare, or download it. Delete removes that card. Rendering is unchanged.
+- Quick upload: one local drop zone on Creators. It does not call `/api/process` and it is not an asset library.
 - Notifications: in-app bell, mark read, email and in-app toggles.
 - Results: manual entry and CSV import. Presets: save, load into the form, delete.
 - Team stays a stub.

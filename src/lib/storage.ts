@@ -20,6 +20,16 @@ export function variantPath(userId: string, variantId: string) {
   return path.join(ROOT, "variants", userId, `${variantId}.mp4`);
 }
 
+export function projectPath(userId: string, projectId: string) {
+  assertId(userId);
+  assertId(projectId);
+  return path.join(ROOT, "projects", userId, `${projectId}.mp4`);
+}
+
+export function storageRoot() {
+  return ROOT;
+}
+
 export async function saveBytes(filePath: string, data: Buffer) {
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, data);

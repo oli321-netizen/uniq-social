@@ -9,12 +9,15 @@ export async function GET(req: NextRequest) {
   const userId = await requireUserId();
   if (!userId) return unauthorized();
   const creatorId = req.nextUrl.searchParams.get("creatorId");
+  const projectId = req.nextUrl.searchParams.get("projectId");
 
   const hooks = await prisma.hook.findMany({
     where: {
       userId,
       ...(creatorId ? { creatorId } : {}),
+      ...(projectId ? { projectId } : {}),
     },
+    include: { project: { select: { transcript: true } } },
     orderBy: [{ score: "desc" }, { createdAt: "desc" }],
   });
   return NextResponse.json({ hooks: hooks.map(serializeHook) });

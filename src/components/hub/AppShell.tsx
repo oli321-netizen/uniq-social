@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
-import { Fingerprint, Loader2, LogOut, X, Zap } from "lucide-react";
+import { Loader2, LogOut, X } from "lucide-react";
 import NotificationsMenu from "@/components/hub/NotificationsMenu";
 
 const PACKS = [
@@ -16,14 +16,14 @@ const PACKS = [
   { credits: 1000, price: "£260" },
 ];
 
-const TITLES: { prefix: string; label: string }[] = [
-  { prefix: "/hub/hook-lab", label: "Hook Lab" },
-  { prefix: "/hub/variants", label: "Variants" },
-  { prefix: "/hub/creators", label: "Creators" },
-  { prefix: "/hub/results", label: "Results" },
-  { prefix: "/hub/presets", label: "Presets" },
-  { prefix: "/hub/team", label: "Team" },
-  { prefix: "/hub/settings", label: "Settings" },
+const NAV = [
+  { href: "/hub/hook-lab", label: "Hook Lab" },
+  { href: "/hub/variants", label: "Variants" },
+  { href: "/hub/creators", label: "Creators" },
+  { href: "/hub/results", label: "Results" },
+  { href: "/hub/presets", label: "Presets" },
+  { href: "/hub/team", label: "Team" },
+  { href: "/hub/settings", label: "Settings" },
 ];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
@@ -34,8 +34,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [topUpOpen, setTopUpOpen] = useState(false);
   const [topUpError, setTopUpError] = useState("");
   const [buying, setBuying] = useState<number | null>(null);
-
-  const section = TITLES.find((item) => pathname === item.prefix || pathname.startsWith(`${item.prefix}/`))?.label;
+  const section = NAV.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`))?.label;
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -78,10 +77,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         window.location.href = data.url;
         return;
       }
-      setTopUpError(
-        data.error ||
-          "Top up is unavailable. Set STRIPE_SECRET_KEY on the server, or open Account if you already subscribed."
-      );
+      setTopUpError(data.error || "Top up is unavailable. Set STRIPE_SECRET_KEY on the server, or open Account if you already subscribed.");
     } catch {
       setTopUpError("Could not reach checkout.");
     } finally {
@@ -91,114 +87,89 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   if (status === "loading" || status === "unauthenticated") {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#010313] text-slate-400">
-        <Loader2 className="h-6 w-6 animate-spin text-purple-400" />
+      <div className="surface flex min-h-screen items-center justify-center bg-[#f4efe8] text-[#6d5e53]">
+        <Loader2 className="h-5 w-5 animate-spin" />
         <span className="sr-only">Loading</span>
       </div>
     );
   }
 
   return (
-    <div className="hub-app flex h-screen flex-col overflow-hidden bg-[#010313] text-white">
-      <a
-        href="#hub-main"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-purple-600 focus:px-3 focus:py-2"
-      >
+    <div className="surface flex h-screen bg-[#f4efe8] text-[#2c241c]" style={{ fontFamily: '"DM Sans", "Segoe UI", sans-serif' }}>
+      {/* eslint-disable-next-line @next/next/no-page-custom-font */}
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap" />
+      <a href="#hub-main" className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:bg-white focus:px-3 focus:py-2">
         Skip to content
       </a>
-      <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-white/5 px-3 sm:px-4">
-        <div className="flex min-w-0 items-center gap-3">
-          <Link href="/" className="flex shrink-0 items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-purple-500/20 bg-purple-500/10">
-              <Fingerprint className="h-4 w-4 text-purple-400" />
-            </span>
-            <span className="hidden text-[15px] font-semibold tracking-tight sm:inline">
-              Uniq<span className="text-purple-400">Social</span>
-            </span>
+      <aside className="hidden w-52 shrink-0 flex-col border-r border-[#e4d5c6] bg-[#fffdfb] md:flex">
+        <Link href="/" className="px-4 py-4 text-[18px] font-medium">
+          UniqSocial
+        </Link>
+        <nav className="flex flex-1 flex-col gap-1 px-2">
+          <Link href="/dashboard" className="rounded-md px-3 py-2 text-[15px] text-[#6d5e53] hover:bg-[#f4efe8]">
+            Video processor
           </Link>
-          <Link href="/" className="truncate text-[13px] text-slate-400 transition-colors hover:text-white">
-            Services{section ? ` / ${section}` : ""}
-          </Link>
+          {NAV.map((item) => {
+            const on = pathname === item.href || pathname.startsWith(`${item.href}/`);
+            return (
+              <Link key={item.href} href={item.href} className={`rounded-md px-3 py-2 text-[15px] ${on ? "bg-[#f4efe8] font-medium" : "hover:bg-[#f4efe8]"}`}>
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
+      </aside>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-[#e4d5c6] bg-[#fffdfb] px-3 sm:px-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <Link href="/" className="text-[16px] font-medium md:hidden">UniqSocial</Link>
+            <p className="truncate text-[15px] text-[#6d5e53]">{section || "Services"}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <NotificationsMenu />
+            <span className="rounded-full border border-[#e4d5c6] px-3 py-1 text-[14px]">
+              {credits === null ? "…" : credits.toLocaleString()} credits
+            </span>
+            <button type="button" onClick={() => { setTopUpError(""); setTopUpOpen(true); }} className="rounded-md bg-[#9a3412] px-3 py-1.5 text-[15px] text-[#fffdfb]">
+              Top up
+            </button>
+            <button type="button" onClick={() => signOut({ callbackUrl: "/" })} className="rounded-md p-2 text-[#6d5e53]" aria-label="Sign out">
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
+        </header>
+        <div className="flex gap-2 overflow-x-auto border-b border-[#e4d5c6] px-3 py-2 md:hidden">
+          <Link href="/dashboard" className="shrink-0 text-[15px] text-[#6d5e53]">Video processor</Link>
+          {NAV.map((item) => (
+            <Link key={item.href} href={item.href} className="shrink-0 text-[15px]">{item.label}</Link>
+          ))}
         </div>
-        <div className="flex items-center gap-2">
-          <NotificationsMenu />
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 font-mono text-[12px]">
-            {credits === null ? "…" : credits.toLocaleString()} credits
-          </span>
-          <button
-            type="button"
-            onClick={() => {
-              setTopUpError("");
-              setTopUpOpen(true);
-            }}
-            className="inline-flex items-center gap-1.5 rounded-full border border-purple-500/30 bg-purple-500/10 px-3 py-1 text-[13px] font-medium transition-colors hover:bg-purple-500/20"
-          >
-            <Zap className="h-3.5 w-3.5 text-purple-400" aria-hidden />
-            Top up
-          </button>
-          <button
-            type="button"
-            onClick={() => signOut({ callbackUrl: "/" })}
-            className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-white/5 hover:text-white"
-            aria-label="Sign out"
-          >
-            <LogOut className="h-4 w-4" />
-          </button>
-        </div>
-      </header>
-      <main id="hub-main" className="min-h-0 flex-1 overflow-y-auto">
-        {children}
-      </main>
+        <main id="hub-main" className="min-h-0 flex-1 overflow-y-auto">
+          {children}
+        </main>
+      </div>
 
       {topUpOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <button
-            type="button"
-            aria-label="Close top up"
-            className="absolute inset-0 bg-black/70"
-            onClick={() => setTopUpOpen(false)}
-          />
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="topup-title"
-            className="relative w-full max-w-lg rounded-2xl border border-white/10 bg-[#0c0c18] p-5"
-          >
+          <button type="button" aria-label="Close top up" className="absolute inset-0 bg-[#1c1612]/40" onClick={() => setTopUpOpen(false)} />
+          <div role="dialog" aria-modal="true" aria-labelledby="topup-title" className="relative w-full max-w-lg rounded-md border border-[#e4d5c6] bg-[#fffdfb] p-5">
             <div className="mb-4 flex items-center justify-between">
-              <h2 id="topup-title" className="text-base font-medium">
-                Top up credits
-              </h2>
-              <button
-                type="button"
-                aria-label="Close"
-                onClick={() => setTopUpOpen(false)}
-                className="rounded-md p-1 text-slate-400 hover:text-white"
-              >
-                <X className="h-4 w-4" />
-              </button>
+              <h2 id="topup-title" className="text-[18px] font-medium">Top up credits</h2>
+              <button type="button" aria-label="Close" onClick={() => setTopUpOpen(false)} className="rounded-md p-1"><X className="h-4 w-4" /></button>
             </div>
-            <p className="mb-4 text-[13px] text-slate-400">
+            <p className="mb-4 text-[15px] text-[#6d5e53]">
               One credit is used each time the existing processor renders a video. Checkout uses the Stripe packs already configured for this app.
             </p>
             {topUpError && (
-              <p className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-[13px] text-red-300" role="alert">
-                {topUpError}{" "}
-                <Link href="/account" className="underline">
-                  Open account
-                </Link>
+              <p className="mb-3 rounded-md border border-[#e4d5c6] bg-[#fff4ef] px-3 py-2 text-[15px]" role="alert">
+                {topUpError} <Link href="/account" className="underline">Open account</Link>
               </p>
             )}
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {PACKS.map((pack) => (
-                <button
-                  key={pack.credits}
-                  type="button"
-                  disabled={buying !== null}
-                  onClick={() => buy(pack.credits)}
-                  className="rounded-lg border border-white/10 bg-[#010313] px-3 py-3 text-left transition-colors hover:border-purple-500/40 disabled:opacity-50"
-                >
-                  <span className="block font-mono text-sm">{pack.credits.toLocaleString()}</span>
-                  <span className="text-[12px] text-slate-400">{buying === pack.credits ? "Opening…" : pack.price}</span>
+                <button key={pack.credits} type="button" disabled={buying !== null} onClick={() => buy(pack.credits)} className="rounded-md border border-[#e4d5c6] px-3 py-3 text-left disabled:opacity-50">
+                  <span className="block text-[15px]">{pack.credits.toLocaleString()}</span>
+                  <span className="text-[14px] text-[#6d5e53]">{buying === pack.credits ? "Opening…" : pack.price}</span>
                 </button>
               ))}
             </div>
