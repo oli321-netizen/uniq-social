@@ -7,7 +7,7 @@ import type { CreatorDTO, HookDTO } from "@/lib/serialize";
 import { SECTIONS } from "@/components/hub/SectionNav";
 import AssetBin, { type RailTab } from "@/components/hub/editor/AssetBin";
 import Inspector from "@/components/hub/editor/Inspector";
-import EditorTimeline, { type FilmstripInfo } from "@/components/hub/editor/Timeline";
+import EditorTimeline, { type FilmstripInfo, type SelKind } from "@/components/hub/editor/Timeline";
 import { DEFAULT_STYLE, type CaptionStyle } from "@/lib/caption-ass";
 import { FONT_FACE_CSS, cssFamily } from "@/lib/caption-fonts";
 import { breakCueLines, buildCues, type CaptionCue } from "@/lib/caption-cues";
@@ -21,6 +21,7 @@ import {
   newId,
   playDuration,
   rangesForIndexes,
+  setSegmentSpeed,
   silenceRanges,
   sourceAt,
   splitAt,
@@ -81,6 +82,13 @@ export default function HookLab() {
   const [snap, setSnap] = useState(true);
   const [selectedClip, setSelectedClip] = useState<string | null>(null);
   const [selectedCue, setSelectedCue] = useState<string | null>(null);
+  const [selKind, setSelKind] = useState<SelKind | null>(null);
+  const [layerId, setLayerId] = useState<string | null>(null);
+  const [clipTrack, setClipTrack] = useState<"video" | "audio">("video");
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const [popover, setPopover] = useState<{ kind: "speed" | "volume"; x: number; y: number } | null>(null);
+  const [focus, setFocus] = useState("");
+  const [focusToken, setFocusToken] = useState(0);
   const [selectedWord, setSelectedWord] = useState<number | null>(null);
   const [editingWord, setEditingWord] = useState<number | null>(null);
   const [filmstrip, setFilmstrip] = useState<FilmstripInfo>(null);
@@ -100,6 +108,8 @@ export default function HookLab() {
   const playingRef = useRef(false);
   const holdPlay = useRef(false);
   const projectRef = useRef<Project | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetch("/api/creators")
@@ -158,6 +168,27 @@ export default function HookLab() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  useEffect(() => {
+    if (!menu && !popover) return;
+    function down(event: PointerEvent) {
+      const target = event.target as Node | null;
+      if (target && (menuRef.current?.contains(target) || popRef.current?.contains(target))) return;
+      setMenu(null);
+      setPopover(null);
+    }
+    function onEscape(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      setMenu(null);
+      setPopover(null);
+    }
+    window.addEventListener("pointerdown", down);
+    window.addEventListener("keydown", onEscape);
+    return () => {
+      window.removeEventListener("pointerdown", down);
+      window.removeEventListener("keydown", onEscape);
+    };
+  }, [menu, popover]);
 
   useEffect(() => {
     if (!playing) return;
@@ -225,7 +256,13 @@ export default function HookLab() {
     setTime(0);
     timeRef.current = 0;
     setSelectedClip(next.segments[0]?.id || null);
+    setSelKind(next.segments[0] ? "clip" : null);
+    setLayerId(null);
+    setClipTrack("video");
     setSelectedCue(null);
+    setMenu(null);
+    setPopover(null);
+    setFocus(next.segments[0] ? "basic" : "");
     setSelectedWord(null);
     setDownloadHref("");
     setExportProgress(null);
@@ -353,6 +390,46 @@ export default function HookLab() {
     setDoc(next);
   }
 
+  function previewEditor(editor: EditorDoc) {
+    const next = { ...docRef.current, editor };
+    docRef.current = next;
+    setDoc(next);
+  }
+
+  function previewCaptionStyle(style: CaptionStyle) {
+    const next = { ...docRef.current, style };
+    docRef.current = next;
+    setDoc(next);
+  }
+
+  function trimLayer(kind: "overlay" | "audio" | "text", id: string, start: number, end: number) {
+    const editor = docRef.current.editor;
+    const safeStart = Math.max(0, start);
+    const safeEnd = Math.max(safeStart + 0.12, end);
+    if (kind === "text") {
+      previewEditor({
+        ...editor,
+        texts: editor.texts.map((item) => (item.id === id ? { ...item, start: safeStart, end: safeEnd } : item)),
+      });
+      return;
+    }
+    const key = kind === "overlay" ? "overlays" : "audios";
+    previewEditor({
+      ...editor,
+      [key]: editor[key].map((layer) => {
+        if (layer.id !== id) return layer;
+        const oldEnd = layer.start + Math.max(0.12, layer.out - layer.in);
+        const startMoved = Math.abs(safeStart - layer.start) > 0.0001;
+        const endMoved = Math.abs(safeEnd - oldEnd) > 0.0001;
+        if (startMoved && !endMoved) {
+          const delta = safeStart - layer.start;
+          return { ...layer, start: safeStart, in: Math.max(0, layer.in + delta) };
+        }
+        return { ...layer, out: layer.in + Math.max(0.12, safeEnd - layer.start) };
+      }),
+    });
+  }
+
   function seek(composed: number) {
     const list = docRef.current.segments;
     if (list.length === 0) return;
@@ -475,24 +552,276 @@ export default function HookLab() {
     }
   }
 
+  function deselect() {
+    setSelKind(null);
+    setSelectedClip(null);
+    setSelectedCue(null);
+    setLayerId(null);
+    setMenu(null);
+    setPopover(null);
+    setFocus("");
+  }
+
+  function activate(kind: SelKind, id: string, track: "video" | "audio", x: number, y: number, context: boolean) {
+    setPopover(null);
+    setSelKind(kind);
+    setClipTrack(track);
+    if (kind === "clip") {
+      setSelectedClip(id);
+      setSelectedCue(null);
+      setLayerId(null);
+      setFocus(track === "audio" ? "volume" : "basic");
+      setFocusToken((token) => token + 1);
+    } else if (kind === "cue") {
+      setSelectedCue(id);
+      setSelectedClip(null);
+      setLayerId(null);
+      setFocus("");
+    } else {
+      setLayerId(id);
+      setSelectedClip(null);
+      setSelectedCue(null);
+      setFocus(kind === "audio" ? "volume" : "");
+      setFocusToken((token) => token + 1);
+    }
+    if (context) {
+      const left = Math.max(8, Math.min(x, window.innerWidth - 196));
+      const top = Math.max(8, Math.min(y, window.innerHeight - 380));
+      setMenu({ x: left, y: top });
+    } else setMenu(null);
+    if (kind === "clip") {
+      const index = docRef.current.segments.findIndex((seg) => seg.id === id);
+      const seg = docRef.current.segments[index];
+      if (seg) {
+        const start = composedStart(docRef.current.segments, index);
+        const end = start + playDuration(seg);
+        if (timeRef.current < start || timeRef.current >= end - 0.01) seek(Math.min(start + 0.02, Math.max(start, end - 0.04)));
+      }
+    } else if (kind === "cue") {
+      const cue = docRef.current.cues.find((item) => item.id === id);
+      if (cue && (timeRef.current < cue.start || timeRef.current >= cue.end)) seek(Math.min(cue.end - 0.02, cue.start + 0.02));
+    }
+  }
+
+  function syncActiveLook(seekFrame: boolean) {
+    const video = videoRef.current;
+    const list = docRef.current.segments;
+    if (!video || list.length === 0) return;
+    const pos = sourceAt(list, timeRef.current);
+    const seg = list[pos.index];
+    if (!seg || seg.kind === "image") return;
+    video.volume = Math.max(0, Math.min(1, seg.volume ?? 1));
+    if (!isSpecial(seg)) video.playbackRate = clampSpeed(seg.speed);
+    if (seekFrame && !playingRef.current) {
+      const cap = Math.max(seg.start, seg.end - 0.02);
+      const target = Math.min(cap, Math.max(seg.start, shownTime(seg, pos.source)));
+      if (Math.abs((video.currentTime || 0) - target) > 0.02) video.currentTime = target;
+    }
+  }
+
+  function patchClip(partial: Partial<Segment>, seekFrame = false) {
+    if (!selectedClip) return;
+    const segments = docRef.current.segments.map((seg) => (seg.id === selectedClip ? { ...seg, ...partial } : seg));
+    applyChange({ segments });
+    syncActiveLook(seekFrame);
+  }
+
+  function selectedSegment() {
+    return docRef.current.segments.find((seg) => seg.id === selectedClip) || null;
+  }
+
+  function mirror() {
+    const clip = selectedSegment();
+    if (!clip) return;
+    patchClip({ flipX: !clip.flipX });
+  }
+
+  function flipV() {
+    const clip = selectedSegment();
+    if (!clip) return;
+    patchClip({ flipY: !clip.flipY });
+  }
+
+  function rotate90() {
+    const clip = selectedSegment();
+    if (!clip) return;
+    const turned = ((((clip.rotate || 0) + 90) % 360) + 360) % 360;
+    patchClip({ rotate: turned > 180 ? turned - 360 : turned });
+  }
+
+  function toggleCrop() {
+    const clip = selectedSegment();
+    if (!clip) return;
+    patchClip({ crop: (clip.crop || 0) > 0 ? 0 : 0.1 });
+  }
+
+  function toggleReverse() {
+    const clip = selectedSegment();
+    if (!clip) return;
+    patchClip({ reverse: !clip.reverse }, true);
+  }
+
+  function toggleFreeze() {
+    const clip = selectedSegment();
+    if (!clip) return;
+    patchClip({ freeze: !clip.freeze }, true);
+  }
+
+  function toggleMute() {
+    if (selKind === "audio" && layerId) {
+      const editor = docRef.current.editor;
+      const audios = editor.audios.map((layer) => (layer.id === layerId ? { ...layer, volume: (layer.volume ?? 1) <= 0 ? 1 : 0 } : layer));
+      applyChange({ editor: { ...editor, audios } });
+      syncMusic(timeRef.current);
+      return;
+    }
+    const clip = selectedSegment();
+    if (!clip) return;
+    patchClip({ volume: (clip.volume ?? 1) <= 0 ? 1 : 0 });
+  }
+
+  function previewSpeed(value: number) {
+    if (!selectedClip) return;
+    beginGesture();
+    previewSegments(setSegmentSpeed(docRef.current.segments, selectedClip, value));
+    syncActiveLook(false);
+  }
+
+  function previewVolume(value: number) {
+    beginGesture();
+    if (selKind === "audio" && layerId) {
+      const editor = docRef.current.editor;
+      const audios = editor.audios.map((layer) => (layer.id === layerId ? { ...layer, volume: value } : layer));
+      previewEditor({ ...editor, audios });
+      syncMusic(timeRef.current);
+      return;
+    }
+    if (!selectedClip) return;
+    previewSegments(docRef.current.segments.map((seg) => (seg.id === selectedClip ? { ...seg, volume: value } : seg)));
+    syncActiveLook(false);
+  }
+
+  function openPopover(kind: "speed" | "volume", anchor: { left: number; top: number; bottom: number }) {
+    const width = 224;
+    const height = 78;
+    let top = anchor.top - height - 8;
+    if (top < 8) top = anchor.bottom + 8;
+    const left = Math.max(8, Math.min(anchor.left, window.innerWidth - width - 8));
+    setMenu(null);
+    setPopover({ kind, x: left, y: top });
+    setFocus(kind);
+    setFocusToken((token) => token + 1);
+  }
+
   function doSplit() {
-    const next = splitAt(docRef.current.segments, timeRef.current);
-    if (next.length === docRef.current.segments.length) {
+    const current = docRef.current;
+    const t = timeRef.current;
+    if (selKind === "cue" && selectedCue) {
+      const cue = current.cues.find((item) => item.id === selectedCue);
+      if (cue && t > cue.start + 0.04 && t < cue.end - 0.04) {
+        const leftWords: CaptionCue["words"] = [];
+        const rightWords: CaptionCue["words"] = [];
+        for (const word of cue.words) {
+          if ((word.start + word.end) / 2 < t) leftWords.push(word);
+          else rightWords.push(word);
+        }
+        if (leftWords.length > 0 && rightWords.length > 0) {
+          const left = { ...cue, end: t, words: leftWords };
+          const right = { ...cue, id: newId(), start: t, words: rightWords };
+          const cues: CaptionCue[] = [];
+          for (const item of current.cues) {
+            if (item.id === cue.id) cues.push(left, right);
+            else cues.push(item);
+          }
+          commit({ ...current, cues });
+          setSelectedCue(right.id);
+          return;
+        }
+      }
+    }
+    if ((selKind === "overlay" || selKind === "audio") && layerId) {
+      const key = selKind === "overlay" ? "overlays" : "audios";
+      const layer = current.editor[key].find((item) => item.id === layerId);
+      if (layer) {
+        const dur = Math.max(0.12, layer.out - layer.in);
+        const end = layer.start + dur;
+        if (t > layer.start + 0.12 && t < end - 0.12) {
+          const layers = [];
+          let copyId = "";
+          for (const item of current.editor[key]) {
+            if (item.id !== layer.id) {
+              layers.push(item);
+              continue;
+            }
+            const leftSpan = t - layer.start;
+            layers.push({ ...layer, out: layer.in + leftSpan });
+            copyId = newId();
+            layers.push({ ...layer, id: copyId, start: t, in: layer.in + leftSpan });
+          }
+          if (layers.length > 4) {
+            setError(key === "overlays" ? "You can add up to 4 overlays." : "You can add up to 4 audio clips.");
+            return;
+          }
+          applyChange({ editor: { ...current.editor, [key]: layers } });
+          setLayerId(copyId);
+          return;
+        }
+      }
+    }
+    if (selKind === "text" && layerId) {
+      const layer = current.editor.texts.find((item) => item.id === layerId);
+      if (layer && t > layer.start + 0.12 && t < layer.end - 0.12) {
+        if (current.editor.texts.length >= 12) {
+          setError("You can add up to 12 text clips.");
+          return;
+        }
+        const texts = [];
+        let copyId = "";
+        for (const item of current.editor.texts) {
+          if (item.id !== layer.id) {
+            texts.push(item);
+            continue;
+          }
+          texts.push({ ...layer, end: t });
+          copyId = newId();
+          texts.push({ ...layer, id: copyId, start: t });
+        }
+        applyChange({ editor: { ...current.editor, texts } });
+        setLayerId(copyId);
+        return;
+      }
+    }
+    const next = splitAt(current.segments, t);
+    if (next.length === current.segments.length) {
       setError("Move the playhead inside a clip before splitting.");
       return;
     }
-    const cues = buildCues(docRef.current.words, next);
-    commit({ ...docRef.current, segments: next, cues });
+    commit({ ...current, segments: next, cues: buildCues(current.words, next) });
   }
 
   function rippleDelete() {
     const current = docRef.current;
-    if (selectedCue) {
+    if (selKind === "cue" && selectedCue) {
       commit({ ...current, cues: current.cues.filter((cue) => cue.id !== selectedCue) });
-      setSelectedCue(null);
+      deselect();
       return;
     }
-    if (selectedClip) {
+    if (selKind === "overlay" && layerId) {
+      applyChange({ editor: { ...current.editor, overlays: current.editor.overlays.filter((layer) => layer.id !== layerId) } });
+      deselect();
+      return;
+    }
+    if (selKind === "audio" && layerId) {
+      applyChange({ editor: { ...current.editor, audios: current.editor.audios.filter((layer) => layer.id !== layerId) } });
+      deselect();
+      return;
+    }
+    if (selKind === "text" && layerId) {
+      applyChange({ editor: { ...current.editor, texts: current.editor.texts.filter((layer) => layer.id !== layerId) } });
+      deselect();
+      return;
+    }
+    if (selectedClip && (selKind === "clip" || selKind === null)) {
       if (current.segments.length < 2) {
         setError("Keep at least one clip.");
         return;
@@ -500,9 +829,94 @@ export default function HookLab() {
       const segments = current.segments.filter((seg) => seg.id !== selectedClip);
       commit({ ...current, segments, cues: buildCues(current.words, segments) });
       setSelectedClip(segments[0]?.id || null);
+      setSelKind(segments[0] ? "clip" : null);
+      setClipTrack("video");
+      setLayerId(null);
+      setSelectedCue(null);
       return;
     }
     if (selectedWord !== null) deleteWords([selectedWord]);
+  }
+
+  function duplicate() {
+    const current = docRef.current;
+    if (selKind === "clip" && selectedClip) {
+      if (current.segments.length >= 80) {
+        setError("You can add up to 80 clips.");
+        return;
+      }
+      const index = current.segments.findIndex((seg) => seg.id === selectedClip);
+      if (index < 0) return;
+      const source = current.segments[index];
+      const copy: Segment = {
+        ...source,
+        id: newId(),
+        keyframes: source.keyframes ? source.keyframes.map((key) => ({ ...key })) : undefined,
+      };
+      const segments = current.segments.slice();
+      segments.splice(index + 1, 0, copy);
+      commit({ ...current, segments, cues: buildCues(current.words, segments) });
+      setSelectedClip(copy.id);
+      setSelKind("clip");
+      return;
+    }
+    if (selKind === "cue" && selectedCue) {
+      const cue = current.cues.find((item) => item.id === selectedCue);
+      if (!cue) return;
+      const span = Math.max(0.12, cue.end - cue.start);
+      const total = composedDuration(current.segments);
+      let start = cue.end;
+      if (start + span > total + 0.001) start = Math.min(cue.start + 0.25, Math.max(0, total - span));
+      const delta = start - cue.start;
+      const copy = {
+        ...cue,
+        id: newId(),
+        start,
+        end: start + span,
+        words: cue.words.map((word) => ({ ...word, start: word.start + delta, end: word.end + delta })),
+      };
+      commit({ ...current, cues: [...current.cues, copy] });
+      setSelectedCue(copy.id);
+      return;
+    }
+    if (selKind === "overlay" && layerId) {
+      const layer = current.editor.overlays.find((item) => item.id === layerId);
+      if (!layer) return;
+      if (current.editor.overlays.length >= 4) {
+        setError("You can add up to 4 overlays.");
+        return;
+      }
+      const dur = Math.max(0.12, layer.out - layer.in);
+      const copy = { ...layer, id: newId(), start: layer.start + dur };
+      applyChange({ editor: { ...current.editor, overlays: [...current.editor.overlays, copy] } });
+      setLayerId(copy.id);
+      return;
+    }
+    if (selKind === "audio" && layerId) {
+      const layer = current.editor.audios.find((item) => item.id === layerId);
+      if (!layer) return;
+      if (current.editor.audios.length >= 4) {
+        setError("You can add up to 4 audio clips.");
+        return;
+      }
+      const dur = Math.max(0.12, layer.out - layer.in);
+      const copy = { ...layer, id: newId(), start: layer.start + dur };
+      applyChange({ editor: { ...current.editor, audios: [...current.editor.audios, copy] } });
+      setLayerId(copy.id);
+      return;
+    }
+    if (selKind === "text" && layerId) {
+      const layer = current.editor.texts.find((item) => item.id === layerId);
+      if (!layer) return;
+      if (current.editor.texts.length >= 12) {
+        setError("You can add up to 12 text clips.");
+        return;
+      }
+      const span = Math.max(0.12, layer.end - layer.start);
+      const copy = { ...layer, id: newId(), start: layer.start + span, end: layer.end + span };
+      applyChange({ editor: { ...current.editor, texts: [...current.editor.texts, copy] } });
+      setLayerId(copy.id);
+    }
   }
 
   function deleteWords(indexes: number[]) {
@@ -560,6 +974,11 @@ export default function HookLab() {
       event.preventDefault();
       if (event.shiftKey) redo();
       else undo();
+      return;
+    }
+    if (meta && event.key.toLowerCase() === "d") {
+      event.preventDefault();
+      duplicate();
       return;
     }
     if (event.key === " ") {
@@ -798,12 +1217,63 @@ export default function HookLab() {
     clipPath: active?.crop ? `inset(${active.crop * 100}%)` : undefined,
   };
   const activeCue = doc.cues.find((cue) => time >= cue.start && time < cue.end) || null;
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !active || active.kind === "image") return;
+    video.volume = Math.max(0, Math.min(1, active.volume ?? 1));
+    if (!isSpecial(active)) video.playbackRate = clampSpeed(active.speed);
+    if (playingRef.current) return;
+    const list = docRef.current.segments;
+    const pos = sourceAt(list, timeRef.current);
+    const seg = list[pos.index];
+    if (!seg) return;
+    const cap = Math.max(seg.start, seg.end - 0.02);
+    const target = Math.min(cap, Math.max(seg.start, shownTime(seg, pos.source)));
+    if (Math.abs((video.currentTime || 0) - target) > 0.04) video.currentTime = target;
+  }, [active]);
   const clip = doc.segments.find((seg) => seg.id === selectedClip) || null;
+  const selectedCueItem = doc.cues.find((cue) => cue.id === selectedCue) || null;
+  const audioLayer = selKind === "audio" ? doc.editor.audios.find((layer) => layer.id === layerId) || null : null;
+  const overlayLayer = selKind === "overlay" ? doc.editor.overlays.find((layer) => layer.id === layerId) || null : null;
+  const textLayer = selKind === "text" ? doc.editor.texts.find((layer) => layer.id === layerId) || null : null;
   const clipNames = doc.segments.map((seg) => {
     if (!seg.assetId) return project?.fileName || "Video";
     return doc.editor.assets.find((asset) => asset.id === seg.assetId)?.name || "Clip";
   });
   const status = error || notice || phase || saveLabel;
+  const clipIndex = doc.segments.findIndex((seg) => seg.id === selectedClip);
+  const volumeValue = selKind === "audio" ? audioLayer?.volume ?? 1 : clip?.volume ?? 1;
+  const menuRows: { label: string; pressed?: boolean; run: () => void }[] = [];
+  if (menu && selKind === "clip" && clip) {
+    menuRows.push(
+      { label: "Split", run: doSplit },
+      { label: "Delete", run: rippleDelete },
+      { label: "Duplicate", run: duplicate },
+      { label: "Mirror", pressed: Boolean(clip.flipX), run: mirror },
+      { label: "Flip V", pressed: Boolean(clip.flipY), run: flipV },
+      { label: "Rotate 90°", pressed: Boolean(clip.rotate), run: rotate90 },
+      { label: "Crop", pressed: (clip.crop || 0) > 0, run: toggleCrop },
+      { label: "Reverse", pressed: Boolean(clip.reverse), run: toggleReverse },
+      { label: "Freeze frame", pressed: Boolean(clip.freeze), run: toggleFreeze },
+      { label: "Speed", run: () => openPopover("speed", { left: menu.x, top: menu.y, bottom: menu.y + 32 }) },
+      { label: "Volume", run: () => openPopover("volume", { left: menu.x, top: menu.y, bottom: menu.y + 32 }) },
+      { label: "Mute", pressed: (clip.volume ?? 1) <= 0, run: toggleMute }
+    );
+  } else if (menu && selKind === "audio") {
+    menuRows.push(
+      { label: "Split", run: doSplit },
+      { label: "Delete", run: rippleDelete },
+      { label: "Duplicate", run: duplicate },
+      { label: "Volume", run: () => openPopover("volume", { left: menu.x, top: menu.y, bottom: menu.y + 32 }) },
+      { label: "Mute", pressed: (audioLayer?.volume ?? 1) <= 0, run: toggleMute }
+    );
+  } else if (menu && selKind) {
+    menuRows.push(
+      { label: "Split", run: doSplit },
+      { label: "Delete", run: rippleDelete },
+      { label: "Duplicate", run: duplicate }
+    );
+  }
 
   function pickVideo(replace: boolean) {
     setReplacing(replace);
@@ -958,6 +1428,7 @@ export default function HookLab() {
                         src={videoSrc}
                         className={`h-full w-full ${fit === "cover" ? "object-cover" : "object-contain"}`}
                         style={frameStyle}
+                        data-look={`flipx:${active?.flipX ? 1 : 0};flipy:${active?.flipY ? 1 : 0};rot:${active?.rotate || 0};crop:${active?.crop || 0};rev:${active?.reverse ? 1 : 0};freeze:${active?.freeze ? 1 : 0}`}
                         playsInline
                         onTimeUpdate={onTimeUpdate}
                         onLoadedData={() => {
@@ -1040,12 +1511,24 @@ export default function HookLab() {
           </div>
         </section>
         <Inspector
+          mode={selKind || "none"}
+          heading={clipIndex >= 0 ? clipNames[clipIndex] : "Clip"}
+          focus={focus}
+          focusToken={focusToken}
           clip={clip}
           segments={doc.segments}
           editor={doc.editor}
           style={doc.style}
+          cue={selectedCueItem}
+          cues={doc.cues}
+          audioLayer={audioLayer}
+          overlayLayer={overlayLayer}
+          textLayer={textLayer}
           onChange={applyChange}
           onPreview={previewSegments}
+          onPreviewCues={previewCues}
+          onPreviewStyle={previewCaptionStyle}
+          onPreviewEditor={previewEditor}
           onGestureStart={beginGesture}
           onGestureEnd={endGesture}
           onNotice={setNotice}
@@ -1063,6 +1546,10 @@ export default function HookLab() {
         filmstrip={filmstrip}
         selectedClip={selectedClip}
         selectedCue={selectedCue}
+        selKind={selKind}
+        layerId={layerId}
+        clipTrack={clipTrack}
+        layerMuted={(audioLayer?.volume ?? 1) <= 0}
         clipNames={clipNames}
         overlays={doc.editor.overlays.map((layer) => ({ id: layer.id, start: layer.start, end: layer.start + Math.max(0.12, layer.out - layer.in), label: "Overlay" }))}
         extraAudio={doc.editor.audios.map((layer) => ({ id: layer.id, start: layer.start, end: layer.start + Math.max(0.12, layer.out - layer.in), label: "Audio" }))}
@@ -1071,18 +1558,108 @@ export default function HookLab() {
         onZoom={setZoom}
         onSnap={setSnap}
         onSeek={seek}
-        onSelectClip={setSelectedClip}
-        onSelectCue={setSelectedCue}
+        onActivate={activate}
+        onDeselect={deselect}
         onSegments={previewSegments}
         onCues={previewCues}
+        onTrimLayer={trimLayer}
         onGestureStart={beginGesture}
         onGestureEnd={endGesture}
         onSplit={doSplit}
         onDelete={rippleDelete}
+        onDuplicate={duplicate}
+        onMirror={mirror}
+        onFlipV={flipV}
+        onRotate={rotate90}
+        onCrop={toggleCrop}
+        onReverse={toggleReverse}
+        onFreeze={toggleFreeze}
+        onMute={toggleMute}
+        onSpeed={(rect) => openPopover("speed", rect)}
+        onVolume={(rect) => openPopover("volume", rect)}
         onUndo={undo}
         onRedo={redo}
         marks={doc.editor.beats}
       />
+      {menu && (
+        <div
+          ref={menuRef}
+          role="menu"
+          aria-label="Clip menu"
+          className="fixed z-50 max-h-[320px] w-44 overflow-y-auto rounded-md border border-[#2c3038] bg-[#1a1d24] py-1 shadow-xl"
+          style={{ left: menu.x, top: menu.y }}
+        >
+          {menuRows.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setMenu(null);
+                item.run();
+              }}
+              className="flex h-8 w-full items-center gap-2 px-3 text-left text-[12px] text-[#e8e8e8] hover:bg-white/10"
+            >
+              <span className="w-3 shrink-0 text-[#22d3ee]">{item.pressed ? "✓" : ""}</span>
+              <span className="truncate">{item.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {popover && (
+        <div
+          ref={popRef}
+          role="dialog"
+          aria-label={popover.kind === "speed" ? "Speed" : "Volume"}
+          className="fixed z-50 w-56 rounded-md border border-[#2c3038] bg-[#1a1d24] p-3 shadow-xl"
+          style={{ left: popover.x, top: popover.y }}
+        >
+          {popover.kind === "speed" ? (
+            <label className="block text-[11px] text-[#b7bcc4]">
+              <span className="mb-1 flex items-center justify-between gap-2">
+                <span>Speed</span>
+                <span className="tabular-nums text-[#e8e8e8]">{clampSpeed(clip?.speed).toFixed(2)}×</span>
+              </span>
+              <input
+                aria-label="Speed"
+                type="range"
+                min={0.25}
+                max={4}
+                step={0.05}
+                value={clampSpeed(clip?.speed)}
+                onPointerDown={beginGesture}
+                onChange={(event) => previewSpeed(Number(event.target.value))}
+                onPointerUp={() => {
+                  endGesture("clips");
+                  syncActiveLook(true);
+                }}
+                onBlur={() => endGesture("clips")}
+                className="h-1 w-full accent-[#22d3ee]"
+              />
+            </label>
+          ) : (
+            <label className="block text-[11px] text-[#b7bcc4]">
+              <span className="mb-1 flex items-center justify-between gap-2">
+                <span>Volume</span>
+                <span className="tabular-nums text-[#e8e8e8]">{Math.round(volumeValue * 100)}%</span>
+              </span>
+              <input
+                aria-label="Volume"
+                type="range"
+                min={0}
+                max={1}
+                step={0.01}
+                value={volumeValue}
+                onPointerDown={beginGesture}
+                onChange={(event) => previewVolume(Number(event.target.value))}
+                onPointerUp={() => endGesture("clips")}
+                onBlur={() => endGesture("clips")}
+                className="h-1 w-full accent-[#22d3ee]"
+              />
+            </label>
+          )}
+        </div>
+      )}
     </div>
   );
 

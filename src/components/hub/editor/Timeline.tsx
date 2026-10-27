@@ -1,6 +1,6 @@
 "use client";
 
-import { PointerEvent as ReactPointerEvent, useEffect, useRef, useState, type ReactNode } from "react";
+import { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, useEffect, useRef, useState, type ReactNode } from "react";
 import { Magnet, Redo2, Scissors, Trash2, Undo2, ZoomIn, ZoomOut } from "lucide-react";
 import { moveCue, resizeCue, type CaptionCue } from "@/lib/caption-cues";
 import {
@@ -15,6 +15,7 @@ import {
 
 export type FilmstripInfo = { url: string; frames: number; interval: number } | null;
 export type TimelineSpan = { id: string; start: number; end: number; label: string };
+export type SelKind = "clip" | "audio" | "overlay" | "cue" | "text";
 
 type Props = {
   segments: Segment[];
@@ -27,6 +28,10 @@ type Props = {
   filmstrip: FilmstripInfo;
   selectedClip: string | null;
   selectedCue: string | null;
+  selKind: SelKind | null;
+  layerId: string | null;
+  clipTrack: "video" | "audio";
+  layerMuted?: boolean;
   clipNames?: string[];
   overlays?: TimelineSpan[];
   extraAudio?: TimelineSpan[];
@@ -35,14 +40,25 @@ type Props = {
   onZoom: (zoom: number) => void;
   onSnap: (snap: boolean) => void;
   onSeek: (time: number) => void;
-  onSelectClip: (id: string | null) => void;
-  onSelectCue: (id: string | null) => void;
+  onActivate: (kind: SelKind, id: string, track: "video" | "audio", x: number, y: number, context: boolean) => void;
+  onDeselect: () => void;
   onSegments: (segments: Segment[]) => void;
   onCues: (cues: CaptionCue[]) => void;
+  onTrimLayer: (kind: "overlay" | "audio" | "text", id: string, start: number, end: number) => void;
   onGestureStart: () => void;
   onGestureEnd: (kind: "clips" | "cues") => void;
   onSplit: () => void;
   onDelete: () => void;
+  onDuplicate: () => void;
+  onMirror: () => void;
+  onFlipV: () => void;
+  onRotate: () => void;
+  onCrop: () => void;
+  onReverse: () => void;
+  onFreeze: () => void;
+  onMute: () => void;
+  onSpeed: (rect: DOMRect) => void;
+  onVolume: (rect: DOMRect) => void;
   onUndo: () => void;
   onRedo: () => void;
   marks?: number[];
@@ -60,6 +76,7 @@ export default function EditorTimeline(props: Props) {
   const overlays = props.overlays || [];
   const texts = props.texts || [];
   const extraAudio = props.extraAudio || [];
+  const selectedSeg = props.segments.find((seg) => seg.id === props.selectedClip) || null;
 
   useEffect(() => {
     const node = scroller.current;
@@ -102,6 +119,16 @@ export default function EditorTimeline(props: Props) {
     props.onSeek(Math.max(0, Math.min(duration, x / props.zoom)));
   }
 
+  function activate(event: ReactPointerEvent, kind: SelKind, id: string, track: "video" | "audio") {
+    props.onActivate(kind, id, track, event.clientX, event.clientY, false);
+  }
+
+  function context(event: ReactPointerEvent | ReactMouseEvent, kind: SelKind, id: string, track: "video" | "audio") {
+    event.preventDefault();
+    event.stopPropagation();
+    props.onActivate(kind, id, track, event.clientX, event.clientY, true);
+  }
+
   function trim(event: ReactPointerEvent<HTMLButtonElement>, index: number, edge: "start" | "end") {
     event.preventDefault();
     event.stopPropagation();
@@ -127,6 +154,22 @@ export default function EditorTimeline(props: Props) {
     listen(move, () => props.onGestureEnd("clips"));
   }
 
+  function trimSpan(event: ReactPointerEvent<HTMLButtonElement>, span: TimelineSpan, kind: "overlay" | "audio" | "text", edge: "start" | "end") {
+    event.preventDefault();
+    event.stopPropagation();
+    props.onGestureStart();
+    const originX = event.clientX;
+    const move = (ev: PointerEvent) => {
+      const delta = (ev.clientX - originX) / props.zoom;
+      let start = span.start;
+      let end = span.end;
+      if (edge === "start") start = Math.min(span.end - 0.12, Math.max(0, span.start + delta));
+      else end = Math.max(span.start + 0.12, span.end + delta);
+      props.onTrimLayer(kind, span.id, start, end);
+    };
+    listen(move, () => props.onGestureEnd("clips"));
+  }
+
   function dragClip(event: ReactPointerEvent<HTMLDivElement>, index: number) {
     if (event.button !== 0) return;
     props.onGestureStart();
@@ -137,7 +180,10 @@ export default function EditorTimeline(props: Props) {
     };
     const up = (ev: PointerEvent) => {
       window.removeEventListener("pointermove", move);
-      if (!moved) return;
+      if (!moved) {
+        props.onGestureEnd("clips");
+        return;
+      }
       const node = scroller.current;
       if (!node) return;
       const x = ev.clientX - node.getBoundingClientRect().left + node.scrollLeft;
@@ -198,23 +244,93 @@ export default function EditorTimeline(props: Props) {
   });
   const tick = props.zoom < 48 ? 5 : props.zoom < 90 ? 2 : 1;
   const iconBtn = "flex h-7 w-7 shrink-0 items-center justify-center rounded text-[#c8ccd2] hover:bg-white/10 disabled:opacity-30";
+  const toolBtn = "h-7 shrink-0 whitespace-nowrap rounded px-2 text-[11px] text-[#e8e8e8] hover:bg-white/10";
+  const toolOn = "h-7 shrink-0 whitespace-nowrap rounded bg-white/10 px-2 text-[11px] text-[#22d3ee]";
+  const videoOn = props.selKind === "clip";
+  const muteOn = videoOn ? (selectedSeg?.volume ?? 1) <= 0 : Boolean(props.layerMuted);
+
+  function tool(label: string, onClick: () => void, pressed = false, title?: string) {
+    return (
+      <button key={label} type="button" title={title || label} aria-pressed={pressed} onClick={onClick} className={pressed ? toolOn : toolBtn}>
+        {label}
+      </button>
+    );
+  }
+
+  function rectTool(label: string, open: (rect: DOMRect) => void) {
+    return (
+      <button
+        key={label}
+        type="button"
+        onClick={(event) => open(event.currentTarget.getBoundingClientRect())}
+        className={toolBtn}
+      >
+        {label}
+      </button>
+    );
+  }
+
+  const tools = !props.selKind ? null : props.selKind === "clip" ? (
+    <>
+      {tool("Split", props.onSplit)}
+      {tool("Delete", props.onDelete)}
+      {tool("Duplicate", props.onDuplicate)}
+      {tool("Mirror", props.onMirror, Boolean(selectedSeg?.flipX), "Flip horizontal")}
+      {tool("Flip V", props.onFlipV, Boolean(selectedSeg?.flipY), "Flip vertical")}
+      {tool("Rotate 90°", props.onRotate, Boolean(selectedSeg?.rotate))}
+      {tool("Crop", props.onCrop, (selectedSeg?.crop || 0) > 0)}
+      {tool("Reverse", props.onReverse, Boolean(selectedSeg?.reverse))}
+      {tool("Freeze", props.onFreeze, Boolean(selectedSeg?.freeze), "Freeze frame")}
+      {rectTool("Speed", props.onSpeed)}
+      {rectTool("Volume", props.onVolume)}
+      {tool("Mute", props.onMute, muteOn)}
+    </>
+  ) : props.selKind === "audio" ? (
+    <>
+      {tool("Split", props.onSplit)}
+      {tool("Delete", props.onDelete)}
+      {tool("Duplicate", props.onDuplicate)}
+      {rectTool("Volume", props.onVolume)}
+      {tool("Mute", props.onMute, muteOn)}
+    </>
+  ) : props.selKind === "cue" || props.selKind === "overlay" ? (
+    <>
+      {tool("Split", props.onSplit)}
+      {tool("Delete", props.onDelete)}
+      {tool("Duplicate", props.onDuplicate)}
+    </>
+  ) : (
+    <>
+      {tool("Split", props.onSplit)}
+      {tool("Delete", props.onDelete)}
+      {tool("Duplicate", props.onDuplicate)}
+    </>
+  );
 
   return (
     <section className="shrink-0 border-t border-[#2c3038] bg-[#14161c]" aria-label="Timeline">
-      <div className="flex h-8 items-center gap-1 border-b border-[#2c3038] px-2">
-        <button type="button" title="Split (S)" aria-label="Split" disabled={!props.enabled} onClick={props.onSplit} className={iconBtn}>
-          <Scissors className="h-3.5 w-3.5" />
-        </button>
-        <button type="button" title="Delete" aria-label="Delete" disabled={!props.enabled} onClick={props.onDelete} className={iconBtn}>
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
-        <button type="button" title="Undo (Ctrl+Z)" aria-label="Undo" disabled={!props.enabled} onClick={props.onUndo} className={iconBtn}>
-          <Undo2 className="h-3.5 w-3.5" />
-        </button>
-        <button type="button" title="Redo" aria-label="Redo" disabled={!props.enabled} onClick={props.onRedo} className={iconBtn}>
-          <Redo2 className="h-3.5 w-3.5" />
-        </button>
-        <div className="ml-auto flex shrink-0 items-center gap-1">
+      <div className="flex h-8 min-w-0 items-center gap-1 border-b border-[#2c3038] px-2">
+        {props.selKind ? (
+          <div aria-label="Clip toolbar" className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden">
+            {tools}
+          </div>
+        ) : (
+          <div className="flex min-w-0 flex-1 items-center gap-1">
+            <button type="button" title="Split (S)" aria-label="Split" disabled={!props.enabled} onClick={props.onSplit} className={iconBtn}>
+              <Scissors className="h-3.5 w-3.5" />
+            </button>
+            <button type="button" title="Delete" aria-label="Delete" disabled={!props.enabled} onClick={props.onDelete} className={iconBtn}>
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
+        <div className="flex shrink-0 items-center gap-1">
+          <button type="button" title="Undo (Ctrl+Z)" aria-label="Undo" disabled={!props.enabled} onClick={props.onUndo} className={iconBtn}>
+            <Undo2 className="h-3.5 w-3.5" />
+          </button>
+          <button type="button" title="Redo" aria-label="Redo" disabled={!props.enabled} onClick={props.onRedo} className={iconBtn}>
+            <Redo2 className="h-3.5 w-3.5" />
+          </button>
           <button type="button" aria-label="Zoom out" onClick={() => props.onZoom(Math.max(36, props.zoom / 1.25))} className={iconBtn}>
             <ZoomOut className="h-3.5 w-3.5" />
           </button>
@@ -249,67 +365,140 @@ export default function EditorTimeline(props: Props) {
                 <span key={mark} className="absolute top-0 h-full w-px bg-[#c4a35a]/80" style={{ left: mark * props.zoom }} />
               ))}
             </button>
-            <Track height={VIDEO_H}>
-              {clips.map(({ seg, left, span, name }, index) => (
-                <div
-                  key={seg.id}
-                  title={name}
-                  className={`absolute top-1 overflow-hidden rounded-sm border ${props.selectedClip === seg.id ? "border-[#22d3ee]" : "border-white/10"} bg-[#2a3344]`}
-                  style={{ left: left * props.zoom, width: Math.max(18, span * props.zoom), height: VIDEO_H - 8 }}
-                  onPointerDown={(event) => {
-                    props.onSelectClip(seg.id);
-                    props.onSelectCue(null);
-                    dragClip(event, index);
-                  }}
-                >
-                  <Filmstrip seg={seg} span={span} zoom={props.zoom} filmstrip={props.filmstrip} sourceDuration={props.sourceDuration} />
-                  <span className="pointer-events-none absolute inset-x-0 bottom-0 truncate bg-black/55 px-1 text-[10px] leading-4 text-white">
-                    {name}
-                    {seg.reverse ? " · rev" : ""}
-                    {clampSpeed(seg.speed) !== 1 ? ` · ${clampSpeed(seg.speed)}×` : ""}
-                  </span>
-                  <button type="button" aria-label="Trim clip start" className="absolute left-0 top-0 h-full w-1.5 cursor-ew-resize bg-white/40" onPointerDown={(event) => trim(event, index, "start")} />
-                  <button type="button" aria-label="Trim clip end" className="absolute right-0 top-0 h-full w-1.5 cursor-ew-resize bg-white/40" onPointerDown={(event) => trim(event, index, "end")} />
-                </div>
-              ))}
+            <Track height={VIDEO_H} onEmpty={props.onDeselect}>
+              {clips.map(({ seg, left, span, name }, index) => {
+                const selected = props.selKind === "clip" && props.selectedClip === seg.id && props.clipTrack !== "audio";
+                return (
+                  <div
+                    key={seg.id}
+                    title={name}
+                    data-kind="clip"
+                    data-clip={seg.id}
+                    data-track="video"
+                    data-selected={selected ? "true" : "false"}
+                    className={`absolute top-1 overflow-hidden rounded-sm border-2 ${selected ? "border-[#22d3ee]" : "border-white/10"} bg-[#2a3344]`}
+                    style={{ left: left * props.zoom, width: Math.max(18, span * props.zoom), height: VIDEO_H - 8 }}
+                    onPointerDown={(event) => {
+                      if (event.button !== 0) return;
+                      activate(event, "clip", seg.id, "video");
+                      dragClip(event, index);
+                    }}
+                    onContextMenu={(event) => context(event, "clip", seg.id, "video")}
+                  >
+                    <Filmstrip seg={seg} span={span} zoom={props.zoom} filmstrip={props.filmstrip} sourceDuration={props.sourceDuration} />
+                    <span className="pointer-events-none absolute inset-x-0 bottom-0 truncate bg-black/55 px-1 text-[10px] leading-4 text-white">
+                      {name}
+                      {seg.reverse ? " · rev" : ""}
+                      {seg.freeze ? " · freeze" : ""}
+                      {clampSpeed(seg.speed) !== 1 ? ` · ${clampSpeed(seg.speed)}×` : ""}
+                    </span>
+                    {selected && (
+                      <>
+                        <button type="button" aria-label="Trim clip start" className="absolute left-0 top-0 h-full w-1.5 cursor-ew-resize bg-white" onPointerDown={(event) => trim(event, index, "start")} />
+                        <button type="button" aria-label="Trim clip end" className="absolute right-0 top-0 h-full w-1.5 cursor-ew-resize bg-white" onPointerDown={(event) => trim(event, index, "end")} />
+                      </>
+                    )}
+                  </div>
+                );
+              })}
             </Track>
-            <Track height={ROW_H}>
-              {clips.map(({ seg, left, span }) => (
-                <div key={seg.id} className="absolute top-1 overflow-hidden rounded-sm bg-[#163528]" style={{ left: left * props.zoom, width: Math.max(18, span * props.zoom), height: ROW_H - 8 }}>
-                  <Wave peaks={props.peaks} seg={seg} sourceDuration={props.sourceDuration} />
-                </div>
-              ))}
+            <Track height={ROW_H} onEmpty={props.onDeselect}>
+              {clips.map(({ seg, left, span }, index) => {
+                const selected = props.selKind === "clip" && props.selectedClip === seg.id && props.clipTrack === "audio";
+                return (
+                  <div
+                    key={seg.id}
+                    data-kind="clip"
+                    data-clip={seg.id}
+                    data-track="audio"
+                    data-selected={selected ? "true" : "false"}
+                    className={`absolute top-1 overflow-hidden rounded-sm border-2 ${selected ? "border-[#22d3ee]" : "border-transparent"} bg-[#163528]`}
+                    style={{ left: left * props.zoom, width: Math.max(18, span * props.zoom), height: ROW_H - 8 }}
+                    onPointerDown={(event) => {
+                      if (event.button !== 0) return;
+                      activate(event, "clip", seg.id, "audio");
+                      dragClip(event, index);
+                    }}
+                    onContextMenu={(event) => context(event, "clip", seg.id, "audio")}
+                  >
+                    <Wave peaks={props.peaks} seg={seg} sourceDuration={props.sourceDuration} />
+                    {selected && (
+                      <>
+                        <button type="button" aria-label="Trim clip start" className="absolute left-0 top-0 h-full w-1.5 cursor-ew-resize bg-white" onPointerDown={(event) => trim(event, index, "start")} />
+                        <button type="button" aria-label="Trim clip end" className="absolute right-0 top-0 h-full w-1.5 cursor-ew-resize bg-white" onPointerDown={(event) => trim(event, index, "end")} />
+                      </>
+                    )}
+                  </div>
+                );
+              })}
               {extraAudio.map((layer) => (
-                <Block key={layer.id} span={layer} zoom={props.zoom} className="bg-[#1f6b45] text-[10px] text-white" />
+                <SpanBlock
+                  key={layer.id}
+                  span={layer}
+                  zoom={props.zoom}
+                  kind="audio"
+                  className="bg-[#1f6b45] text-[10px] text-white"
+                  selected={props.selKind === "audio" && props.layerId === layer.id}
+                  onPointerDown={(event) => activate(event, "audio", layer.id, "audio")}
+                  onContextMenu={(event) => context(event, "audio", layer.id, "audio")}
+                  onTrim={(event, edge) => trimSpan(event, layer, "audio", edge)}
+                />
               ))}
             </Track>
             {overlays.length > 0 && (
-              <Track height={ROW_H}>
+              <Track height={ROW_H} onEmpty={props.onDeselect}>
                 {overlays.map((layer) => (
-                  <Block key={layer.id} span={layer} zoom={props.zoom} className="bg-[#3d5a73] text-[10px] text-white" />
+                  <SpanBlock
+                    key={layer.id}
+                    span={layer}
+                    zoom={props.zoom}
+                    kind="overlay"
+                    className="bg-[#3d5a73] text-[10px] text-white"
+                    selected={props.selKind === "overlay" && props.layerId === layer.id}
+                    onPointerDown={(event) => activate(event, "overlay", layer.id, "video")}
+                    onContextMenu={(event) => context(event, "overlay", layer.id, "video")}
+                    onTrim={(event, edge) => trimSpan(event, layer, "overlay", edge)}
+                  />
                 ))}
               </Track>
             )}
-            <Track height={ROW_H}>
-              {props.cues.map((cue) => (
-                <div
-                  key={cue.id}
-                  title={cue.words.map((word) => word.text).join(" ")}
-                  className={`absolute top-1 flex items-center overflow-hidden rounded-sm px-1.5 text-[11px] text-[#f6edd4] ${props.selectedCue === cue.id ? "bg-[#b08a3e] ring-1 ring-[#22d3ee]" : "bg-[#8d6b32]"}`}
-                  style={{ left: cue.start * props.zoom, width: Math.max(16, (cue.end - cue.start) * props.zoom), height: ROW_H - 8 }}
-                  onPointerDown={(event) => {
-                    props.onSelectCue(cue.id);
-                    props.onSelectClip(null);
-                    dragCue(event, cue);
-                  }}
-                >
-                  <button type="button" aria-label="Trim caption start" className="absolute left-0 top-0 h-full w-1 cursor-ew-resize bg-white/35" onPointerDown={(event) => resizeCaption(event, cue, "start")} />
-                  <span className="pointer-events-none truncate">{cue.words.map((word) => word.text).join(" ")}</span>
-                  <button type="button" aria-label="Trim caption end" className="absolute right-0 top-0 h-full w-1 cursor-ew-resize bg-white/35" onPointerDown={(event) => resizeCaption(event, cue, "end")} />
-                </div>
-              ))}
+            <Track height={ROW_H} onEmpty={props.onDeselect}>
+              {props.cues.map((cue) => {
+                const selected = props.selKind === "cue" && props.selectedCue === cue.id;
+                return (
+                  <div
+                    key={cue.id}
+                    title={cue.words.map((word) => word.text).join(" ")}
+                    data-kind="cue"
+                    data-clip={cue.id}
+                    data-selected={selected ? "true" : "false"}
+                    className={`absolute top-1 flex items-center overflow-hidden rounded-sm border-2 px-1.5 text-[11px] text-[#f6edd4] ${selected ? "border-[#22d3ee] bg-[#b08a3e]" : "border-transparent bg-[#8d6b32]"}`}
+                    style={{ left: cue.start * props.zoom, width: Math.max(16, (cue.end - cue.start) * props.zoom), height: ROW_H - 8 }}
+                    onPointerDown={(event) => {
+                      if (event.button !== 0) return;
+                      activate(event, "cue", cue.id, "video");
+                      dragCue(event, cue);
+                    }}
+                    onContextMenu={(event) => context(event, "cue", cue.id, "video")}
+                  >
+                    {selected && <button type="button" aria-label="Trim caption start" className="absolute left-0 top-0 h-full w-1 cursor-ew-resize bg-white" onPointerDown={(event) => resizeCaption(event, cue, "start")} />}
+                    <span className="pointer-events-none truncate">{cue.words.map((word) => word.text).join(" ")}</span>
+                    {selected && <button type="button" aria-label="Trim caption end" className="absolute right-0 top-0 h-full w-1 cursor-ew-resize bg-white" onPointerDown={(event) => resizeCaption(event, cue, "end")} />}
+                  </div>
+                );
+              })}
               {texts.map((layer) => (
-                <Block key={layer.id} span={layer} zoom={props.zoom} className="bg-[#3a4a5c] text-[10px] text-white" />
+                <SpanBlock
+                  key={layer.id}
+                  span={layer}
+                  zoom={props.zoom}
+                  kind="text"
+                  className="bg-[#3a4a5c] text-[10px] text-white"
+                  selected={props.selKind === "text" && props.layerId === layer.id}
+                  onPointerDown={(event) => activate(event, "text", layer.id, "video")}
+                  onContextMenu={(event) => context(event, "text", layer.id, "video")}
+                  onTrim={(event, edge) => trimSpan(event, layer, "text", edge)}
+                />
               ))}
             </Track>
             <div className="pointer-events-none absolute bottom-0 z-20 w-px bg-[#ff3344]" style={{ left: props.time * props.zoom, top: 0 }}>
@@ -330,22 +519,56 @@ function Label({ children, height }: { children: string; height: number }) {
   );
 }
 
-function Track({ children, height }: { children: ReactNode; height: number }) {
+function Track({ children, height, onEmpty }: { children: ReactNode; height: number; onEmpty: () => void }) {
   return (
-    <div className="relative border-t border-[#2c3038] bg-[#1b1e25]" style={{ height }}>
+    <div
+      className="relative border-t border-[#2c3038] bg-[#1b1e25]"
+      style={{ height }}
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget) onEmpty();
+      }}
+    >
       {children}
     </div>
   );
 }
 
-function Block({ span, zoom, className }: { span: TimelineSpan; zoom: number; className: string }) {
+function SpanBlock({
+  span,
+  zoom,
+  kind,
+  className,
+  selected,
+  onPointerDown,
+  onContextMenu,
+  onTrim,
+}: {
+  span: TimelineSpan;
+  zoom: number;
+  kind: SelKind;
+  className: string;
+  selected: boolean;
+  onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onContextMenu: (event: ReactMouseEvent<HTMLDivElement>) => void;
+  onTrim: (event: ReactPointerEvent<HTMLButtonElement>, edge: "start" | "end") => void;
+}) {
   return (
     <div
       title={span.label}
-      className={`absolute top-1 flex items-center overflow-hidden rounded-sm px-1.5 ${className}`}
+      data-kind={kind}
+      data-clip={span.id}
+      data-selected={selected ? "true" : "false"}
+      className={`absolute top-1 flex items-center overflow-hidden rounded-sm border-2 px-1.5 ${selected ? "border-[#22d3ee]" : "border-transparent"} ${className}`}
       style={{ left: span.start * zoom, width: Math.max(16, (span.end - span.start) * zoom), height: ROW_H - 8 }}
+      onPointerDown={(event) => {
+        if (event.button !== 0) return;
+        onPointerDown(event);
+      }}
+      onContextMenu={onContextMenu}
     >
-      <span className="truncate">{span.label}</span>
+      {selected && <button type="button" aria-label="Trim clip start" className="absolute left-0 top-0 h-full w-1 cursor-ew-resize bg-white" onPointerDown={(event) => onTrim(event, "start")} />}
+      <span className="pointer-events-none truncate">{span.label}</span>
+      {selected && <button type="button" aria-label="Trim clip end" className="absolute right-0 top-0 h-full w-1 cursor-ew-resize bg-white" onPointerDown={(event) => onTrim(event, "end")} />}
     </div>
   );
 }
@@ -393,7 +616,7 @@ function Wave({ peaks, seg, sourceDuration }: { peaks: number[]; seg: Segment; s
   const slice = peaks.slice(start, end);
   const shown = slice.length > 80 ? slice.filter((_, index) => index % Math.ceil(slice.length / 80) === 0) : slice;
   return (
-    <div className="flex h-full items-center gap-px px-0.5">
+    <div className="pointer-events-none flex h-full items-center gap-px px-0.5">
       {shown.map((peak, index) => (
         <span key={index} className="w-px flex-1 bg-[#3ecf8e]" style={{ height: `${Math.max(12, peak * 100)}%` }} />
       ))}
