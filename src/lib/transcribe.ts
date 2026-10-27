@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat } from "fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "fs/promises";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import os from "os";
@@ -7,11 +7,19 @@ import { evenWords, type WordStamp } from "@/lib/edit-timeline";
 
 const execFileAsync = promisify(execFile);
 const WHISPER_LIMIT = 24 * 1024 * 1024;
+const WHISPER_URL = "https://api.openai.com/v1/audio/transcriptions";
 
 export type Transcript = { text: string; words: WordStamp[]; stub: boolean };
 
-export async function transcribeFile(videoPath: string, durationSec: number): Promise<Transcript> {
-  const key = process.env.OPENAI_API_KEY;
+export type WhisperRequest = {
+  url: string;
+  contentType: string;
+  body: Buffer;
+};
+
+export type WhisperTransport = (request: WhisperRequest) => Promise<{ ok: boolean; status: number; body: string }>;
+
+export async function transcribeFile(videoPath: string, durationSec: number, transport?: WhisperTransport): Promise<Transcript> {
   if (!(await hasAudio(videoPath))) {
     throw new Error("This video has no usable audio to transcribe.");
   }
@@ -23,23 +31,18 @@ export async function transcribeFile(videoPath: string, durationSec: number): Pr
     if (!info || info.size < 400) {
       throw new Error("This video has no usable audio to transcribe.");
     }
-    if (!key) {
-      if (process.env.HOOK_LAB_STUB === "1") {
-        const script = process.env.HOOK_LAB_STUB_TEXT || "";
-        if (script.trim().length < 8) {
-          throw new Error("Local stub is on, but HOOK_LAB_STUB_TEXT is empty. Hook Lab will not invent a transcript.");
-        }
-        const words = evenWords(script, durationSec || (await mediaDuration(audio)));
-        return { text: words.map((word) => word.word).join(" "), words, stub: true };
-      }
+    const key = process.env.OPENAI_API_KEY || "";
+    const localStub = !transport && !key && process.env.HOOK_LAB_STUB === "1";
+    if (!key && !localStub && !transport) {
       throw new Error("OPENAI_API_KEY is not set. Hook Lab needs it to transcribe the video and will not invent a transcript.");
     }
+    const send = transport || (key ? liveTransport(key) : stubTransport);
     const pieces = info.size > WHISPER_LIMIT ? await splitAudio(dir, audio) : [audio];
     let offset = 0;
     const words: WordStamp[] = [];
     const texts: string[] = [];
     for (const piece of pieces) {
-      const part = await whisper(key, piece);
+      const part = await whisper(piece, send);
       texts.push(part.text);
       for (const word of part.words) {
         words.push({ word: word.word, start: word.start + offset, end: word.end + offset });
@@ -48,7 +51,7 @@ export async function transcribeFile(videoPath: string, durationSec: number): Pr
     }
     const text = texts.join(" ").replace(/\s+/g, " ").trim();
     if (!text) throw new Error("Whisper returned an empty transcript. The clip may have no speech.");
-    return { text, words: words.length ? words : evenWords(text, durationSec || offset), stub: false };
+    return { text, words: words.length ? words : evenWords(text, durationSec || offset), stub: localStub };
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -70,7 +73,49 @@ async function splitAudio(dir: string, audio: string) {
   return files;
 }
 
-async function whisper(key: string, filePath: string): Promise<{ text: string; words: WordStamp[] }> {
+function liveTransport(key: string): WhisperTransport {
+  return async (request) => {
+    const res = await fetch(request.url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": request.contentType },
+      body: request.body as unknown as BodyInit,
+    });
+    return { ok: res.ok, status: res.status, body: await res.text() };
+  };
+}
+
+async function stubTransport(request: WhisperRequest) {
+  assertWhisperRequest(request);
+  const script = process.env.HOOK_LAB_STUB_TEXT || "";
+  if (script.trim().length < 8) {
+    throw new Error("Local stub is on, but HOOK_LAB_STUB_TEXT is empty. Hook Lab will not invent a transcript.");
+  }
+  const audio = extractAudio(request);
+  const dir = await mkdtemp(path.join(os.tmpdir(), "hook-stub-"));
+  try {
+    const filePath = path.join(dir, "speech.mp3");
+    await writeFile(filePath, audio);
+    const words = evenWords(script, await mediaDuration(filePath));
+    return {
+      ok: true,
+      status: 200,
+      body: JSON.stringify({ text: words.map((word) => word.word).join(" "), words }),
+    };
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+async function whisper(filePath: string, send: WhisperTransport): Promise<{ text: string; words: WordStamp[] }> {
+  const request = await buildWhisperRequest(filePath);
+  const res = await send(request);
+  if (!res.ok) {
+    throw new Error(`Whisper failed (${res.status}). ${res.body.slice(0, 240)}`);
+  }
+  return parseVerboseJson(res.body);
+}
+
+async function buildWhisperRequest(filePath: string): Promise<WhisperRequest> {
   const bytes = await readFile(filePath);
   const { body, contentType } = multipart([
     { name: "file", filename: "speech.mp3", contentType: "audio/mpeg", data: bytes },
@@ -78,15 +123,40 @@ async function whisper(key: string, filePath: string): Promise<{ text: string; w
     { name: "response_format", value: "verbose_json" },
     { name: "timestamp_granularities[]", value: "word" },
   ]);
-  const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": contentType },
-    body: new Uint8Array(body),
-  });
-  const raw = await res.text();
-  if (!res.ok) {
-    throw new Error(`Whisper failed (${res.status}). ${raw.slice(0, 240)}`);
+  return { url: WHISPER_URL, contentType, body };
+}
+
+function assertWhisperRequest(request: WhisperRequest) {
+  if (request.url !== WHISPER_URL) {
+    throw new Error("Transcription must call https://api.openai.com/v1/audio/transcriptions.");
   }
+  const text = Buffer.from(request.body).toString("latin1");
+  const required = [
+    'filename="speech.mp3"',
+    "audio/mpeg",
+    'name="model"',
+    "whisper-1",
+    'name="response_format"',
+    "verbose_json",
+    'name="timestamp_granularities[]"',
+    "\r\nword\r\n",
+  ];
+  for (const part of required) {
+    if (!text.includes(part)) throw new Error(`The Whisper request is missing ${part}.`);
+  }
+}
+
+function extractAudio(request: WhisperRequest) {
+  const body = Buffer.from(request.body);
+  const marker = Buffer.from('filename="speech.mp3"');
+  const at = body.indexOf(marker);
+  const start = at >= 0 ? body.indexOf(Buffer.from("\r\n\r\n"), at) : -1;
+  const end = start >= 0 ? body.indexOf(Buffer.from("\r\n--"), start + 4) : -1;
+  if (start < 0 || end < 0) throw new Error("The Whisper request is missing the audio file.");
+  return body.subarray(start + 4, end);
+}
+
+function parseVerboseJson(raw: string): { text: string; words: WordStamp[] } {
   const data = JSON.parse(raw) as { text?: string; words?: { word?: string; start?: number; end?: number }[] };
   const words = (data.words || [])
     .map((word) => ({

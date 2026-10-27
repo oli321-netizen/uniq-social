@@ -55,7 +55,7 @@ Hook Lab is at `/hub/hook-lab` after sign-in. Transcription needs `OPENAI_API_KE
 
 - Home page: a list of services. Video processor links straight to `/dashboard`.
 - A short top bar on the other services, with a link back to that list
-- Hook Lab: upload a talking video, transcribe it with Whisper (`whisper-1`, word timestamps), edit splits on a timeline, preview caption styles in sync, and export an mp4 with ffmpeg. That export is a separate route. It does not use `/api/process`. Without `OPENAI_API_KEY`, transcription stops and says a key is needed. `HOOK_LAB_STUB=1` is a local-only stand-in and is not for production.
+- Hook Lab: upload a talking video, transcribe it with Whisper (`whisper-1`, word timestamps), edit splits on a timeline, preview caption styles in sync, and export an mp4 with ffmpeg. That export is a separate route. It does not use `/api/process`. Without `OPENAI_API_KEY`, transcription stops and says a key is needed. `HOOK_LAB_STUB=1` still builds the whisper-1 request, then answers it locally. It does not call OpenAI and is not for production.
 - Creators: brand voice (tone, words to use, words to avoid, sample lines) used by Hook Lab and captions.
 - Captions: text only, no hashtags. Mock templates when `OPENAI_API_KEY` is unset.
 - Variants: cards for renders the existing processor already logged, plus caption exports saved from Hook Lab. The processor does not keep the mp4. Attach the downloaded file to preview, compare, or download it. Delete removes that card. Rendering is unchanged.
