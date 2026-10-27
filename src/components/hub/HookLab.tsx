@@ -55,6 +55,14 @@ function shownTime(seg: Segment, source: number) {
   return source;
 }
 
+// A split stores the same source time on both sides. Playback is already on that
+// frame, so seeking back to it replays whatever ran while the timeupdate was late.
+function continuesSource(current: Segment, next: Segment) {
+  if (current.reverse || next.reverse || next.freeze || current.kind === "image" || next.kind === "image") return false;
+  if ((current.assetId || "") !== (next.assetId || "")) return false;
+  return Math.abs(next.start - current.end) <= 0.02;
+}
+
 export default function HookLab() {
   const search = useSearchParams();
   const [rail, setRail] = useState<RailTab>("Media");
@@ -242,10 +250,23 @@ export default function HookLab() {
         segRef.current = index + 1;
         nextTime = composedStart(list, index + 1);
         if (video && !isSpecial(following)) {
-          holdPlay.current = false;
+          const target = following.reverse ? Math.max(following.start, following.end - 0.05) : following.start;
           video.playbackRate = clampSpeed(following.speed);
-          video.currentTime = following.reverse ? Math.max(following.start, following.end - 0.05) : following.start;
-          video.play().catch(() => {});
+          const playFrom = () => {
+            if (!playingRef.current) {
+              holdPlay.current = false;
+              return;
+            }
+            holdPlay.current = false;
+            video.play().catch(() => {});
+          };
+          if (Math.abs((video.currentTime || 0) - target) <= 0.04) {
+            playFrom();
+          } else {
+            holdPlay.current = true;
+            video.addEventListener("seeked", playFrom, { once: true });
+            video.currentTime = target;
+          }
         } else holdPlay.current = true;
       }
       timeRef.current = nextTime;
@@ -460,7 +481,9 @@ export default function HookLab() {
     if (video && seg && seg.kind !== "image") {
       video.playbackRate = pos.speed;
       const cap = Math.max(seg.start, seg.end - 0.02);
-      video.currentTime = Math.min(cap, Math.max(seg.start, shownTime(seg, pos.source)));
+      const target = Math.min(cap, Math.max(seg.start, shownTime(seg, pos.source)));
+      // A tiny seek while the element is playing restarts the decoder and replays the last GOP.
+      if (Math.abs((video.currentTime || 0) - target) > 0.04) video.currentTime = target;
       video.volume = seg.volume ?? 1;
     }
     timeRef.current = pos.composed;
@@ -470,30 +493,34 @@ export default function HookLab() {
   function onTimeUpdate() {
     const video = videoRef.current;
     const list = docRef.current.segments;
-    const index = segRef.current;
-    const seg = list[index];
+    let index = segRef.current;
+    let seg = list[index];
     if (!video || !seg || isSpecial(seg)) return;
+    if (!video.paused) {
+      while (list[index + 1] && continuesSource(seg, list[index + 1]) && video.currentTime >= seg.end - 0.0005) {
+        index += 1;
+        seg = list[index];
+        segRef.current = index;
+        video.playbackRate = clampSpeed(seg.speed);
+      }
+    }
     const local = Math.max(0, video.currentTime - seg.start) / clampSpeed(seg.speed);
     let volume = seg.volume ?? 1;
     if ((seg.fadeIn || 0) > 0 && local < (seg.fadeIn || 0)) volume *= local / (seg.fadeIn || 1);
     const span = playDuration(seg);
     if ((seg.fadeOut || 0) > 0 && span - local < (seg.fadeOut || 0)) volume *= Math.max(0, (span - local) / (seg.fadeOut || 1));
     video.volume = Math.max(0, Math.min(1, volume));
-    syncMusic(cursorOf(list, index) + local);
+    const composedNow = cursorOf(list, index) + local;
+    syncMusic(composedNow);
     if (video.currentTime >= (seg.reverse ? seg.start + 0.04 : seg.end - 0.04)) {
       const next = list[index + 1];
+      if (next && !video.paused && continuesSource(seg, next)) {
+        timeRef.current = composedNow;
+        setTime(composedNow);
+        return;
+      }
       if (next && !video.paused) {
-        segRef.current = index + 1;
-        if (isSpecial(next) || next.assetId !== seg.assetId || next.kind === "image") {
-          holdPlay.current = isSpecial(next);
-          const composed = composedStart(list, index + 1);
-          timeRef.current = composed;
-          setTime(composed);
-          video.pause();
-          return;
-        }
-        video.playbackRate = clampSpeed(next.speed);
-        video.currentTime = next.reverse ? Math.max(next.start, next.end - 0.04) : next.start;
+        jumpToSegment(video, list, index + 1, next);
         return;
       }
       video.pause();
@@ -504,11 +531,43 @@ export default function HookLab() {
       setTime(end);
       return;
     }
-    let cursor = 0;
-    for (let i = 0; i < index; i++) cursor += Math.max(0, list[i].end - list[i].start) / clampSpeed(list[i].speed);
-    const composed = cursor + Math.max(0, video.currentTime - seg.start) / clampSpeed(seg.speed);
+    timeRef.current = composedNow;
+    setTime(composedNow);
+  }
+
+  function jumpToSegment(video: HTMLVideoElement, list: Segment[], index: number, next: Segment) {
+    segRef.current = index;
+    const composed = composedStart(list, index);
     timeRef.current = composed;
     setTime(composed);
+    if (isSpecial(next) || next.kind === "image" || (next.assetId || "") !== (list[index - 1]?.assetId || "")) {
+      holdPlay.current = isSpecial(next);
+      video.pause();
+      return;
+    }
+    const target = next.reverse ? Math.max(next.start, next.end - 0.04) : next.start;
+    holdPlay.current = true;
+    const resume = () => {
+      video.removeEventListener("seeked", resume);
+      if (!playingRef.current) {
+        holdPlay.current = false;
+        return;
+      }
+      video.playbackRate = clampSpeed(next.speed);
+      video.volume = Math.max(0, Math.min(1, next.volume ?? 1));
+      holdPlay.current = false;
+      video.play().catch(() => {
+        playingRef.current = false;
+        setPlaying(false);
+      });
+    };
+    video.pause();
+    if (Math.abs((video.currentTime || 0) - target) <= 0.04) {
+      resume();
+      return;
+    }
+    video.addEventListener("seeked", resume);
+    video.currentTime = target;
   }
 
   function togglePlay() {
