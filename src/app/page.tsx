@@ -25,15 +25,13 @@ const NAV_LINKS = [
 
 function Navbar() {
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-[#010313]/80 backdrop-blur-xl">
+    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-[#0a0b14]/80 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
         <a href="/" className="flex items-center gap-2.5">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-500/10 border border-purple-500/20">
             <Fingerprint className="h-4 w-4 text-purple-400" />
           </div>
-          <span className="text-lg font-semibold tracking-tight">
-            Uniq<span className="text-purple-400">Social</span>
-          </span>
+          <span className="text-[16px] font-semibold tracking-tight">uniq</span>
         </a>
 
         <div className="hidden md:flex items-center gap-8">
@@ -57,7 +55,7 @@ function Navbar() {
           </a>
           <a
             href="/login"
-            className="text-sm font-medium bg-purple-600 hover:bg-purple-700 text-white px-5 py-2 rounded-lg transition-all hover:shadow-lg hover:shadow-purple-500/20"
+            className="text-[13px] font-medium bg-[#7c5cff] hover:bg-[#6d4ef0] text-white px-4 py-2 rounded-[7px]"
           >
             Get 5 Free Credits
           </a>
@@ -70,9 +68,6 @@ function Navbar() {
 function HeroSection() {
   return (
     <section className="relative min-h-screen flex items-center justify-center pt-16 grid-bg overflow-hidden">
-      <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-purple-500/5 rounded-full blur-[128px] pointer-events-none" />
-      <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-purple-700/5 rounded-full blur-[128px] pointer-events-none" />
-
       <div className="relative z-10 mx-auto max-w-5xl px-6 text-center">
         <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-purple-500/20 bg-purple-500/5 px-4 py-1.5 text-sm text-purple-300">
           <Sparkles className="h-3.5 w-3.5" />

@@ -1377,7 +1377,7 @@ export default function HookLab() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#121418] text-[#f2f2f2]" data-editor="editor-lab">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#0a0b14] text-[#f2f2f2]" data-editor="editor-lab">
       <style>{`${FONT_FACE_CSS}@keyframes hookPop{from{transform:scale(.82)}to{transform:scale(1)}}@keyframes hookScale{from{transform:scale(.94)}to{transform:scale(1.04)}}`}</style>
       <input
         ref={fileRef}
@@ -1386,7 +1386,7 @@ export default function HookLab() {
         className="sr-only"
         onChange={(event) => onPicked(event.target.files?.[0] || null)}
       />
-      <header className="relative z-30 flex h-10 shrink-0 items-center gap-2 border-b border-[#2c3038] bg-[#16181d] px-2">
+      <header className="relative z-30 flex h-10 shrink-0 items-center gap-2 border-b border-[#2a2c38] bg-[#10111c] px-2">
         <div ref={sectionMenuRef} className="relative shrink-0">
           <button
             type="button"
@@ -1399,7 +1399,7 @@ export default function HookLab() {
             <LayoutGrid className="h-3.5 w-3.5" />
           </button>
           {menuOpen && (
-            <div role="menu" aria-label="Section list" className="absolute left-0 top-8 z-40 w-40 rounded-md border border-[#2c3038] bg-[#1a1d24] py-1 shadow-lg">
+            <div role="menu" aria-label="Section list" className="absolute left-0 top-8 z-40 w-40 rounded-md border border-[#2a2c38] bg-[#12131c] py-1 shadow-lg">
               {SECTIONS.map((item) => {
                 const here = item.href === "/hub/editor-lab";
                 return (
@@ -1408,7 +1408,7 @@ export default function HookLab() {
                     role="menuitem"
                     href={here ? editorLabHref(project?.id) : item.href}
                     aria-current={here ? "page" : undefined}
-                    className={`block h-7 truncate whitespace-nowrap px-3 text-[12px] leading-7 ${here ? "text-[#22d3ee]" : "text-[#d5d8de] hover:bg-white/5"}`}
+                    className={`block h-7 truncate whitespace-nowrap px-3 text-[12px] leading-7 ${here ? "text-[#7c5cff]" : "text-[#d5d8de] hover:bg-white/5"}`}
                   >
                     {item.label}
                   </a>
@@ -1429,7 +1429,7 @@ export default function HookLab() {
             type="button"
             onClick={exportVideo}
             disabled={!project || (exportProgress !== null && exportProgress < 1)}
-            className="inline-flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md bg-[#22d3ee] px-3 text-[12px] font-medium text-[#062126] disabled:opacity-40"
+            className="inline-flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md bg-[#7c5cff] px-3 text-[12px] font-medium text-[#ffffff] disabled:opacity-40"
           >
             Export
           </button>
@@ -1442,8 +1442,8 @@ export default function HookLab() {
         </div>
       </header>
       {exportProgress !== null && (
-        <div className="h-0.5 shrink-0 bg-[#2c3038]">
-          <div className="h-full bg-[#22d3ee]" style={{ width: `${Math.round(exportProgress * 100)}%` }} />
+        <div className="h-0.5 shrink-0 bg-[#2a2c38]">
+          <div className="h-full bg-[#7c5cff]" style={{ width: `${Math.round(exportProgress * 100)}%` }} />
         </div>
       )}
       <div className="flex min-h-0 flex-1">
@@ -1578,14 +1578,14 @@ export default function HookLab() {
                   </>
                 ) : (
                   <button type="button" onClick={() => pickVideo(false)} className="flex h-full w-full flex-col items-center justify-center gap-2 text-[13px] text-[#9aa0a8]">
-                    <span className="text-[20px] leading-none text-[#3ad6e4]">+</span>
+                    <span className="text-[20px] leading-none text-[#b7a6ff]">+</span>
                     Video
                   </button>
                 )}
               </div>
             </div>
           </div>
-          <div className="flex h-10 shrink-0 items-center gap-2 border-t border-[#2c3038] px-3">
+          <div className="flex h-10 shrink-0 items-center gap-2 border-t border-[#2a2c38] px-3">
             <button type="button" aria-label={playing ? "Pause" : "Play"} disabled={!project} onClick={togglePlay} className="flex h-7 w-7 shrink-0 items-center justify-center text-white disabled:opacity-30">
               {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             </button>
@@ -1599,7 +1599,7 @@ export default function HookLab() {
               value={Math.min(time, duration || 0)}
               disabled={!project}
               onChange={(event) => seek(Number(event.target.value))}
-              className="min-w-0 flex-1 accent-[#22d3ee] disabled:opacity-30"
+              className="min-w-0 flex-1 accent-[#7c5cff] disabled:opacity-30"
             />
             <button type="button" aria-label="Fullscreen" onClick={toggleFull} className="flex h-7 w-7 shrink-0 items-center justify-center text-[#d5d8de]">
               <Maximize className="h-3.5 w-3.5" />
@@ -1682,7 +1682,7 @@ export default function HookLab() {
           ref={menuRef}
           role="menu"
           aria-label="Clip menu"
-          className="fixed z-50 max-h-[320px] w-44 overflow-y-auto rounded-md border border-[#2c3038] bg-[#1a1d24] py-1 shadow-xl"
+          className="fixed z-50 max-h-[320px] w-44 overflow-y-auto rounded-md border border-[#2a2c38] bg-[#12131c] py-1 shadow-xl"
           style={{ left: menu.x, top: menu.y }}
         >
           {menuRows.map((item) => (
@@ -1696,7 +1696,7 @@ export default function HookLab() {
               }}
               className="flex h-8 w-full items-center gap-2 px-3 text-left text-[12px] text-[#e8e8e8] hover:bg-white/10"
             >
-              <span className="w-3 shrink-0 text-[#22d3ee]">{item.pressed ? "✓" : ""}</span>
+              <span className="w-3 shrink-0 text-[#7c5cff]">{item.pressed ? "✓" : ""}</span>
               <span className="truncate">{item.label}</span>
             </button>
           ))}
@@ -1707,7 +1707,7 @@ export default function HookLab() {
           ref={popRef}
           role="dialog"
           aria-label={popover.kind === "speed" ? "Speed" : "Volume"}
-          className="fixed z-50 w-56 rounded-md border border-[#2c3038] bg-[#1a1d24] p-3 shadow-xl"
+          className="fixed z-50 w-56 rounded-md border border-[#2a2c38] bg-[#12131c] p-3 shadow-xl"
           style={{ left: popover.x, top: popover.y }}
         >
           {popover.kind === "speed" ? (
@@ -1730,7 +1730,7 @@ export default function HookLab() {
                   syncActiveLook(true);
                 }}
                 onBlur={() => endGesture("clips")}
-                className="h-1 w-full accent-[#22d3ee]"
+                className="h-1 w-full accent-[#7c5cff]"
               />
             </label>
           ) : (
@@ -1750,7 +1750,7 @@ export default function HookLab() {
                 onChange={(event) => previewVolume(Number(event.target.value))}
                 onPointerUp={() => endGesture("clips")}
                 onBlur={() => endGesture("clips")}
-                className="h-1 w-full accent-[#22d3ee]"
+                className="h-1 w-full accent-[#7c5cff]"
               />
             </label>
           )}

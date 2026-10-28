@@ -8,8 +8,8 @@ export const metadata = {
 
 export default function PrivacyPage() {
   return (
-    <main className="min-h-screen bg-[#010313] text-white">
-      <nav className="border-b border-white/5 bg-[#010313]/80 backdrop-blur-xl">
+    <main className="min-h-screen bg-[#0a0b14] text-white">
+      <nav className="border-b border-white/5 bg-[#0a0b14]/80 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-7xl items-center px-4 sm:px-6">
           <Link href="/" className="flex items-center gap-2.5">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-500/10 border border-purple-500/20">

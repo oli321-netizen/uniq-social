@@ -38,7 +38,7 @@ export default function QuickUpload({ onFile }: { onFile?: (file: File | null) =
   }
 
   return (
-    <section className="rounded-md border border-dashed border-white/10 bg-[#12121A] p-3" aria-label="Quick upload">
+    <section className="rounded-md border border-dashed border-white/10 bg-[#10121c] p-3" aria-label="Quick upload">
       <label
         className="flex cursor-pointer items-center gap-3"
         onDragOver={(event) => event.preventDefault()}
@@ -62,8 +62,8 @@ export default function QuickUpload({ onFile }: { onFile?: (file: File | null) =
         />
       </label>
       {progress !== null && (
-        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#23232F]" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}>
-          <div className="h-full bg-[#8B5CF6]" style={{ width: `${progress}%` }} />
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#1e2130]" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}>
+          <div className="h-full bg-[#7c5cff]" style={{ width: `${progress}%` }} />
         </div>
       )}
       {error && <p className="mt-2 text-[12px] text-[#F87171]" role="alert">{error}</p>}

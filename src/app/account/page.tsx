@@ -251,7 +251,7 @@ export default function AccountPage() {
 
   if (status === "loading") {
     return (
-      <div className="min-h-screen bg-[#010313] flex items-center justify-center">
+      <div className="min-h-screen bg-[#0a0b14] flex items-center justify-center">
         <Loader2 className="h-8 w-8 text-purple-400 animate-spin" />
       </div>
     );
@@ -262,9 +262,9 @@ export default function AccountPage() {
   const currentPlan = PLAN_CONFIG[plan];
 
   return (
-    <div className="min-h-screen bg-[#010313]">
+    <div className="min-h-screen bg-[#0a0b14]">
       {/* Top bar */}
-      <header className="border-b border-white/5 bg-[#010313]/80 backdrop-blur-xl sticky top-0 z-50">
+      <header className="border-b border-white/5 bg-[#0a0b14]/80 backdrop-blur-xl sticky top-0 z-50">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-3 sm:px-6">
           <div className="flex items-center gap-3 sm:gap-6">
             <a href="/" className="flex items-center gap-2">
@@ -911,7 +911,7 @@ export default function AccountPage() {
       {/* Top-up modal */}
       {showTopUp && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-          <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#010313] p-8 relative">
+          <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#0a0b14] p-8 relative">
             <button
               onClick={() => setShowTopUp(false)}
               className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors"
@@ -1026,7 +1026,7 @@ export default function AccountPage() {
       {/* Change password modal */}
       {showChangePassword && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#010313] p-8 relative">
+          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#0a0b14] p-8 relative">
             <button
               onClick={() => { setShowChangePassword(false); setPasswordError(""); setPasswordSuccess(false); setCurrentPassword(""); setNewPassword(""); setConfirmPassword(""); }}
               className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors"
@@ -1145,7 +1145,7 @@ export default function AccountPage() {
       {/* Delete account confirmation modal */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-          <div className="w-full max-w-sm rounded-2xl border border-red-500/20 bg-[#010313] p-6 sm:p-8 relative">
+          <div className="w-full max-w-sm rounded-2xl border border-red-500/20 bg-[#0a0b14] p-6 sm:p-8 relative">
             <button
               onClick={() => {
                 setShowDeleteConfirm(false);

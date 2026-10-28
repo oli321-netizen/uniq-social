@@ -97,7 +97,7 @@ export default function CaptionStudio({
           value={topic}
           onChange={(event) => setTopic(event.target.value)}
           rows={3}
-          className="w-full rounded-lg border border-[#23232F] bg-[#0A0A0F] px-3 py-2 text-[14px] outline-none focus:border-[#8B5CF6]"
+          className="w-full rounded-lg border border-[#1e2130] bg-[#0A0A0F] px-3 py-2 text-[14px] outline-none focus:border-[#7c5cff]"
         />
       </label>
       <label className="block text-[13px]">
@@ -105,7 +105,7 @@ export default function CaptionStudio({
         <select
           value={variantId}
           onChange={(event) => setVariantId(event.target.value)}
-          className="w-full rounded-lg border border-[#23232F] bg-[#0A0A0F] px-3 py-2 text-[14px]"
+          className="w-full rounded-lg border border-[#1e2130] bg-[#0A0A0F] px-3 py-2 text-[14px]"
         >
           <option value="">No variant — keep it on the creator</option>
           {variants.map((variant) => (
@@ -117,7 +117,7 @@ export default function CaptionStudio({
         type="button"
         disabled={busy || topic.trim().length < 2}
         onClick={generate}
-        className="inline-flex items-center gap-2 rounded-lg bg-[#8B5CF6] px-4 py-2 text-[13px] font-medium text-white hover:bg-[#7C3AED] disabled:opacity-40"
+        className="inline-flex items-center gap-2 rounded-lg bg-[#7c5cff] px-4 py-2 text-[13px] font-medium text-white hover:bg-[#6d4ef0] disabled:opacity-40"
       >
         {busy && <Loader2 className="h-4 w-4 animate-spin" />}
         {drafts.length ? "Regenerate" : "Write captions"}
@@ -127,14 +127,14 @@ export default function CaptionStudio({
       {error && <p className="text-[13px] text-[#F87171]" role="alert">{error}</p>}
       <ul className="space-y-2">
         {drafts.map((draft) => (
-          <li key={draft.text} className="rounded-[10px] border border-[#23232F] bg-[#12121A] p-3">
+          <li key={draft.text} className="rounded-[10px] border border-[#1e2130] bg-[#10121c] p-3">
             <p className="text-[14px] leading-relaxed">{draft.text}</p>
             <div className="mt-2 flex gap-2">
-              <button type="button" onClick={() => copy(draft.text)} className="inline-flex items-center gap-1 rounded-lg border border-[#23232F] px-2 py-1 text-[12px]">
+              <button type="button" onClick={() => copy(draft.text)} className="inline-flex items-center gap-1 rounded-lg border border-[#1e2130] px-2 py-1 text-[12px]">
                 {copied === draft.text ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
                 Copy
               </button>
-              <button type="button" onClick={() => save(draft.text)} className="rounded-lg border border-[#23232F] px-2 py-1 text-[12px] hover:border-[#8B5CF6]">
+              <button type="button" onClick={() => save(draft.text)} className="rounded-lg border border-[#1e2130] px-2 py-1 text-[12px] hover:border-[#7c5cff]">
                 Save
               </button>
             </div>
@@ -146,7 +146,7 @@ export default function CaptionStudio({
           <h3 className="text-[13px] font-medium">Saved</h3>
           <ul className="mt-2 space-y-2">
             {saved.map((caption) => (
-              <li key={caption.id} className="rounded-lg border border-[#23232F] px-3 py-2 text-[13px] text-[#E8E8F0]/90">
+              <li key={caption.id} className="rounded-lg border border-[#1e2130] px-3 py-2 text-[13px] text-[#E8E8F0]/90">
                 {caption.text}
               </li>
             ))}

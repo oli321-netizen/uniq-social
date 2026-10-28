@@ -59,7 +59,7 @@ function LoginForm() {
   };
 
   return (
-    <div className="min-h-screen bg-[#010313] flex items-center justify-center px-4">
+    <div className="min-h-screen bg-[#0a0b14] flex items-center justify-center px-4">
       <div className="fixed inset-0 grid-bg opacity-30 pointer-events-none" />
       <div className="w-full max-w-md relative z-10">
         <div className="text-center mb-8">
@@ -67,9 +67,7 @@ function LoginForm() {
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-500/10 border border-purple-500/20">
               <Fingerprint className="h-5 w-5 text-purple-400" />
             </div>
-            <span className="text-xl font-bold tracking-tight">
-              Uniq<span className="text-purple-400">Social</span>
-            </span>
+            <span className="text-[16px] font-semibold tracking-tight">uniq</span>
           </a>
           <h1 className="text-2xl font-bold mb-2">
             {isSignUp ? "Create your account" : "Welcome back"}
@@ -129,7 +127,7 @@ function LoginForm() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3.5 rounded-xl font-medium text-sm bg-purple-600 hover:bg-purple-700 text-white transition-all flex items-center justify-center gap-2 hover:shadow-lg hover:shadow-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full py-3 rounded-[7px] font-medium text-[13px] bg-[#7c5cff] hover:bg-[#6d4ef0] text-white flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -159,7 +157,7 @@ function LoginForm() {
 export default function LoginPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-[#010313] flex items-center justify-center">
+      <div className="min-h-screen bg-[#0a0b14] flex items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-purple-400" />
       </div>
     }>

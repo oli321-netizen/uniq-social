@@ -87,7 +87,7 @@ export default function VariantsPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <button type="button" disabled={selected.length !== 2} onClick={() => setCompare(true)} className="rounded-lg border border-[#23232F] px-3 py-1.5 text-[12px] disabled:opacity-40">
+          <button type="button" disabled={selected.length !== 2} onClick={() => setCompare(true)} className="rounded-lg border border-[#1e2130] px-3 py-1.5 text-[12px] disabled:opacity-40">
             Compare
           </button>
           <button type="button" disabled={selected.length === 0} onClick={() => remove(selected)} className="rounded-lg border border-[#F87171]/40 px-3 py-1.5 text-[12px] text-[#F87171] disabled:opacity-40">
@@ -101,13 +101,13 @@ export default function VariantsPage() {
         <p className="flex items-center gap-2 text-[13px] text-[#8A8A9A]"><Loader2 className="h-4 w-4 animate-spin" /> Loading variants</p>
       )}
       {cards?.length === 0 && (
-        <p className="rounded-[10px] border border-dashed border-[#23232F] px-4 py-10 text-center text-[13px] text-[#8A8A9A]">
+        <p className="rounded-[10px] border border-dashed border-[#1e2130] px-4 py-10 text-center text-[13px] text-[#8A8A9A]">
           No saved renders yet. Finish one in the video processor and it will show up here.
         </p>
       )}
       <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {cards?.map((card, index) => (
-          <li key={card.id} className="overflow-hidden rounded-[10px] border border-[#23232F] bg-[#12121A]">
+          <li key={card.id} className="overflow-hidden rounded-[10px] border border-[#1e2130] bg-[#10121c]">
             <div className="relative aspect-[9/16] bg-black">
               <label className="absolute left-2 top-2 z-10">
                 <input
@@ -160,7 +160,7 @@ export default function VariantsPage() {
       </ul>
       {compare && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="grid w-full max-w-4xl gap-3 rounded-[10px] border border-[#23232F] bg-[#12121A] p-4 sm:grid-cols-2">
+          <div className="grid w-full max-w-4xl gap-3 rounded-[10px] border border-[#1e2130] bg-[#10121c] p-4 sm:grid-cols-2">
             {chosen.map((card) => (
               <div key={card.id}>
                 <p className="mb-2 text-[13px] font-medium">{card.name}</p>
@@ -171,7 +171,7 @@ export default function VariantsPage() {
                 )}
               </div>
             ))}
-            <button type="button" className="sm:col-span-2 rounded-lg border border-[#23232F] py-2 text-[13px]" onClick={() => setCompare(false)}>Close</button>
+            <button type="button" className="sm:col-span-2 rounded-lg border border-[#1e2130] py-2 text-[13px]" onClick={() => setCompare(false)}>Close</button>
           </div>
         </div>
       )}
