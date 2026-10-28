@@ -44,13 +44,13 @@ function LoginForm() {
         }
       }
 
-      // Server-side redirect — NextAuth handles everything
-      // Success → redirects to /dashboard with session cookie set
-      // Failure → redirects to /login?error=CredentialsSignin
+      const raw = searchParams.get("callbackUrl") || "";
+      const safe = raw.startsWith("/") && !raw.startsWith("//") ? raw : "";
+      const callbackUrl = !safe || safe === "/" || safe === "/hub" ? "/dashboard" : safe;
       await signIn("credentials", {
         email,
         password,
-        callbackUrl: "/dashboard",
+        callbackUrl,
       });
     } catch {
       setError("Something went wrong. Try again.");
@@ -75,7 +75,7 @@ function LoginForm() {
             {isSignUp ? "Create your account" : "Welcome back"}
           </h1>
           <p className="text-sm text-slate-500">
-            {isSignUp ? "Get 5 free credits to start processing" : "Sign in to your dashboard"}
+            {isSignUp ? "Get 5 free credits when your email is verified" : "Sign in to continue"}
           </p>
         </div>
 

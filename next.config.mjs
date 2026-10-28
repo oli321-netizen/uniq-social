@@ -5,6 +5,9 @@ const nextConfig = {
       bodySizeLimit: "500mb",
     },
   },
+  async redirects() {
+    return [{ source: "/hub/hook-lab", destination: "/hub/editor-lab", permanent: false }];
+  },
   async headers() {
     return [
       {

@@ -34,3 +34,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local media written by the hub (never commit uploads)
+/storage
+
+.env
+.env.*
+!.env.example
