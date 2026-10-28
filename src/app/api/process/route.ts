@@ -18,6 +18,21 @@ const EXEC_OPTIONS = { maxBuffer: 50 * 1024 * 1024 };
 
 type MetadataProfile = "capcut" | "snapchat" | "iphone" | "random";
 
+interface CaptionWord {
+  word: string;
+  start: number;
+  end: number;
+}
+
+interface CaptionConfig {
+  enabled: boolean;
+  words: CaptionWord[];
+  style: "bold-white" | "yellow-pop" | "minimal" | "shadow" | "outline";
+  position: "bottom" | "center" | "top";
+  fontSize: "small" | "medium" | "large";
+  allCaps: boolean;
+}
+
 interface ProcessingConfig {
   trimMin: number;
   trimMax: number;
@@ -32,6 +47,7 @@ interface ProcessingConfig {
   mirror: boolean;
   metadata: MetadataProfile | MetadataProfile[];
   thumbnailRandomise: boolean;
+  captions?: CaptionConfig;
 }
 
 // Realistic Lavf version strings (CapCut uses ffmpeg internally)
@@ -176,6 +192,119 @@ function getMetadataArgs(profile: MetadataProfile | MetadataProfile[]): { args: 
   ];
 
   return { args, brand: meta.brand };
+}
+
+// Generate ASS subtitle file from word-level timestamps
+function generateASS(captions: CaptionConfig, videoWidth: number, videoHeight: number): string {
+  const style = captions.style;
+  const pos = captions.position;
+
+  // Font size based on video height
+  const sizeMap = { small: Math.round(videoHeight * 0.035), medium: Math.round(videoHeight * 0.05), large: Math.round(videoHeight * 0.065) };
+  const fontSize = sizeMap[captions.fontSize] || sizeMap.medium;
+
+  // Vertical position: ASS uses margin from bottom
+  const marginV = pos === "bottom" ? Math.round(videoHeight * 0.08) : pos === "center" ? Math.round(videoHeight * 0.4) : Math.round(videoHeight * 0.85);
+
+  // Style definitions for each caption look
+  let primaryColour = "&H00FFFFFF"; // white
+  let outlineColour = "&H00000000"; // black
+  let outline = 3;
+  let shadow = 0;
+  let bold = 1;
+  let fontName = "Arial";
+
+  switch (style) {
+    case "bold-white":
+      primaryColour = "&H00FFFFFF";
+      outlineColour = "&H00000000";
+      outline = 4;
+      shadow = 0;
+      bold = 1;
+      fontName = "Impact";
+      break;
+    case "yellow-pop":
+      primaryColour = "&H0000FFFF"; // yellow in ASS BGR
+      outlineColour = "&H00000000";
+      outline = 4;
+      shadow = 0;
+      bold = 1;
+      fontName = "Impact";
+      break;
+    case "minimal":
+      primaryColour = "&H00FFFFFF";
+      outlineColour = "&H00000000";
+      outline = 2;
+      shadow = 0;
+      bold = 0;
+      fontName = "Arial";
+      break;
+    case "shadow":
+      primaryColour = "&H00FFFFFF";
+      outlineColour = "&H00000000";
+      outline = 0;
+      shadow = 4;
+      bold = 1;
+      fontName = "Arial";
+      break;
+    case "outline":
+      primaryColour = "&H00FFFFFF";
+      outlineColour = "&H005A32C8"; // purple-ish
+      outline = 5;
+      shadow = 0;
+      bold = 1;
+      fontName = "Impact";
+      break;
+  }
+
+  // ASS header
+  let ass = `[Script Info]
+ScriptType: v4.00+
+PlayResX: ${videoWidth}
+PlayResY: ${videoHeight}
+WrapStyle: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,${fontName},${fontSize},${primaryColour},&H000000FF,${outlineColour},&H80000000,${bold},0,0,0,100,100,0,0,1,${outline},${shadow},2,40,40,${marginV},1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+`;
+
+  // Group words into chunks of ~3-5 words for readable caption blocks
+  const words = captions.words;
+  const chunks: { text: string; start: number; end: number }[] = [];
+  let i = 0;
+  while (i < words.length) {
+    const chunkSize = Math.min(3 + Math.floor(Math.random() * 2), words.length - i); // 3-4 words per chunk
+    const chunk = words.slice(i, i + chunkSize);
+    let text = chunk.map((w) => w.word).join(" ");
+    if (captions.allCaps) text = text.toUpperCase();
+    chunks.push({
+      text,
+      start: chunk[0].start,
+      end: chunk[chunk.length - 1].end,
+    });
+    i += chunkSize;
+  }
+
+  // Add dialogue lines
+  for (const chunk of chunks) {
+    const startH = Math.floor(chunk.start / 3600);
+    const startM = Math.floor((chunk.start % 3600) / 60);
+    const startS = chunk.start % 60;
+    const endH = Math.floor(chunk.end / 3600);
+    const endM = Math.floor((chunk.end % 3600) / 60);
+    const endS = chunk.end % 60;
+
+    const startTime = `${startH}:${String(startM).padStart(2, "0")}:${startS.toFixed(2).padStart(5, "0")}`;
+    const endTime = `${endH}:${String(endM).padStart(2, "0")}:${endS.toFixed(2).padStart(5, "0")}`;
+
+    ass += `Dialogue: 0,${startTime},${endTime},Default,,0,0,0,,${chunk.text}\n`;
+  }
+
+  return ass;
 }
 
 // Process segments in parallel batches to avoid overwhelming the server
@@ -411,16 +540,34 @@ export async function POST(req: NextRequest) {
       EXEC_OPTIONS
     );
 
+    // === Optional captions burn-in ===
+    let captionedPath = outputPath;
+    if (config.captions?.enabled && config.captions.words?.length > 0) {
+      const assContent = generateASS(config.captions, origW, origH);
+      const assPath = path.join(tmpDir, "captions.ass");
+      await writeFile(assPath, assContent);
+
+      const captionOutput = path.join(tmpDir, "output_captioned.mp4");
+      // Burn subtitles using ASS filter — re-encode video with captions overlay
+      await execAsync(
+        `ffmpeg -y -i "${outputPath}" -vf "ass=${assPath}" ` +
+          `-c:v libx264 -preset ultrafast -crf ${crfValue} -pix_fmt yuv420p -c:a copy ` +
+          `-f mp4 -brand isom -movflags +faststart "${captionOutput}"`,
+        EXEC_OPTIONS
+      );
+      captionedPath = captionOutput;
+    }
+
     // === Optional thumbnail randomisation ===
     // Adds a very short (0.04s) unique colour flash at frame 1 then removes it,
     // forcing the platform to generate a different thumbnail hash
-    let finalOutputPath = outputPath;
+    let finalOutputPath = captionedPath;
     if (config.thumbnailRandomise) {
       const thumbPath = path.join(tmpDir, "output_thumb.mp4");
       // Shift hue of first 2 frames by a random amount, making the thumbnail unique
       const hueShift = Math.floor(rand(1, 360));
       await execAsync(
-        `ffmpeg -y -i "${outputPath}" -vf "select='if(lt(n\\,2),1,1)',hue=h='if(lt(t,0.08),${hueShift},0)'" ` +
+        `ffmpeg -y -i "${captionedPath}" -vf "select='if(lt(n\\,2),1,1)',hue=h='if(lt(t,0.08),${hueShift},0)'" ` +
           `-c:v libx264 -preset ultrafast -crf ${crfValue} -pix_fmt yuv420p -c:a copy ` +
           `-f mp4 -brand isom -movflags +faststart "${thumbPath}"`,
         EXEC_OPTIONS

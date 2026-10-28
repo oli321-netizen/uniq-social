@@ -30,6 +30,12 @@ import {
   Shuffle,
   Search,
   AlertTriangle,
+  MessageSquare,
+  Type,
+  RefreshCw,
+  ChevronDown,
+  ChevronUp,
+  Sparkles,
 } from "lucide-react";
 import JSZip from "jszip";
 import InstallButton from "@/components/InstallButton";
@@ -176,6 +182,75 @@ export default function Dashboard() {
     hueShift: true,
   });
 
+  // Caption state
+  const [captionsEnabled, setCaptionsEnabled] = useState(false);
+  const [captionWords, setCaptionWords] = useState<{ word: string; start: number; end: number }[]>([]);
+  const [captionText, setCaptionText] = useState("");
+  const [captionStyle, setCaptionStyle] = useState<"bold-white" | "yellow-pop" | "minimal" | "shadow" | "outline">("bold-white");
+  const [captionPosition, setCaptionPosition] = useState<"bottom" | "center" | "top">("bottom");
+  const [captionFontSize, setCaptionFontSize] = useState<"small" | "medium" | "large">("medium");
+  const [captionAllCaps, setCaptionAllCaps] = useState(true);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [captionVariants, setCaptionVariants] = useState<string[]>([]);
+  const [isGeneratingVariants, setIsGeneratingVariants] = useState(false);
+  const [showCaptionSettings, setShowCaptionSettings] = useState(false);
+
+  // Transcribe the first uploaded video
+  const transcribeVideo = async () => {
+    const firstVideo = videos.find((v) => v.file);
+    if (!firstVideo) {
+      addToast("Upload a video first", "error");
+      return;
+    }
+    setIsTranscribing(true);
+    try {
+      const formData = new FormData();
+      formData.append("video", firstVideo.file);
+      const res = await fetch("/api/transcribe", { method: "POST", body: formData });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Transcription failed");
+      }
+      const data = await res.json();
+      setCaptionText(data.text || "");
+      setCaptionWords(data.words || []);
+      setCaptionsEnabled(true);
+      setShowCaptionSettings(true);
+      addToast("Transcription complete", "success");
+    } catch (err: unknown) {
+      addToast(err instanceof Error ? err.message : "Transcription failed", "error");
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
+  // Generate caption variants using GPT
+  const generateVariants = async () => {
+    if (!captionText) {
+      addToast("Transcribe a video first", "error");
+      return;
+    }
+    setIsGeneratingVariants(true);
+    try {
+      const res = await fetch("/api/caption-variants", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: captionText, count: 4 }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to generate variants");
+      }
+      const data = await res.json();
+      setCaptionVariants(data.variants || []);
+      addToast(`${data.variants?.length || 0} variants generated`, "success");
+    } catch (err: unknown) {
+      addToast(err instanceof Error ? err.message : "Failed to generate variants", "error");
+    } finally {
+      setIsGeneratingVariants(false);
+    }
+  };
+
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     const files = Array.from(e.dataTransfer.files).filter((f) =>
@@ -277,6 +352,14 @@ export default function Dashboard() {
       JSON.stringify({
         ...editSettings,
         metadata: metadata.length === 1 ? metadata[0] : metadata,
+        captions: captionsEnabled && captionWords.length > 0 ? {
+          enabled: true,
+          words: captionWords,
+          style: captionStyle,
+          position: captionPosition,
+          fontSize: captionFontSize,
+          allCaps: captionAllCaps,
+        } : undefined,
       })
     );
 
@@ -969,6 +1052,196 @@ export default function Dashboard() {
                 </div>
               </div>
 
+            </div>
+
+            {/* Captions */}
+            <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-5">
+              <div className="flex items-center justify-between mb-1">
+                <h3 className="text-sm font-semibold flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4 text-purple-400" />
+                  Captions
+                </h3>
+                {captionsEnabled && (
+                  <button
+                    onClick={() => setCaptionsEnabled(false)}
+                    className="text-[10px] text-red-400/70 hover:text-red-400"
+                  >
+                    Disable
+                  </button>
+                )}
+              </div>
+              <p className="text-[11px] text-[--text-muted] mb-4">Auto-transcribe and burn captions onto your videos</p>
+
+              {!captionsEnabled ? (
+                <button
+                  onClick={transcribeVideo}
+                  disabled={isTranscribing || videos.length === 0}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold transition-all"
+                >
+                  {isTranscribing ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Transcribing...
+                    </>
+                  ) : (
+                    <>
+                      <Type className="h-4 w-4" />
+                      Transcribe Video
+                    </>
+                  )}
+                </button>
+              ) : (
+                <div className="space-y-3">
+                  {/* Transcript preview */}
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400">Transcript</span>
+                      <button
+                        onClick={transcribeVideo}
+                        disabled={isTranscribing}
+                        className="text-[10px] text-purple-400/70 hover:text-purple-400 flex items-center gap-1"
+                      >
+                        <RefreshCw className={`h-3 w-3 ${isTranscribing ? "animate-spin" : ""}`} />
+                        Re-do
+                      </button>
+                    </div>
+                    <p className="text-xs text-[--text-secondary] leading-relaxed line-clamp-4">
+                      {captionText || "No transcript yet"}
+                    </p>
+                  </div>
+
+                  {/* Caption style picker */}
+                  <button
+                    onClick={() => setShowCaptionSettings(!showCaptionSettings)}
+                    className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/[0.03] border border-white/5 hover:border-white/10 transition-all"
+                  >
+                    <span className="text-xs font-medium text-[--text-secondary]">Caption Settings</span>
+                    {showCaptionSettings ? <ChevronUp className="h-3.5 w-3.5 text-[--text-muted]" /> : <ChevronDown className="h-3.5 w-3.5 text-[--text-muted]" />}
+                  </button>
+
+                  {showCaptionSettings && (
+                    <div className="space-y-3 pl-1">
+                      {/* Style */}
+                      <div>
+                        <span className="text-[10px] font-semibold text-[--text-muted] uppercase tracking-wider block mb-2">Style</span>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {([
+                            { key: "bold-white", label: "Bold", preview: "text-white font-black" },
+                            { key: "yellow-pop", label: "Yellow", preview: "text-yellow-400 font-black" },
+                            { key: "minimal", label: "Clean", preview: "text-white font-normal" },
+                            { key: "shadow", label: "Shadow", preview: "text-white font-bold drop-shadow-lg" },
+                            { key: "outline", label: "Outline", preview: "text-white font-black" },
+                          ] as const).map((s) => (
+                            <button
+                              key={s.key}
+                              onClick={() => setCaptionStyle(s.key)}
+                              className={`p-2 rounded-lg border text-center transition-all ${
+                                captionStyle === s.key
+                                  ? "border-purple-500/40 bg-purple-500/10 ring-1 ring-purple-500/20"
+                                  : "border-white/5 bg-white/[0.01] hover:border-white/10"
+                              }`}
+                            >
+                              <span className={`text-[10px] ${s.preview}`}>{s.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Position */}
+                      <div>
+                        <span className="text-[10px] font-semibold text-[--text-muted] uppercase tracking-wider block mb-2">Position</span>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {(["top", "center", "bottom"] as const).map((p) => (
+                            <button
+                              key={p}
+                              onClick={() => setCaptionPosition(p)}
+                              className={`p-2 rounded-lg border text-center transition-all ${
+                                captionPosition === p
+                                  ? "border-purple-500/40 bg-purple-500/10"
+                                  : "border-white/5 bg-white/[0.01] hover:border-white/10"
+                              }`}
+                            >
+                              <span className="text-[10px] capitalize text-[--text-secondary]">{p}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Size */}
+                      <div>
+                        <span className="text-[10px] font-semibold text-[--text-muted] uppercase tracking-wider block mb-2">Size</span>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {(["small", "medium", "large"] as const).map((sz) => (
+                            <button
+                              key={sz}
+                              onClick={() => setCaptionFontSize(sz)}
+                              className={`p-2 rounded-lg border text-center transition-all ${
+                                captionFontSize === sz
+                                  ? "border-purple-500/40 bg-purple-500/10"
+                                  : "border-white/5 bg-white/[0.01] hover:border-white/10"
+                              }`}
+                            >
+                              <span className="text-[10px] capitalize text-[--text-secondary]">{sz}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* All caps toggle */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-[--text-secondary]">ALL CAPS</span>
+                        <button
+                          onClick={() => setCaptionAllCaps(!captionAllCaps)}
+                          className={`relative w-9 h-5 rounded-full transition-colors ${captionAllCaps ? "bg-purple-500" : "bg-white/10"}`}
+                        >
+                          <span className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform ${captionAllCaps ? "translate-x-4" : ""}`} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Generate variants button */}
+                  <button
+                    onClick={generateVariants}
+                    disabled={isGeneratingVariants || !captionText}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 hover:border-purple-500/30 hover:bg-purple-500/5 disabled:opacity-40 disabled:cursor-not-allowed text-[--text-secondary] text-xs font-semibold transition-all"
+                  >
+                    {isGeneratingVariants ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-3.5 w-3.5 text-purple-400" />
+                        Generate Caption Variants
+                      </>
+                    )}
+                  </button>
+
+                  {/* Variants list */}
+                  {captionVariants.length > 0 && (
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400">Variants</span>
+                      {captionVariants.map((variant, i) => (
+                        <button
+                          key={i}
+                          onClick={() => {
+                            navigator.clipboard.writeText(variant).catch(() => {});
+                            addToast("Copied to clipboard", "success");
+                          }}
+                          className="w-full text-left p-3 rounded-xl bg-white/[0.02] border border-white/5 hover:border-purple-500/20 hover:bg-purple-500/5 transition-all group"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="text-[11px] text-[--text-secondary] leading-relaxed">{variant}</p>
+                            <Copy className="h-3 w-3 text-[--text-muted] opacity-0 group-hover:opacity-100 flex-shrink-0 mt-0.5" />
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Edit settings */}
