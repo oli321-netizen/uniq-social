@@ -3,9 +3,11 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import { useTheme } from "@/components/ThemeProvider";
 import { useToast } from "@/components/Toast";
 import {
   Upload,
+  Fingerprint,
   X,
   Download,
   Loader2,
@@ -19,14 +21,15 @@ import {
   Mail,
   Crown,
   ArrowRight,
+  Sun,
+  Moon,
   BarChart3,
   Gift,
   History,
   Copy,
+  Shuffle,
   Search,
   AlertTriangle,
-  Clock,
-  Shield,
 } from "lucide-react";
 import JSZip from "jszip";
 import InstallButton from "@/components/InstallButton";
@@ -73,9 +76,38 @@ function ProcessingStepText({ progress }: { progress: number }) {
     PROCESSING_STEPS.length - 1
   );
   return (
-    <span className="text-purple-400/80 text-[10px] font-medium tracking-wide">
+    <span className="text-purple-400/80 text-[11px] font-medium tracking-wide uppercase">
       {PROCESSING_STEPS[stepIndex]}{".".repeat(dotCount)}
     </span>
+  );
+}
+
+function CircularProgress({ progress, size = 44 }: { progress: number; size?: number }) {
+  const strokeWidth = 3;
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (progress / 100) * circumference;
+  return (
+    <svg width={size} height={size} className="transform -rotate-90">
+      <circle
+        cx={size / 2} cy={size / 2} r={radius}
+        stroke="currentColor" className="text-white/5"
+        strokeWidth={strokeWidth} fill="none"
+      />
+      <circle
+        cx={size / 2} cy={size / 2} r={radius}
+        stroke="url(#progressGrad)" strokeWidth={strokeWidth} fill="none"
+        strokeLinecap="round"
+        strokeDasharray={circumference} strokeDashoffset={offset}
+        className="transition-all duration-700 ease-out"
+      />
+      <defs>
+        <linearGradient id="progressGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#a855f7" />
+          <stop offset="100%" stopColor="#6366f1" />
+        </linearGradient>
+      </defs>
+    </svg>
   );
 }
 
@@ -86,27 +118,6 @@ function genId() {
 function formatSize(bytes: number) {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-/* Waveform bars for processing animation */
-function WaveformBars() {
-  return (
-    <svg width="48" height="12" viewBox="0 0 48 12" className="opacity-50">
-      {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45].map((x, i) => (
-        <rect
-          key={i}
-          x={x}
-          y={[4, 2, 3, 1, 3, 2, 4, 1, 3, 4][i]}
-          width="2"
-          height={[4, 8, 6, 10, 6, 8, 4, 10, 6, 4][i]}
-          rx="1"
-          fill="#A78BFA"
-          className="animate-pulse"
-          style={{ animationDelay: `${i * 0.1}s` }}
-        />
-      ))}
-    </svg>
-  );
 }
 
 export default function Dashboard() {
@@ -130,25 +141,17 @@ export default function Dashboard() {
   const lowCreditsShownRef = useRef(false);
   const [subscribingPlan, setSubscribingPlan] = useState<string | null>(null);
   const outOfCreditsRef = useRef(false);
-  const planRank: Record<string, number> = {
-    free: 0,
-    starter: 1,
-    growth: 2,
-    pro: 3,
-    business: 4,
-    agency: 5,
-  };
+  const planRank: Record<string, number> = { free: 0, starter: 1, growth: 2, pro: 3, business: 4, agency: 5 };
   const currentRank = planRank[plan] ?? 0;
   const [isZipping, setIsZipping] = useState(false);
-  const [activeTab, setActiveTab] = useState<
-    "process" | "history" | "stats" | "refer" | "duplicates"
-  >("process");
+  const [activeTab, setActiveTab] = useState<"process" | "history" | "stats" | "refer" | "duplicates">("process");
   const [duplicateData, setDuplicateData] = useState<any>(null);
   const [duplicatesLoading, setDuplicatesLoading] = useState(false);
   const [historyJobs, setHistoryJobs] = useState<any[]>([]);
   const [usageData, setUsageData] = useState<any>(null);
   const [referralData, setReferralData] = useState<any>(null);
   const [referralCopied, setReferralCopied] = useState(false);
+  const { theme, toggleTheme } = useTheme();
   const { addToast } = useToast();
   const [previewVid, setPreviewVid] = useState<VideoFile | null>(null);
   const [showProcessMore, setShowProcessMore] = useState(false);
@@ -157,8 +160,8 @@ export default function Dashboard() {
   const [editSettings, setEditSettings] = useState({
     trimMin: 0.05,
     trimMax: 0.15,
-    cutsMin: 2,
-    cutsMax: 4,
+    cutsMin: 0,
+    cutsMax: 0,
     zoomMin: 1,
     zoomMax: 7,
     grain: true,
@@ -172,9 +175,6 @@ export default function Dashboard() {
     cropOffset: true,
     hueShift: true,
   });
-
-  // Settings panel visibility
-  // Settings are now in permanent sidebar
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -208,32 +208,19 @@ export default function Dashboard() {
     if (status === "authenticated") refreshCredits();
   }, [status, refreshCredits]);
 
-  // Refresh credits when user returns to tab
+  // Refresh credits when user returns to tab (e.g. after Stripe checkout)
   useEffect(() => {
-    const onFocus = () => {
-      if (status === "authenticated") refreshCredits();
-    };
+    const onFocus = () => { if (status === "authenticated") refreshCredits(); };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", () => {
-      if (
-        document.visibilityState === "visible" &&
-        status === "authenticated"
-      )
-        refreshCredits();
+      if (document.visibilityState === "visible" && status === "authenticated") refreshCredits();
     });
-    return () => {
-      window.removeEventListener("focus", onFocus);
-    };
+    return () => { window.removeEventListener("focus", onFocus); };
   }, [status, refreshCredits]);
 
-  // Show low-credits popup when balance gets low
+  // Show low-credits popup when balance gets low (once per session)
   useEffect(() => {
-    if (
-      creditsLoaded &&
-      credits <= 20 &&
-      credits >= 0 &&
-      !lowCreditsShownRef.current
-    ) {
+    if (creditsLoaded && credits <= 20 && credits >= 0 && !lowCreditsShownRef.current) {
       lowCreditsShownRef.current = true;
       setShowLowCredits(true);
     }
@@ -243,35 +230,20 @@ export default function Dashboard() {
   useEffect(() => {
     if (status !== "authenticated") return;
     if (activeTab === "history") {
-      fetch("/api/history")
-        .then((r) => r.json())
-        .then((d) => setHistoryJobs(d.jobs || []))
-        .catch(() => {});
+      fetch("/api/history").then(r => r.json()).then(d => setHistoryJobs(d.jobs || [])).catch(() => {});
     } else if (activeTab === "stats") {
-      fetch("/api/usage")
-        .then((r) => r.json())
-        .then((d) => setUsageData(d))
-        .catch(() => {});
+      fetch("/api/usage").then(r => r.json()).then(d => setUsageData(d)).catch(() => {});
     } else if (activeTab === "refer") {
-      fetch("/api/referral")
-        .then((r) => r.json())
-        .then((d) => setReferralData(d))
-        .catch(() => {});
+      fetch("/api/referral").then(r => r.json()).then(d => setReferralData(d)).catch(() => {});
     } else if (activeTab === "duplicates") {
       setDuplicatesLoading(true);
-      fetch("/api/duplicates")
-        .then((r) => r.json())
-        .then((d) => {
-          setDuplicateData(d);
-          setDuplicatesLoading(false);
-        })
-        .catch(() => setDuplicatesLoading(false));
+      fetch("/api/duplicates").then(r => r.json()).then(d => { setDuplicateData(d); setDuplicatesLoading(false); }).catch(() => setDuplicatesLoading(false));
     }
   }, [activeTab, status]);
 
   if (status === "loading") {
     return (
-      <div className="min-h-screen bg-[#07080C] flex items-center justify-center">
+      <div className="min-h-screen bg-[#010313] flex items-center justify-center">
         <Loader2 className="h-8 w-8 text-purple-400 animate-spin" />
       </div>
     );
@@ -297,11 +269,7 @@ export default function Dashboard() {
 
   const clearAll = () => setVideos([]);
 
-  const processVideo = async (
-    vid: VideoFile,
-    copyIndex: number,
-    retries = 2
-  ): Promise<{ url: string; filename: string }> => {
+  const processVideo = async (vid: VideoFile, copyIndex: number, retries = 2): Promise<{ url: string; filename: string }> => {
     const formData = new FormData();
     formData.append("video", vid.file);
     formData.append(
@@ -321,18 +289,16 @@ export default function Dashboard() {
 
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
+          // Don't retry on auth/credit errors
           if (res.status === 401 || res.status === 402) {
-            throw new Error(
-              errData.error || `Processing failed: ${res.statusText}`
-            );
+            throw new Error(errData.error || `Processing failed: ${res.statusText}`);
           }
-          if (attempt < retries) continue;
-          throw new Error(
-            errData.error || `Processing failed: ${res.statusText}`
-          );
+          if (attempt < retries) continue; // retry on server errors
+          throw new Error(errData.error || `Processing failed: ${res.statusText}`);
         }
 
         const rawBlob = await res.blob();
+        // Force video/mp4 MIME type so OS treats it as a video, not a document
         const blob = new Blob([rawBlob], { type: "video/mp4" });
         const ext = vid.name.split(".").pop() || "mp4";
         const suffix = copies > 1 ? `_v${copyIndex + 1}` : "";
@@ -341,19 +307,20 @@ export default function Dashboard() {
         return { url, filename };
       } catch (err) {
         if (attempt >= retries) throw err;
+        // Wait briefly before retry
         await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
       }
     }
     throw new Error("Processing failed after retries");
   };
 
-  const processVideoCopies = async (
-    vid: VideoFile
-  ): Promise<{ url: string; filename: string }[]> => {
+  // Process copies for a single video concurrently (up to 3 at a time)
+  const processVideoCopies = async (vid: VideoFile): Promise<{ url: string; filename: string }[]> => {
     const COPY_CONCURRENCY = 3;
     const results: { url: string; filename: string }[] = new Array(copies);
     let completedCopies = 0;
 
+    // Process copies in batches of COPY_CONCURRENCY
     for (let batch = 0; batch < copies; batch += COPY_CONCURRENCY) {
       const batchSize = Math.min(COPY_CONCURRENCY, copies - batch);
       const batchPromises = Array.from({ length: batchSize }, async (_, i) => {
@@ -365,12 +332,7 @@ export default function Dashboard() {
         setVideos((prev) =>
           prev.map((v) =>
             v.id === vid.id
-              ? {
-                  ...v,
-                  progress:
-                    Math.round((completedCopies / copies) * 90) + 10,
-                  completedCopies,
-                }
+              ? { ...v, progress: Math.round((completedCopies / copies) * 90) + 10, completedCopies }
               : v
           )
         );
@@ -386,23 +348,17 @@ export default function Dashboard() {
     const totalNeeded = pendingVids.length * copies;
 
     if (credits < totalNeeded) {
-      addToast(
-        `Not enough credits. You need ${totalNeeded} but only have ${credits}.`,
-        "error"
-      );
+      addToast(`Not enough credits. You need ${totalNeeded} but only have ${credits}.`, "error");
       return;
     }
 
     setIsProcessing(true);
     outOfCreditsRef.current = false;
 
+    // Process 2 videos concurrently to keep server from being overwhelmed
     const VIDEO_CONCURRENCY = 2;
 
-    for (
-      let batch = 0;
-      batch < pendingVids.length;
-      batch += VIDEO_CONCURRENCY
-    ) {
+    for (let batch = 0; batch < pendingVids.length; batch += VIDEO_CONCURRENCY) {
       const batchVids = pendingVids.slice(batch, batch + VIDEO_CONCURRENCY);
       if (outOfCreditsRef.current) break;
 
@@ -410,9 +366,7 @@ export default function Dashboard() {
         batchVids.map(async (vid) => {
           setVideos((prev) =>
             prev.map((v) =>
-              v.id === vid.id
-                ? { ...v, status: "processing", progress: 5 }
-                : v
+              v.id === vid.id ? { ...v, status: "processing", progress: 5 } : v
             )
           );
 
@@ -434,17 +388,12 @@ export default function Dashboard() {
             );
           } catch (err) {
             const msg = err instanceof Error ? err.message : "";
-            if (
-              msg.includes("Insufficient credits") ||
-              msg.includes("402")
-            ) {
+            if (msg.includes("Insufficient credits") || msg.includes("402")) {
               outOfCreditsRef.current = true;
             }
             setVideos((prev) =>
               prev.map((v) =>
-                v.id === vid.id
-                  ? { ...v, status: "error", progress: 0 }
-                  : v
+                v.id === vid.id ? { ...v, status: "error", progress: 0 } : v
               )
             );
           }
@@ -452,22 +401,16 @@ export default function Dashboard() {
       );
     }
 
+    // Refresh credits from server
     refreshCredits();
 
+    // Show completion toast & send email notification
     const completedCount = videos.filter((v) => v.status === "done").length;
     const failedCount = videos.filter((v) => v.status === "error").length;
     if (completedCount > 0 && failedCount === 0) {
-      addToast(
-        `All ${completedCount * copies} video${completedCount * copies !== 1 ? "s" : ""} processed successfully!`,
-        "success",
-        5000
-      );
+      addToast(`All ${completedCount * copies} video${completedCount * copies !== 1 ? "s" : ""} processed successfully!`, "success", 5000);
     } else if (completedCount > 0 && failedCount > 0) {
-      addToast(
-        `${completedCount * copies} video${completedCount * copies !== 1 ? "s" : ""} done, ${failedCount} failed`,
-        "warning",
-        5000
-      );
+      addToast(`${completedCount * copies} video${completedCount * copies !== 1 ? "s" : ""} done, ${failedCount} failed`, "warning", 5000);
     } else if (failedCount > 0) {
       addToast("Processing failed. Please try again.", "error", 5000);
     }
@@ -475,10 +418,7 @@ export default function Dashboard() {
       fetch("/api/notify-complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          totalVideos: completedCount,
-          totalCopies: completedCount * copies,
-        }),
+        body: JSON.stringify({ totalVideos: completedCount, totalCopies: completedCount * copies }),
       }).catch(() => {});
     }
 
@@ -487,1477 +427,1269 @@ export default function Dashboard() {
   };
 
   const clearCompleted = () => {
-    setVideos(
-      (prev) =>
-        prev.filter((v) => v.status !== "done" && v.status !== "error")
-    );
+    setVideos((prev) => prev.filter((v) => v.status !== "done" && v.status !== "error"));
     setShowProcessMore(false);
   };
 
   const pendingCount = videos.filter((v) => v.status === "pending").length;
   const doneCount = videos.filter((v) => v.status === "done").length;
 
-
-
-
-  // Icon sidebar tab data
-  const sidebarTabs: {
-    key: typeof activeTab;
-    icon: React.ReactNode;
-    label: string;
-  }[] = [
-    {
-      key: "process",
-      label: "Process",
-      icon: <Upload className="h-4 w-4" />,
-    },
-    {
-      key: "history",
-      label: "History",
-      icon: <Clock className="h-4 w-4" />,
-    },
-    {
-      key: "duplicates",
-      label: "Duplicates",
-      icon: <Search className="h-4 w-4" />,
-    },
-    {
-      key: "stats",
-      label: "Stats",
-      icon: <BarChart3 className="h-4 w-4" />,
-    },
-    { key: "refer", label: "Refer", icon: <Gift className="h-4 w-4" /> },
-  ];
-
   return (
-    <div className="h-screen bg-[#07080C] flex flex-col overflow-hidden relative font-[Inter,system-ui,sans-serif]">
-      {/* Dot grid background */}
-      <svg
-        className="absolute inset-0 w-full h-full opacity-20 pointer-events-none"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <defs>
-          <pattern
-            id="dotgrid"
-            width="24"
-            height="24"
-            patternUnits="userSpaceOnUse"
-          >
-            <circle cx="1" cy="1" r="0.5" fill="#1A1D27" />
-          </pattern>
-        </defs>
-        <rect width="100%" height="100%" fill="url(#dotgrid)" />
-      </svg>
-
-      {/* ═══ TOP HEADER BAR ═══ */}
-      <header className="relative z-10 h-[52px] flex items-center justify-between px-5 bg-[#0B0D12]/80 backdrop-blur-md border-b border-white/[0.04] flex-shrink-0">
-        <a href="/" className="flex items-center gap-2">
-          <span className="font-black text-[18px] tracking-tighter text-white">uniq</span>
-        </a>
-
-        {/* Right: credits + actions */}
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/[0.06] border border-purple-500/[0.1]">
-            <Zap className="h-3.5 w-3.5 text-purple-400" />
-            <span className="font-mono text-[13px] font-bold text-purple-300">{credits.toLocaleString()}</span>
-            <span className="text-[10px] text-purple-400/50 font-semibold ml-0.5">credits</span>
+    <div className="min-h-screen bg-[#010313]">
+      {/* Top bar */}
+      <header className="border-b border-white/5 bg-[#010313]/80 backdrop-blur-xl sticky top-0 z-50">
+        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-3 sm:px-6">
+          <div className="flex items-center gap-3 sm:gap-6">
+            <a href="/" className="flex items-center gap-2">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-purple-500/10 border border-purple-500/20">
+                <Fingerprint className="h-3.5 w-3.5 text-purple-400" />
+              </div>
+              <span className="text-sm font-semibold tracking-tight hidden sm:inline">
+                Uniq<span className="text-purple-400">Social</span>
+              </span>
+            </a>
+            <span className="text-xs text-slate-600 hidden sm:inline">Dashboard</span>
           </div>
-          <button
-            onClick={() => setShowTopUp(true)}
-            className="px-3.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-[12px] font-bold transition-all flex items-center gap-1.5 shadow-[0_2px_12px_rgba(147,51,234,0.3)]"
-          >
-            <Zap className="h-3 w-3" />
-            Top up
-          </button>
-          <InstallButton />
-          <a href="/account" className="text-[#3D4050] hover:text-white transition-colors ml-1 p-1.5 rounded-lg hover:bg-white/[0.04]">
-            <Settings className="h-4 w-4" />
-          </a>
-          <button
-            onClick={() => signOut({ callbackUrl: "/login" })}
-            className="text-[#3D4050] hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/[0.04]"
-          >
-            <LogOut className="h-4 w-4" />
-          </button>
+
+          <div className="flex items-center gap-2 sm:gap-4">
+            <div className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg bg-purple-500/10 border border-purple-500/20">
+              <Zap className="h-3.5 w-3.5 text-purple-400" />
+              <span className="text-xs sm:text-sm font-medium text-purple-300">
+                {credits}
+              </span>
+            </div>
+            <button
+              onClick={() => setShowTopUp(true)}
+              className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium transition-all hover:shadow-lg hover:shadow-purple-500/20"
+            >
+              <Plus className="h-3 w-3" />
+              <span className="hidden sm:inline">Buy Credits</span>
+            </button>
+            <InstallButton />
+            <button
+              onClick={toggleTheme}
+              className="text-slate-500 hover:text-white transition-colors"
+              title="Toggle theme"
+            >
+              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </button>
+            <a href="/account" className="text-slate-500 hover:text-white transition-colors">
+              <Settings className="h-4 w-4" />
+            </a>
+            <button
+              onClick={() => signOut({ callbackUrl: "/login" })}
+              className="text-slate-500 hover:text-white transition-colors"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </header>
 
       {/* Email verification banner */}
       {!emailVerified && (
-        <div className="relative z-10 bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 flex items-center justify-between gap-3 flex-shrink-0">
-          <div className="flex items-center gap-2 min-w-0">
-            <Mail className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-            <p className="text-xs text-amber-200 truncate">
-              Please verify your email to keep your account secure.
-            </p>
+        <div className="bg-amber-500/10 border-b border-amber-500/20">
+          <div className="mx-auto max-w-7xl px-3 sm:px-6 py-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <Mail className="h-4 w-4 text-amber-400 shrink-0" />
+              <p className="text-xs sm:text-sm text-amber-200 truncate">
+                Please verify your email to keep your account secure.
+              </p>
+            </div>
+            <button
+              onClick={async () => {
+                setResendingVerification(true);
+                try {
+                  await fetch('/api/auth/resend-verification', { method: 'POST' });
+                } catch {}
+                setResendingVerification(false);
+              }}
+              disabled={resendingVerification}
+              className="text-xs font-medium text-amber-400 hover:text-amber-300 transition-colors disabled:opacity-50"
+            >
+              {resendingVerification ? 'Sending...' : 'Resend code'}
+            </button>
           </div>
-          <button
-            onClick={async () => {
-              setResendingVerification(true);
-              try {
-                await fetch("/api/auth/resend-verification", {
-                  method: "POST",
-                });
-              } catch {
-                /* ignore */
-              }
-              setResendingVerification(false);
-            }}
-            disabled={resendingVerification}
-            className="text-xs font-medium text-amber-400 hover:text-amber-300 transition-colors disabled:opacity-50 flex-shrink-0"
-          >
-            {resendingVerification ? "Sending..." : "Resend"}
-          </button>
         </div>
       )}
 
-      {/* Upgrade banner for free users */}
+
+      {/* Upgrade banner for free users — hidden for team members */}
       {plan === "free" && !isTeamMember && (
-        <div className="relative z-10 border-b border-purple-500/10 bg-purple-500/[0.02] px-4 py-2.5 flex items-center justify-between gap-3 flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <Crown className="h-4 w-4 text-purple-400" />
-            <span className="text-xs text-slate-400">
-              Upgrade your plan — get monthly credits from £24/mo
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowTopUp(true)}
-              className="px-3 py-1 rounded-md text-[11px] font-medium bg-white/5 hover:bg-white/10 text-white border border-white/10 transition-all"
-            >
-              Top Up
-            </button>
-            <button
-              onClick={() => setShowPlans(true)}
-              className="px-3 py-1 rounded-md text-[11px] font-medium bg-purple-600 hover:bg-purple-700 text-white transition-all flex items-center gap-1"
-            >
-              View Plans <ArrowRight className="h-3 w-3" />
-            </button>
+        <div className="mx-auto max-w-6xl px-3 sm:px-6 pt-4 sm:pt-6">
+          <div className="rounded-2xl border border-purple-500/20 bg-gradient-to-r from-purple-500/[0.08] to-purple-600/[0.04] p-4 sm:p-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3 sm:gap-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-500/10 border border-purple-500/20 shrink-0">
+                  <Crown className="h-5 w-5 text-purple-400" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-white">Upgrade your plan</h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Get monthly credits from £24/mo
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setShowTopUp(true)}
+                  className="flex-1 sm:flex-none px-4 py-2 rounded-xl text-xs font-medium bg-white/5 hover:bg-white/10 text-white border border-white/10 transition-all text-center"
+                >
+                  Top Up
+                </button>
+                <button
+                  onClick={() => setShowPlans(true)}
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium bg-purple-600 hover:bg-purple-700 text-white transition-all hover:shadow-lg hover:shadow-purple-500/20"
+                >
+                  View Plans
+                  <ArrowRight className="h-3 w-3" />
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
-
-      {/* ═══ MAIN BODY ═══ */}
-      <div className="relative z-10 flex-1 flex overflow-hidden">
-
-        {/* ═══ LEFT SIDEBAR NAV ═══ */}
-        <nav className="hidden md:flex w-[180px] flex-shrink-0 border-r border-white/[0.04] bg-[#0B0D12]/60 flex-col justify-between py-4 px-3">
-          <div className="space-y-1">
-            {sidebarTabs.map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all ${
-                  activeTab === tab.key
-                    ? "bg-purple-500/[0.12] text-purple-300 shadow-[0_0_20px_rgba(147,51,234,0.08)]"
-                    : "text-[#4A4D5C] hover:text-[#C8CAD0] hover:bg-white/[0.03]"
-                }`}
-              >
-                <span className={activeTab === tab.key ? "text-purple-400" : ""}>{tab.icon}</span>
-                <span className="text-[13px] font-semibold">{tab.label}</span>
-              </button>
-            ))}
-          </div>
-          <div className="space-y-2 px-1">
-            <div className="h-px bg-white/[0.04] my-2" />
-            <p className="text-[10px] text-[#2A2D3A] font-medium px-2">© uniq {new Date().getFullYear()}</p>
-          </div>
-        </nav>
-
-        {/* Mobile bottom nav */}
-        <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#0B0D12] border-t border-white/[0.06] flex items-center justify-around py-2 px-1">
-          {sidebarTabs.map((tab) => (
+      {/* Tab bar */}
+      <div className="mx-auto max-w-6xl px-3 sm:px-6 pt-4 sm:pt-6">
+        <div className="flex gap-1 p-1 rounded-xl bg-white/[0.03] border border-white/5 w-full sm:w-fit overflow-x-auto">
+          {([
+            { key: "process", label: "Process", icon: "Zap" },
+            { key: "history", label: "History", icon: "History" },
+            { key: "duplicates", label: "Duplicates", icon: "Search" },
+            { key: "stats", label: "Stats", icon: "BarChart3" },
+            { key: "refer", label: "Refer & Earn", icon: "Gift" },
+          ] as const).map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-all ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                 activeTab === tab.key
-                  ? "text-purple-400"
-                  : "text-[#3D4050]"
+                  ? "bg-purple-600 text-white shadow-lg shadow-purple-500/20"
+                  : "text-slate-500 hover:text-white hover:bg-white/5"
               }`}
             >
-              {tab.icon}
-              <span className="text-[9px] font-semibold">{tab.label}</span>
+              {tab.key === "process" && <Zap className="h-3.5 w-3.5" />}
+              {tab.key === "history" && <History className="h-3.5 w-3.5" />}
+              {tab.key === "duplicates" && <Search className="h-3.5 w-3.5" />}
+              {tab.key === "stats" && <BarChart3 className="h-3.5 w-3.5" />}
+              {tab.key === "refer" && <Gift className="h-3.5 w-3.5" />}
+              {tab.label}
             </button>
           ))}
         </div>
+      </div>
 
-        {/* ═══ PROCESS TAB ═══ */}
-        {activeTab === "process" && (
-          <div className="flex-1 flex overflow-hidden">
-            {/* LEFT: Upload + Queue */}
-            <div className="flex-1 flex flex-col overflow-hidden">
-              {/* Upload zone (full-width) */}
-              <div className="p-4 flex-shrink-0">
-                  <div
-                    onDrop={onDrop}
-                    onDragOver={(e) => e.preventDefault()}
-                    onClick={() => fileInputRef.current?.click()}
-                    className="w-full rounded-xl border-[1.5px] border-dashed border-purple-500/[0.12] bg-purple-500/[0.015] hover:border-purple-500/[0.25] transition-all cursor-pointer flex flex-col items-center justify-center py-8 px-4 text-center group"
-                  >
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      multiple
-                      accept="video/*"
-                      className="hidden"
-                      onChange={(e) => {
-                        if (e.target.files)
-                          addFiles(Array.from(e.target.files));
-                      }}
-                    />
-                    <div className="w-9 h-9 rounded-[10px] bg-gradient-to-br from-purple-500/[0.08] to-purple-600/[0.06] border border-purple-500/[0.08] flex items-center justify-center mb-2 group-hover:from-purple-500/[0.12] group-hover:to-purple-600/[0.1] transition-all">
-                      <Upload className="h-4 w-4 text-purple-400" />
-                    </div>
-                    <p className="text-[13px] font-bold text-white tracking-tight">
-                      Drop videos here or click to upload
-                    </p>
-                    <p className="text-[10px] text-[#3D4050] mt-1">
-                      MP4, MOV, AVI — up to 500 MB per file
-                    </p>
-                  </div>
-
+      {activeTab === "process" && (
+      <div className="mx-auto max-w-6xl px-3 sm:px-6 py-4 sm:py-8">
+        <div className="grid lg:grid-cols-[1fr_320px] gap-4 sm:gap-8">
+          {/* Main area */}
+          <div className="space-y-4 sm:space-y-6">
+            {/* Upload zone */}
+            <div
+              onDrop={onDrop}
+              onDragOver={(e) => e.preventDefault()}
+              onClick={() => fileInputRef.current?.click()}
+              className="group cursor-pointer rounded-2xl border-2 border-dashed border-white/10 hover:border-purple-500/30 bg-white/[0.01] hover:bg-purple-500/[0.02] transition-all duration-300 p-6 sm:p-12 text-center"
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="video/*"
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files) addFiles(Array.from(e.target.files));
+                }}
+              />
+              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-purple-500/10 border border-purple-500/20 group-hover:bg-purple-500/15 transition-colors">
+                <Upload className="h-6 w-6 text-purple-400" />
               </div>
-
-              {/* Queue area */}
-              <div className="flex-1 overflow-y-auto">
-                {/* Queue header */}
-                <div className="flex items-center justify-between px-4 py-3">
-                  <div className="flex items-center gap-2.5">
-                    <span className="text-[13px] font-extrabold text-white tracking-tight">
-                      Queue
-                    </span>
-                    <div className="px-1.5 py-0.5 rounded bg-white/[0.03]">
-                      <span className="font-mono text-[10px] font-semibold text-[#3D4050]">
-                        {videos.length} file
-                        {videos.length !== 1 ? "s" : ""}
-                      </span>
-                    </div>
-                    {videos.length > 0 && (
-                      <button
-                        onClick={clearAll}
-                        className="text-[10px] text-[#2A2D3A] hover:text-red-400 transition-colors ml-1"
-                      >
-                        Clear
-                      </button>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {pendingCount > 0 && (
-                      <span className="font-mono text-[11px] text-[#3D4050]">
-                        {pendingCount * copies} cr
-                      </span>
-                    )}
-                    <button
-                      onClick={processAll}
-                      disabled={
-                        pendingCount === 0 ||
-                        isProcessing ||
-                        credits < pendingCount * copies
-                      }
-                      className={`px-5 py-1.5 rounded-lg text-[12px] font-bold transition-all flex items-center gap-2 ${
-                        pendingCount > 0 &&
-                        !isProcessing &&
-                        credits >= pendingCount * copies
-                          ? "border border-purple-500/20 bg-gradient-to-r from-purple-500/[0.1] to-purple-500/[0.06] text-purple-400 shadow-[0_2px_20px_rgba(167,139,250,0.08)] hover:from-purple-500/[0.15]"
-                          : "bg-white/[0.03] text-[#2A2D3A] cursor-not-allowed"
-                      }`}
-                    >
-                      {isProcessing ? (
-                        <>
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          Processing...
-                        </>
-                      ) : (
-                        <>
-                          <Zap className="h-3.5 w-3.5" />
-                          Process all
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Not enough credits warning */}
-                {pendingCount > 0 &&
-                  !isProcessing &&
-                  credits < pendingCount * copies && (
-                    <div className="mx-4 mb-2 px-3 py-2 rounded-lg bg-red-500/[0.05] border border-red-500/[0.1]">
-                      <p className="text-[11px] text-red-400">
-                        Not enough credits — need {pendingCount * copies},
-                        have {credits}.{" "}
-                        <button
-                          onClick={() => setShowPlans(true)}
-                          className="underline text-purple-400 hover:text-purple-300"
-                        >
-                          Get more
-                        </button>
-                      </p>
-                    </div>
-                  )}
-
-                {/* Video cards */}
-                <div className="px-4 space-y-1.5 pb-4">
-                  {videos.map((vid) => (
-                    <div
-                      key={vid.id}
-                      className={`rounded-xl p-4 transition-all ${
-                        vid.status === "processing"
-                          ? "bg-purple-500/[0.015] border border-purple-500/[0.08]"
-                          : vid.status === "done"
-                            ? "bg-emerald-500/[0.01] border border-emerald-500/[0.06]"
-                            : vid.status === "error"
-                              ? "bg-red-500/[0.01] border border-red-500/[0.06]"
-                              : "bg-white/[0.005] border border-white/[0.025]"
-                      } ${vid.status === "pending" ? "opacity-60" : ""}`}
-                    >
-                      <div className="flex items-center gap-3">
-                        {/* Status icon */}
-                        <div
-                          className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                            vid.status === "processing"
-                              ? "bg-purple-500/[0.06]"
-                              : vid.status === "done"
-                                ? "bg-emerald-500/[0.06]"
-                                : vid.status === "error"
-                                  ? "bg-red-500/[0.06]"
-                                  : "bg-white/[0.015]"
-                          }`}
-                        >
-                          {vid.status === "processing" ? (
-                            <svg
-                              width="14"
-                              height="14"
-                              viewBox="0 0 24 24"
-                              className="animate-spin"
-                            >
-                              <circle
-                                cx="12"
-                                cy="12"
-                                r="9"
-                                fill="none"
-                                stroke="rgba(167,139,250,0.1)"
-                                strokeWidth="2.5"
-                              />
-                              <path
-                                d="M12 3a9 9 0 0 1 9 9"
-                                fill="none"
-                                stroke="#A78BFA"
-                                strokeWidth="2.5"
-                                strokeLinecap="round"
-                              />
-                            </svg>
-                          ) : vid.status === "done" ? (
-                            <Check className="h-3.5 w-3.5 text-emerald-400" />
-                          ) : vid.status === "error" ? (
-                            <X className="h-3.5 w-3.5 text-red-400" />
-                          ) : (
-                            <FileVideo className="h-3.5 w-3.5 text-[#2A2D3A]" />
-                          )}
-                        </div>
-
-                        {/* File info */}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[13px] font-bold text-white tracking-tight truncate">
-                            {vid.name}
-                          </p>
-                          {vid.status === "processing" ? (
-                            <div className="flex items-center gap-2 mt-0.5">
-                              <ProcessingStepText
-                                progress={vid.progress}
-                              />
-                              {vid.completedCopies !== undefined && (
-                                <span className="text-[10px] text-[#2A2D3A]">
-                                  · {vid.completedCopies}/{copies}
-                                </span>
-                              )}
-                            </div>
-                          ) : vid.status === "done" ? (
-                            <p className="text-[10px] text-[#2A2D3A] mt-0.5">
-                              {vid.size} · {vid.outputs?.length || copies}{" "}
-                              copies
-                            </p>
-                          ) : (
-                            <p className="text-[10px] text-[#2A2D3A] mt-0.5">
-                              {vid.size}
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          {vid.status === "processing" && (
-                            <>
-                              <WaveformBars />
-                              <span className="font-mono text-[11px] font-bold text-purple-400 px-2 py-0.5 rounded bg-purple-500/[0.06]">
-                                {vid.progress}%
-                              </span>
-                            </>
-                          )}
-                          {vid.status === "done" && vid.outputs && (
-                            <>
-                              {/* Uniqueness badge */}
-                              <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-purple-500/[0.06] border border-purple-500/[0.1]">
-                                <Shield className="h-2.5 w-2.5 text-purple-400" />
-                                <span className="font-mono text-[10px] font-bold text-purple-400">
-                                  98.4
-                                </span>
-                              </div>
-                              <button
-                                onClick={() => setPreviewVid(vid)}
-                                className="text-[11px] text-purple-400 hover:text-purple-300 font-medium transition-colors"
-                              >
-                                Preview
-                              </button>
-                              <button
-                                onClick={() => {
-                                  if (vid.outputs) {
-                                    vid.outputs.forEach((out, i) => {
-                                      setTimeout(() => {
-                                        const a =
-                                          document.createElement("a");
-                                        a.href = out.url;
-                                        a.download = out.filename;
-                                        document.body.appendChild(a);
-                                        a.click();
-                                        document.body.removeChild(a);
-                                      }, i * 500);
-                                    });
-                                  }
-                                }}
-                                className="px-3 py-1 rounded-md border border-emerald-500/[0.12] bg-emerald-500/[0.04] text-emerald-400 text-[11px] font-bold hover:bg-emerald-500/[0.08] transition-colors"
-                              >
-                                Download
-                              </button>
-                            </>
-                          )}
-                          {vid.status === "error" && (
-                            <span className="text-[11px] text-red-400 font-medium">
-                              Failed
-                            </span>
-                          )}
-                          {vid.status === "pending" && (
-                            <button
-                              onClick={() => removeVideo(vid.id)}
-                              className="text-[#2A2D3A] hover:text-red-400 transition-colors"
-                            >
-                              <X className="h-3.5 w-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Segmented progress bar */}
-                      {vid.status === "processing" && (
-                        <div className="flex gap-1 mt-3">
-                          {Array.from({ length: 3 }).map((_, i) => {
-                            const segPct = (vid.progress / 100) * 3;
-                            const filled =
-                              segPct > i + 1
-                                ? 100
-                                : segPct > i
-                                  ? (segPct - i) * 100
-                                  : 0;
-                            return (
-                              <div
-                                key={i}
-                                className="flex-1 h-1 rounded-full bg-purple-500/[0.06] overflow-hidden"
-                              >
-                                <div
-                                  className="h-full rounded-full bg-purple-400 transition-all duration-700"
-                                  style={{
-                                    width: `${Math.min(100, filled)}%`,
-                                  }}
-                                />
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-
-                  {/* Bulk download */}
-                  {doneCount > 0 && (
-                    <div className="flex gap-2 mt-3">
-                      <button
-                        onClick={() => {
-                          const allOutputs: {
-                            url: string;
-                            filename: string;
-                          }[] = [];
-                          videos.forEach((v) => {
-                            if (v.status === "done" && v.outputs)
-                              v.outputs.forEach((out) =>
-                                allOutputs.push(out)
-                              );
-                          });
-                          allOutputs.forEach((out, i) => {
-                            setTimeout(() => {
-                              const a = document.createElement("a");
-                              a.href = out.url;
-                              a.download = out.filename;
-                              document.body.appendChild(a);
-                              a.click();
-                              document.body.removeChild(a);
-                            }, i * 500);
-                          });
-                        }}
-                        className="flex-1 py-2.5 rounded-lg font-bold text-[12px] bg-gradient-to-r from-purple-500/[0.1] to-purple-500/[0.06] border border-purple-500/[0.15] text-purple-400 transition-all flex items-center justify-center gap-2 hover:from-purple-500/[0.15]"
-                      >
-                        <Download className="h-3.5 w-3.5" />
-                        Save all videos
-                      </button>
-                      <button
-                        disabled={isZipping}
-                        onClick={async () => {
-                          setIsZipping(true);
-                          try {
-                            const zip = new JSZip();
-                            const allOutputs: {
-                              url: string;
-                              filename: string;
-                            }[] = [];
-                            videos.forEach((v) => {
-                              if (v.status === "done" && v.outputs)
-                                v.outputs.forEach((out) =>
-                                  allOutputs.push(out)
-                                );
-                            });
-                            await Promise.all(
-                              allOutputs.map(async (out) => {
-                                const res = await fetch(out.url);
-                                const buf = await res.arrayBuffer();
-                                zip.file(out.filename, buf, {
-                                  binary: true,
-                                });
-                              })
-                            );
-                            const zipBlob = await zip.generateAsync({
-                              type: "blob",
-                              compression: "STORE",
-                              streamFiles: false,
-                            });
-                            const url = URL.createObjectURL(zipBlob);
-                            const a = document.createElement("a");
-                            a.href = url;
-                            a.download = `uniq_${Date.now()}.zip`;
-                            document.body.appendChild(a);
-                            a.click();
-                            document.body.removeChild(a);
-                            setTimeout(
-                              () => URL.revokeObjectURL(url),
-                              5000
-                            );
-                          } catch (err) {
-                            console.error("Zip download failed:", err);
-                          } finally {
-                            setIsZipping(false);
-                          }
-                        }}
-                        className="py-2.5 px-4 rounded-lg font-bold text-[12px] bg-white/[0.02] border border-white/[0.06] text-[#C8CAD0] transition-all flex items-center justify-center gap-2 hover:bg-white/[0.04] disabled:opacity-50"
-                      >
-                        {isZipping ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <>
-                            <Download className="h-3.5 w-3.5" />
-                            .zip
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Process more */}
-                  {showProcessMore &&
-                    doneCount > 0 &&
-                    !isProcessing && (
-                      <button
-                        onClick={clearCompleted}
-                        className="w-full py-2.5 rounded-lg font-bold text-[12px] mt-2 border border-purple-500/[0.2] bg-purple-500/[0.05] text-purple-300 hover:bg-purple-500/[0.1] flex items-center justify-center gap-2 transition-all"
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                        Process More Videos
-                      </button>
-                    )}
-                </div>
-              </div>
+              <p className="text-sm font-medium text-slate-300 mb-1">
+                Drop videos here or click to upload
+              </p>
+              <p className="text-xs text-slate-600">
+                MP4, MOV, AVI, MKV — up to 500MB per file
+              </p>
             </div>
 
-            {/* ═══ RIGHT SETTINGS SIDEBAR ═══ */}
-            <aside className="hidden lg:flex w-[300px] flex-shrink-0 border-l border-white/[0.03] bg-white/[0.005] flex-col overflow-y-auto">
-              <div className="p-4 space-y-5">
-                {/* Video Identity Profile */}
-                <div>
-                  <p className="text-[10px] font-bold text-[#2A2D3A] tracking-wider mb-3">
-                    VIDEO IDENTITY PROFILE
-                  </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {(["capcut", "snapchat", "iphone", "random"] as MetadataProfile[]).map((p) => {
-                      const labels: Record<MetadataProfile, string> = { capcut: "CapCut", snapchat: "Snapchat", iphone: "iPhone", random: "Random" };
-                      const descs: Record<MetadataProfile, string> = { capcut: "Edited with CapCut", snapchat: "Recorded via Snap", iphone: "Shot on iPhone", random: "Auto per copy" };
-                      const isActive = metadata.includes(p);
-                      const stacked = isActive && metadata.length > 1 && !metadata.includes("random") && p !== "random";
-                      return (
-                        <button
-                          key={p}
-                          onClick={() => {
-                            if (p === "random") { setMetadata(["random"]); return; }
-                            const isSelected = metadata.includes(p);
-                            if (isSelected) {
-                              const next = metadata.filter((m) => m !== p);
-                              setMetadata(next.length === 0 ? ["random"] : next);
-                            } else {
-                              setMetadata([...metadata.filter((m) => m !== "random"), p]);
-                            }
-                          }}
-                          className={`relative p-3 rounded-lg border text-left transition-all ${
-                            isActive
-                              ? "border-purple-500/[0.2] bg-purple-500/[0.04]"
-                              : "border-white/[0.04] bg-white/[0.01] hover:border-white/[0.08]"
-                          }`}
-                        >
-                          <span className={`text-[12px] font-bold block ${isActive ? "text-purple-400" : "text-[#3D4050]"}`}>
-                            {labels[p]}
-                          </span>
-                          <span className="text-[10px] text-[#2A2D3A] block mt-0.5">{descs[p]}</span>
-                          {isActive && <Check className="absolute top-2 right-2 h-3 w-3 text-purple-400" />}
-                          {stacked && (
-                            <span className="text-[9px] font-bold text-purple-400/80 bg-purple-500/[0.1] px-1.5 py-0.5 rounded mt-1.5 inline-block">STACKED</span>
+            {/* Video list */}
+            {videos.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-medium text-slate-300">
+                    {videos.length} video{videos.length !== 1 ? "s" : ""}{" "}
+                    {doneCount > 0 && (
+                      <span className="text-purple-400">
+                        &middot; {doneCount} done
+                      </span>
+                    )}
+                  </h3>
+                  <button
+                    onClick={clearAll}
+                    className="text-xs text-slate-600 hover:text-red-400 transition-colors"
+                  >
+                    Clear all
+                  </button>
+                </div>
+
+                {videos.map((vid) => (
+                  <div
+                    key={vid.id}
+                    className={`relative flex items-center gap-4 p-4 rounded-xl border transition-all duration-500 ${
+                      vid.status === "processing"
+                        ? "border-purple-500/30 bg-purple-500/[0.04] shadow-[0_0_20px_rgba(168,85,247,0.08)]"
+                        : vid.status === "done"
+                        ? "border-green-500/20 bg-green-500/[0.02]"
+                        : vid.status === "error"
+                        ? "border-red-500/20 bg-red-500/[0.02]"
+                        : "border-white/5 bg-white/[0.02]"
+                    }`}
+                  >
+                    {/* Icon / Progress ring */}
+                    <div className="relative flex items-center justify-center flex-shrink-0">
+                      {vid.status === "processing" ? (
+                        <div className="relative">
+                          <CircularProgress progress={vid.progress} />
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <span className="text-[10px] font-bold text-purple-400">{vid.progress}%</span>
+                          </div>
+                        </div>
+                      ) : vid.status === "done" ? (
+                        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-green-500/10 border border-green-500/20">
+                          <Check className="h-5 w-5 text-green-400" />
+                        </div>
+                      ) : vid.status === "error" ? (
+                        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-red-500/10 border border-red-500/20">
+                          <X className="h-5 w-5 text-red-400" />
+                        </div>
+                      ) : (
+                        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/5 border border-white/10">
+                          <FileVideo className="h-5 w-5 text-slate-500" />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{vid.name}</p>
+                      {vid.status === "processing" ? (
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <ProcessingStepText progress={vid.progress} />
+                          {vid.completedCopies !== undefined && (
+                            <span className="text-[11px] text-slate-600">
+                              · {vid.completedCopies}/{copies} clips
+                            </span>
                           )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-slate-600">{vid.size}</p>
+                      )}
+                      {vid.status === "processing" && (
+                        <div className="mt-2 h-1 rounded-full bg-white/5 overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all duration-700 ease-out bg-gradient-to-r from-purple-600 via-fuchsia-500 to-purple-600 bg-[length:200%_100%] animate-shimmer shadow-[0_0_8px_rgba(168,85,247,0.5)]"
+                            style={{ width: `${vid.progress}%` }}
+                          />
+                        </div>
+                      )}
+                    </div>
 
-                {/* Anti-Detection Toggles */}
-                <div>
-                  <p className="text-[10px] font-bold text-purple-400 tracking-wider mb-3">ANTI-DETECTION</p>
-                  <div className="space-y-1.5">
-                    {[
-                      { key: "hiddenEmoji", label: "Hidden Overlay", desc: "Invisible pixel marker" },
-                      { key: "speedShift", label: "Speed Shift", desc: "Tempo change" },
-                      { key: "cropOffset", label: "Crop Offset", desc: "Spatial shift" },
-                      { key: "hueShift", label: "Hue Shift", desc: "Colour rotation" },
-                      { key: "thumbnailRandomise", label: "Randomise Thumb", desc: "Unique first-frame" },
-                    ].map((t) => {
-                      const isOn = editSettings[t.key as keyof typeof editSettings] as boolean;
-                      return (
-                        <button
-                          key={t.key}
-                          onClick={() => setEditSettings({ ...editSettings, [t.key]: !isOn })}
-                          className={`w-full flex items-center justify-between p-3 rounded-lg border transition-all ${
-                            isOn ? "border-purple-500/[0.2] bg-purple-500/[0.04]" : "border-white/[0.04] bg-white/[0.01] hover:border-white/[0.08]"
-                          }`}
-                        >
-                          <div className="text-left">
-                            <span className={`text-[12px] font-bold block ${isOn ? "text-white" : "text-[#3D4050]"}`}>{t.label}</span>
-                            <span className="text-[10px] text-[#2A2D3A]">{t.desc}</span>
-                          </div>
-                          <div className={`w-8 h-[18px] rounded-full transition-all relative flex-shrink-0 ${isOn ? "bg-purple-500" : "bg-white/[0.08]"}`}>
-                            <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-[1px] transition-all ${isOn ? "left-[15px]" : "left-[2px]"}`} />
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Edit Parameters */}
-                <div>
-                  <p className="text-[10px] font-bold text-[#2A2D3A] tracking-wider mb-3">EDIT PARAMETERS</p>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="text-[10px] text-[#3D4050] block mb-1.5">Trim range (seconds)</label>
-                      <div className="flex gap-2">
-                        <input type="number" step="0.01" min="0" max="5" value={editSettings.trimMin}
-                          onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) setEditSettings({ ...editSettings, trimMin: v }); }}
-                          onFocus={(e) => e.target.select()}
-                          className="w-full bg-white/[0.03] border border-white/[0.06] rounded-md px-2.5 py-1.5 text-sm text-white font-mono focus:outline-none focus:border-purple-500/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                        />
-                        <input type="number" step="0.01" min="0" max="5" value={editSettings.trimMax}
-                          onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) setEditSettings({ ...editSettings, trimMax: v }); }}
-                          onFocus={(e) => e.target.select()}
-                          className="w-full bg-white/[0.03] border border-white/[0.06] rounded-md px-2.5 py-1.5 text-sm text-white font-mono focus:outline-none focus:border-purple-500/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-[#3D4050] block mb-1.5">Number of cuts</label>
-                      <div className="flex gap-2">
-                        <input type="number" step="1" min="0" max="20" value={editSettings.cutsMin}
-                          onChange={(e) => { const v = parseInt(e.target.value); if (!isNaN(v)) setEditSettings({ ...editSettings, cutsMin: v }); }}
-                          onFocus={(e) => e.target.select()}
-                          className="w-full bg-white/[0.03] border border-white/[0.06] rounded-md px-2.5 py-1.5 text-sm text-white font-mono focus:outline-none focus:border-purple-500/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                        />
-                        <input type="number" step="1" min="0" max="20" value={editSettings.cutsMax}
-                          onChange={(e) => { const v = parseInt(e.target.value); if (!isNaN(v)) setEditSettings({ ...editSettings, cutsMax: v }); }}
-                          onFocus={(e) => e.target.select()}
-                          className="w-full bg-white/[0.03] border border-white/[0.06] rounded-md px-2.5 py-1.5 text-sm text-white font-mono focus:outline-none focus:border-purple-500/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-[#3D4050] block mb-1.5">Zoom range (%)</label>
-                      <div className="flex gap-2">
-                        <input type="number" step="0.5" min="0" max="50" value={editSettings.zoomMin}
-                          onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) setEditSettings({ ...editSettings, zoomMin: v }); }}
-                          onFocus={(e) => e.target.select()}
-                          className="w-full bg-white/[0.03] border border-white/[0.06] rounded-md px-2.5 py-1.5 text-sm text-white font-mono focus:outline-none focus:border-purple-500/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                        />
-                        <input type="number" step="0.5" min="0" max="50" value={editSettings.zoomMax}
-                          onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) setEditSettings({ ...editSettings, zoomMax: v }); }}
-                          onFocus={(e) => e.target.select()}
-                          className="w-full bg-white/[0.03] border border-white/[0.06] rounded-md px-2.5 py-1.5 text-sm text-white font-mono focus:outline-none focus:border-purple-500/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                        />
-                      </div>
-                    </div>
-                    {/* Processing toggles */}
-                    <div className="space-y-2 pt-1">
-                      {[
-                        { key: "mirror", label: "Mirror (horizontal flip)" },
-                        { key: "grain", label: "Film grain" },
-                        { key: "sharpen", label: "Sharpen" },
-                      ].map((toggle) => (
-                        <label key={toggle.key} className="flex items-center justify-between cursor-pointer">
-                          <span className="text-[12px] text-[#C8CAD0]">{toggle.label}</span>
+                    <div className="flex items-center gap-2">
+                      {vid.status === "done" && vid.outputs && (
+                        <>
                           <button
-                            onClick={() => setEditSettings({ ...editSettings, [toggle.key]: !editSettings[toggle.key as keyof typeof editSettings] })}
-                            className={`relative w-8 h-[18px] rounded-full transition-colors ${
-                              editSettings[toggle.key as keyof typeof editSettings] ? "bg-purple-500" : "bg-white/[0.08]"
-                            }`}
+                            onClick={() => setPreviewVid(vid)}
+                            className="text-xs text-purple-400 hover:text-purple-300 font-medium transition-colors"
                           >
-                            <span className={`absolute top-[1px] left-[2px] h-3.5 w-3.5 rounded-full bg-white transition-transform ${
-                              editSettings[toggle.key as keyof typeof editSettings] ? "translate-x-[14px]" : ""
-                            }`} />
+                            Preview
                           </button>
-                        </label>
-                      ))}
+                          <span className="text-xs text-green-400 font-medium">
+                            {vid.outputs.length} clip{vid.outputs.length !== 1 ? "s" : ""} ready
+                          </span>
+                        </>
+                      )}
+                      {vid.status === "error" && (
+                        <span className="text-xs text-red-400">Failed</span>
+                      )}
+                      {vid.status === "pending" && (
+                        <button
+                          onClick={() => removeVideo(vid.id)}
+                          className="text-slate-600 hover:text-red-400 transition-colors"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
                     </div>
                   </div>
-                </div>
+                ))}
 
-                {/* Copies */}
-                <div>
-                  <p className="text-[10px] font-bold text-[#2A2D3A] tracking-wider mb-3">COPIES PER VIDEO</p>
-                  <div className="flex rounded-md border border-white/[0.06] overflow-hidden">
-                    <button
-                      onClick={() => { const v = Math.max(1, copies - 1); setCopies(v); setCopiesInput(String(v)); }}
-                      className="w-8 h-8 flex items-center justify-center bg-white/[0.02] text-[#3D4050] text-sm hover:bg-white/[0.05] transition-colors"
-                    >−</button>
-                    <input
-                      type="text" inputMode="numeric" value={copiesInput}
-                      onChange={(e) => { const raw = e.target.value.replace(/[^0-9]/g, ""); setCopiesInput(raw); const num = parseInt(raw); if (!isNaN(num) && num >= 1 && num <= 100) setCopies(num); }}
-                      onBlur={() => { const num = parseInt(copiesInput); if (isNaN(num) || num < 1) { setCopies(1); setCopiesInput("1"); } else if (num > 100) { setCopies(100); setCopiesInput("100"); } else { setCopies(num); setCopiesInput(String(num)); } }}
-                      onFocus={(e) => e.target.select()}
-                      className="flex-1 h-8 text-center font-mono text-[15px] font-bold text-white bg-white/[0.02] border-x border-white/[0.06] focus:outline-none"
-                    />
-                    <button
-                      onClick={() => { const v = Math.min(100, copies + 1); setCopies(v); setCopiesInput(String(v)); }}
-                      className="w-8 h-8 flex items-center justify-center bg-white/[0.02] text-[#3D4050] text-sm hover:bg-white/[0.05] transition-colors"
-                    >+</button>
-                  </div>
-                </div>
+                {/* Download as zip */}
+                {doneCount > 0 && (
+                  <button
+                    disabled={isZipping}
+                    onClick={async () => {
+                      setIsZipping(true);
+                      try {
+                        const zip = new JSZip();
+                        const allOutputs: { url: string; filename: string }[] = [];
+                        videos.forEach((v) => {
+                          if (v.status === "done" && v.outputs) {
+                            v.outputs.forEach((out) => allOutputs.push(out));
+                          }
+                        });
 
-                {/* Process all button */}
+                        await Promise.all(
+                          allOutputs.map(async (out) => {
+                            const res = await fetch(out.url);
+                            const blob = await res.blob();
+                            zip.file(out.filename, blob);
+                          })
+                        );
+
+                        const zipBlob = await zip.generateAsync({ type: "blob", compression: "STORE" });
+                        const url = URL.createObjectURL(zipBlob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = `uniq_${Date.now()}.zip`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        setTimeout(() => URL.revokeObjectURL(url), 5000);
+                      } catch (err) {
+                        console.error("Zip download failed:", err);
+                      } finally {
+                        setIsZipping(false);
+                      }
+                    }}
+                    className="w-full py-3 rounded-xl font-medium text-sm bg-purple-600 hover:bg-purple-700 text-white transition-all flex items-center justify-center gap-2 hover:shadow-lg hover:shadow-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isZipping ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <>
+                        <Download className="h-4 w-4" />
+                        Download .zip
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Sidebar — settings */}
+          <div className="space-y-6">
+            {/* Metadata profile — redesigned with logos */}
+            <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-5">
+              <h3 className="text-sm font-semibold mb-1 flex items-center gap-2">
+                <Fingerprint className="h-4 w-4 text-purple-400" />
+                Video Identity
+              </h3>
+              <p className="text-[11px] text-[--text-muted] mb-4">Choose how your video appears to platforms</p>
+
+              {/* Profile cards grid */}
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                {/* CapCut */}
                 <button
-                  onClick={processAll}
-                  disabled={pendingCount === 0 || isProcessing || credits < pendingCount * copies}
-                  className={`w-full py-3 rounded-lg text-[13px] font-bold transition-all flex items-center justify-center gap-2 ${
-                    pendingCount > 0 && !isProcessing && credits >= pendingCount * copies
-                      ? "border border-purple-500/20 bg-gradient-to-r from-purple-500/[0.15] to-purple-600/[0.1] text-purple-300 shadow-[0_2px_20px_rgba(167,139,250,0.08)] hover:from-purple-500/[0.2]"
-                      : "bg-white/[0.03] text-[#2A2D3A] cursor-not-allowed"
+                  onClick={() => {
+                    const isSelected = metadata.includes("capcut");
+                    if (isSelected) {
+                      const next = metadata.filter((m) => m !== "capcut");
+                      setMetadata(next.length === 0 ? ["random"] : next);
+                    } else {
+                      setMetadata([...metadata.filter((m) => m !== "random"), "capcut"]);
+                    }
+                  }}
+                  className={`relative p-3 rounded-xl border text-left transition-all ${
+                    metadata.includes("capcut")
+                      ? "border-[#00d1ed]/40 bg-[#00d1ed]/10 ring-1 ring-[#00d1ed]/20"
+                      : "border-white/5 bg-white/[0.01] hover:border-white/10"
                   }`}
                 >
-                  {isProcessing ? (
-                    <><Loader2 className="h-4 w-4 animate-spin" /> Processing...</>
-                  ) : (
-                    <><Zap className="h-4 w-4" /> Process all ({pendingCount * copies} cr)</>
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <div className="w-7 h-7 rounded-lg bg-black flex items-center justify-center border border-white/10 overflow-hidden">
+                      <img src="/capcut-logo.svg" alt="" className="w-5 h-5" />
+                    </div>
+                    <span className="text-sm font-semibold text-[--text-primary]">CapCut</span>
+                  </div>
+                  <span className="text-[10px] text-[--text-muted] leading-tight block pr-5">Edited with CapCut</span>
+                  {metadata.includes("capcut") && (
+                    <div className="absolute top-2 right-2">
+                      <Check className="h-3.5 w-3.5 text-[#00d1ed]" />
+                    </div>
+                  )}
+                  {metadata.includes("capcut") && metadata.length > 1 && !metadata.includes("random") && (
+                    <span className="text-[9px] font-bold text-[#00d1ed]/80 bg-[#00d1ed]/10 px-1.5 py-0.5 rounded mt-1.5 inline-block">STACKED</span>
+                  )}
+                </button>
+
+                {/* Snapchat */}
+                <button
+                  onClick={() => {
+                    const isSelected = metadata.includes("snapchat");
+                    if (isSelected) {
+                      const next = metadata.filter((m) => m !== "snapchat");
+                      setMetadata(next.length === 0 ? ["random"] : next);
+                    } else {
+                      setMetadata([...metadata.filter((m) => m !== "random"), "snapchat"]);
+                    }
+                  }}
+                  className={`relative p-3 rounded-xl border text-left transition-all ${
+                    metadata.includes("snapchat")
+                      ? "border-[#FFFC00]/40 bg-[#FFFC00]/10 ring-1 ring-[#FFFC00]/20"
+                      : "border-white/5 bg-white/[0.01] hover:border-white/10"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <div className="w-7 h-7 rounded-lg bg-[#FFFC00] flex items-center justify-center overflow-hidden">
+                      <img src="/snapchat-logo.svg" alt="" className="w-5 h-5" />
+                    </div>
+                    <span className="text-sm font-semibold text-[--text-primary]">Snapchat</span>
+                  </div>
+                  <span className="text-[10px] text-[--text-muted] leading-tight block pr-5">Recorded via Snap</span>
+                  {metadata.includes("snapchat") && (
+                    <div className="absolute top-2 right-2">
+                      <Check className="h-3.5 w-3.5 text-[#FFFC00]" />
+                    </div>
+                  )}
+                  {metadata.includes("snapchat") && metadata.length > 1 && !metadata.includes("random") && (
+                    <span className="text-[9px] font-bold text-[#FFFC00]/80 bg-[#FFFC00]/10 px-1.5 py-0.5 rounded mt-1.5 inline-block">STACKED</span>
+                  )}
+                </button>
+
+                {/* iPhone */}
+                <button
+                  onClick={() => {
+                    const isSelected = metadata.includes("iphone");
+                    if (isSelected) {
+                      const next = metadata.filter((m) => m !== "iphone");
+                      setMetadata(next.length === 0 ? ["random"] : next);
+                    } else {
+                      setMetadata([...metadata.filter((m) => m !== "random"), "iphone"]);
+                    }
+                  }}
+                  className={`relative p-3 rounded-xl border text-left transition-all ${
+                    metadata.includes("iphone")
+                      ? "border-[#a3a3a3]/40 bg-[#a3a3a3]/10 ring-1 ring-[#a3a3a3]/20"
+                      : "border-white/5 bg-white/[0.01] hover:border-white/10"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <div className="w-7 h-7 rounded-lg bg-gradient-to-b from-[#555] to-[#333] flex items-center justify-center border border-white/10 overflow-hidden">
+                      <svg viewBox="0 0 24 24" className="w-4 h-4" fill="white">
+                        <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
+                      </svg>
+                    </div>
+                    <span className="text-sm font-semibold text-[--text-primary]">iPhone</span>
+                  </div>
+                  <span className="text-[10px] text-[--text-muted] leading-tight block pr-5">Shot on iPhone</span>
+                  {metadata.includes("iphone") && (
+                    <div className="absolute top-2 right-2">
+                      <Check className="h-3.5 w-3.5 text-[#a3a3a3]" />
+                    </div>
+                  )}
+                  {metadata.includes("iphone") && metadata.length > 1 && !metadata.includes("random") && (
+                    <span className="text-[9px] font-bold text-[#a3a3a3]/80 bg-[#a3a3a3]/10 px-1.5 py-0.5 rounded mt-1.5 inline-block">STACKED</span>
+                  )}
+                </button>
+
+                {/* Random */}
+                <button
+                  onClick={() => setMetadata(["random"])}
+                  className={`relative p-3 rounded-xl border text-left transition-all ${
+                    metadata.includes("random")
+                      ? "border-purple-500/40 bg-purple-500/10 ring-1 ring-purple-500/20"
+                      : "border-white/5 bg-white/[0.01] hover:border-white/10"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center">
+                      <Shuffle className="h-3.5 w-3.5 text-white" />
+                    </div>
+                    <span className="text-sm font-semibold text-[--text-primary]">Random</span>
+                  </div>
+                  <span className="text-[10px] text-[--text-muted] leading-tight block">Auto-selected per copy</span>
+                  {metadata.includes("random") && (
+                    <div className="absolute top-2 right-2">
+                      <Check className="h-3.5 w-3.5 text-purple-400" />
+                    </div>
                   )}
                 </button>
               </div>
-            </aside>
 
-
-          </div>
-        )}
-
-        {/* ═══ HISTORY TAB ═══ */}
-        {activeTab === "history" && (
-          <div className="flex-1 overflow-y-auto p-6">
-            <div className="max-w-4xl mx-auto">
-              <div className="rounded-xl border border-white/[0.03] bg-white/[0.01] overflow-hidden">
-                <div className="p-4 border-b border-white/[0.03] flex items-center gap-2">
-                  <History className="h-4 w-4 text-purple-400" />
-                  <h2 className="text-sm font-bold text-white">
-                    Processing History
-                  </h2>
+              {/* Anti-detection toggles — the important ones */}
+              <div className="mt-4 pt-4 border-t border-white/5">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400">Anti-Detection</span>
+                  <span className="text-[9px] text-purple-400/60 bg-purple-500/10 px-1.5 py-0.5 rounded">Recommended</span>
                 </div>
-                {historyJobs.length === 0 ? (
-                  <div className="p-12 text-center">
-                    <Clock className="h-8 w-8 text-[#1E2030] mx-auto mb-3" />
-                    <p className="text-sm text-[#3D4050]">
-                      No processing history yet
-                    </p>
-                    <p className="text-xs text-[#2A2D3A] mt-1">
-                      Videos you process will appear here
-                    </p>
-                  </div>
-                ) : (
-                  <div className="divide-y divide-white/[0.03]">
-                    {historyJobs.map((job: any) => (
-                      <div
-                        key={job.id}
-                        className="flex items-center justify-between px-4 py-3"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/[0.06] flex-shrink-0">
-                            <Check className="h-3.5 w-3.5 text-emerald-400" />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-white truncate">
-                              {job.fileName}
-                            </p>
-                            <p className="text-[10px] text-[#2A2D3A]">
-                              {new Date(
-                                job.createdAt
-                              ).toLocaleDateString("en-GB", {
-                                day: "numeric",
-                                month: "short",
-                                year: "numeric",
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </p>
-                          </div>
+                <div className="space-y-2">
+                  {[
+                    { key: "hiddenEmoji", icon: "✦", label: "Hidden Overlay", desc: "Invisible pixel marker — beats hash matching", important: true },
+                    { key: "speedShift", icon: "⏱", label: "Speed Shift", desc: "0.5–1.5% tempo change — breaks frame timing", important: true },
+                    { key: "cropOffset", icon: "⊞", label: "Crop Offset", desc: "±8px spatial shift — changes position hash", important: true },
+                    { key: "hueShift", icon: "◐", label: "Hue Shift", desc: "±2° colour rotation — alters frame colours", important: false },
+                    { key: "thumbnailRandomise", icon: "🖼", label: "Randomise Thumbnail", desc: "Unique first-frame fingerprint", important: false },
+                  ].map((t) => (
+                    <button
+                      key={t.key}
+                      onClick={() =>
+                        setEditSettings({
+                          ...editSettings,
+                          [t.key]: !editSettings[t.key as keyof typeof editSettings],
+                        })
+                      }
+                      className={`w-full flex items-center justify-between p-3 rounded-xl border text-sm transition-all ${
+                        editSettings[t.key as keyof typeof editSettings]
+                          ? t.important ? "border-purple-500/40 bg-purple-500/10 ring-1 ring-purple-500/20" : "border-purple-500/30 bg-purple-500/10"
+                          : "border-white/5 bg-white/[0.01] hover:border-white/10"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                          editSettings[t.key as keyof typeof editSettings] ? "bg-purple-500/20" : "bg-white/5"
+                        }`}>
+                          <span className={`text-xs ${editSettings[t.key as keyof typeof editSettings] ? "opacity-100" : "opacity-40"}`}>{t.icon}</span>
                         </div>
-                        <span className="font-mono text-[11px] text-[#3D4050] flex-shrink-0">
-                          {job.copies}{" "}
-                          {job.copies === 1 ? "copy" : "copies"}
-                        </span>
+                        <div className="text-left min-w-0">
+                          <span className={`font-medium text-xs block truncate ${editSettings[t.key as keyof typeof editSettings] ? "text-[--text-primary]" : "text-[--text-secondary]"}`}>
+                            {t.label}
+                          </span>
+                          <span className="text-[10px] text-[--text-muted] block truncate">{t.desc}</span>
+                        </div>
                       </div>
-                    ))}
+                      <div className={`w-9 h-5 rounded-full transition-all relative flex-shrink-0 ml-2 ${
+                        editSettings[t.key as keyof typeof editSettings] ? "bg-purple-500" : "bg-white/10"
+                      }`}>
+                        <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-0.5 transition-all ${
+                          editSettings[t.key as keyof typeof editSettings] ? "left-[18px]" : "left-[3px]"
+                        }`} />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+            </div>
+
+            {/* Edit settings */}
+            <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-5">
+              <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
+                <Settings className="h-4 w-4 text-purple-400" />
+                Edit Parameters
+              </h3>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs text-slate-500 block mb-2">
+                    Start Trim Range (seconds)
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={editSettings.trimMin}
+                      onChange={(e) => {
+                        const v = e.target.value.replace(/[^0-9.]/g, "");
+                        setEditSettings({ ...editSettings, trimMin: v === "" ? 0 : parseFloat(v) });
+                      }}
+                      onFocus={(e) => e.target.select()}
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50"
+                    />
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={editSettings.trimMax}
+                      onChange={(e) => {
+                        const v = e.target.value.replace(/[^0-9.]/g, "");
+                        setEditSettings({ ...editSettings, trimMax: v === "" ? 0 : parseFloat(v) });
+                      }}
+                      onFocus={(e) => e.target.select()}
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50"
+                    />
                   </div>
-                )}
+                </div>
+
+                <div>
+                  <label className="text-xs text-slate-500 block mb-2">
+                    Number of Cuts (trims milliseconds at each point)
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={editSettings.cutsMin}
+                      onChange={(e) => {
+                        const v = e.target.value.replace(/[^0-9]/g, "");
+                        setEditSettings({ ...editSettings, cutsMin: v === "" ? 0 : parseInt(v) });
+                      }}
+                      onFocus={(e) => e.target.select()}
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50"
+                    />
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={editSettings.cutsMax}
+                      onChange={(e) => {
+                        const v = e.target.value.replace(/[^0-9]/g, "");
+                        setEditSettings({ ...editSettings, cutsMax: v === "" ? 0 : parseInt(v) });
+                      }}
+                      onFocus={(e) => e.target.select()}
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs text-slate-500 block mb-2">
+                    Zoom Range (%)
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={editSettings.zoomMin}
+                      onChange={(e) => {
+                        const v = e.target.value.replace(/[^0-9.]/g, "");
+                        setEditSettings({ ...editSettings, zoomMin: v === "" ? 0 : parseFloat(v) });
+                      }}
+                      onFocus={(e) => e.target.select()}
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50"
+                    />
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={editSettings.zoomMax}
+                      onChange={(e) => {
+                        const v = e.target.value.replace(/[^0-9.]/g, "");
+                        setEditSettings({ ...editSettings, zoomMax: v === "" ? 0 : parseFloat(v) });
+                      }}
+                      onFocus={(e) => e.target.select()}
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {[
+                    { key: "mirror", label: "Mirror (horizontal flip)" },
+                    { key: "grain", label: "Film grain" },
+                    { key: "sharpen", label: "Sharpen" },
+                  ].map((toggle) => (
+                    <label
+                      key={toggle.key}
+                      className="flex items-center justify-between cursor-pointer"
+                    >
+                      <span className="text-sm text-slate-400">{toggle.label}</span>
+                      <button
+                        onClick={() =>
+                          setEditSettings({
+                            ...editSettings,
+                            [toggle.key]:
+                              !editSettings[toggle.key as keyof typeof editSettings],
+                          })
+                        }
+                        className={`relative w-9 h-5 rounded-full transition-colors ${
+                          editSettings[toggle.key as keyof typeof editSettings]
+                            ? "bg-purple-600"
+                            : "bg-white/10"
+                        }`}
+                      >
+                        <span
+                          className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
+                            editSettings[toggle.key as keyof typeof editSettings]
+                              ? "translate-x-4"
+                              : ""
+                          }`}
+                        />
+                      </button>
+                    </label>
+                  ))}
+                </div>
+
+                <div>
+                  <label className="text-xs text-slate-500 block mb-2">
+                    Copies per video
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={copiesInput}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/[^0-9]/g, "");
+                      setCopiesInput(raw);
+                      const num = parseInt(raw);
+                      if (!isNaN(num) && num >= 1 && num <= 100) {
+                        setCopies(num);
+                      }
+                    }}
+                    onBlur={() => {
+                      const num = parseInt(copiesInput);
+                      if (isNaN(num) || num < 1) {
+                        setCopies(1);
+                        setCopiesInput("1");
+                      } else if (num > 100) {
+                        setCopies(100);
+                        setCopiesInput("100");
+                      } else {
+                        setCopies(num);
+                        setCopiesInput(String(num));
+                      }
+                    }}
+                    onFocus={(e) => e.target.select()}
+                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50"
+                  />
+                </div>
               </div>
             </div>
-          </div>
-        )}
 
-        {/* ═══ STATS TAB ═══ */}
-        {activeTab === "stats" && (
-          <div className="flex-1 overflow-y-auto p-6">
-            <div className="max-w-4xl mx-auto space-y-4">
-              {!usageData ? (
-                <div className="flex items-center justify-center py-16">
-                  <Loader2 className="h-6 w-6 text-purple-400 animate-spin" />
+            {/* Overall progress during processing */}
+            {isProcessing && (() => {
+              const done = videos.filter((v) => v.status === "done").length;
+              const total = videos.filter((v) => v.status !== "error").length;
+              const pct = Math.round((done / Math.max(1, total)) * 100);
+              return (
+                <div className="relative rounded-2xl overflow-hidden">
+                  {/* Animated gradient border */}
+                  <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-purple-600 via-fuchsia-500 to-indigo-600 bg-[length:300%_100%] animate-shimmer opacity-40" />
+                  <div className="relative m-[1px] rounded-2xl bg-[#0a0a1a] p-5 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="relative">
+                          <div className="h-10 w-10 rounded-xl bg-purple-500/10 flex items-center justify-center">
+                            <Zap className="h-5 w-5 text-purple-400" />
+                          </div>
+                          <span className="absolute -top-0.5 -right-0.5 flex h-3 w-3">
+                            <span className="absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75 animate-ping" />
+                            <span className="relative inline-flex rounded-full h-3 w-3 bg-purple-500" />
+                          </span>
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-white">Processing videos</p>
+                          <p className="text-xs text-slate-500">{done} of {total} complete</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-fuchsia-400 bg-clip-text text-transparent">
+                          {pct}%
+                        </p>
+                      </div>
+                    </div>
+                    <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-700 ease-out bg-gradient-to-r from-purple-600 via-fuchsia-500 to-purple-600 bg-[length:200%_100%] animate-shimmer shadow-[0_0_16px_rgba(168,85,247,0.5)]"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
                 </div>
-              ) : (usageData.totalJobs ?? 0) === 0 ? (
-                <div className="text-center py-16">
-                  <BarChart3 className="h-10 w-10 text-[#1E2030] mx-auto mb-3" />
-                  <p className="text-sm text-[#3D4050]">
-                    No usage data yet
-                  </p>
-                  <p className="text-xs text-[#2A2D3A] mt-1">
-                    Process some videos to see your stats here
-                  </p>
+              );
+            })()}
+
+            {/* Process button */}
+            <button
+              onClick={processAll}
+              disabled={pendingCount === 0 || isProcessing || credits < pendingCount * copies}
+              className={`w-full py-3.5 rounded-xl font-medium text-sm transition-all flex items-center justify-center gap-2 ${
+                pendingCount > 0 && !isProcessing && credits >= pendingCount * copies
+                  ? "bg-purple-600 hover:bg-purple-700 text-white hover:shadow-lg hover:shadow-purple-500/20"
+                  : "bg-white/5 text-slate-600 cursor-not-allowed"
+              }`}
+            >
+              {isProcessing ? (
+                <div className="flex items-center gap-3">
+                  <div className="relative h-5 w-5">
+                    <div className="absolute inset-0 rounded-full border-2 border-purple-400/30" />
+                    <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-purple-400 animate-spin" />
+                  </div>
+                  <span className="text-slate-400">Processing — do not close this tab</span>
                 </div>
               ) : (
                 <>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="rounded-xl border border-white/[0.03] bg-white/[0.01] p-5">
-                      <p className="text-[10px] text-[#3D4050] font-semibold mb-1">
-                        Videos Processed
-                      </p>
-                      <p className="font-mono text-2xl font-bold text-white">
-                        {usageData.totalJobs ?? 0}
-                      </p>
-                      <p className="text-[10px] text-[#2A2D3A] mt-1">
-                        last 30 days
-                      </p>
+                  <Zap className="h-4 w-4" />
+                  {pendingCount > 0
+                    ? `Generate ${pendingCount * copies} video${pendingCount * copies !== 1 ? "s" : ""}`
+                    : "Process videos"}
+                  {pendingCount > 0 && (
+                    <span className="text-purple-300 text-xs">
+                      ({pendingCount * copies} credit{pendingCount * copies !== 1 ? "s" : ""})
+                    </span>
+                  )}
+                </>
+              )}
+            </button>
+            {pendingCount > 0 && !isProcessing && credits < pendingCount * copies && (
+              <p className="text-xs text-red-400 text-center mt-2">
+                Not enough credits — you need {pendingCount * copies} but have {credits}.{" "}
+                <button onClick={() => setShowPlans(true)} className="underline text-purple-400 hover:text-purple-300">
+                  Get more credits
+                </button>
+              </p>
+            )}
+            {showProcessMore && doneCount > 0 && !isProcessing && (
+              <button
+                onClick={clearCompleted}
+                className="w-full py-3 rounded-xl font-medium text-sm transition-all flex items-center justify-center gap-2 mt-2 border border-purple-500/30 bg-purple-500/10 text-purple-300 hover:bg-purple-500/20"
+              >
+                <Plus className="h-4 w-4" />
+                Process More Videos
+              </button>
+            )}
+
+          </div>
+        </div>
+      </div>
+      )}
+
+      {/* History tab */}
+      {activeTab === "history" && (
+        <div className="mx-auto max-w-6xl px-6 py-8">
+          <div className="rounded-2xl border border-white/5 bg-white/[0.02] overflow-hidden">
+            <div className="p-5 border-b border-white/5">
+              <h2 className="text-sm font-semibold flex items-center gap-2">
+                <History className="h-4 w-4 text-purple-400" />
+                Processing History
+              </h2>
+            </div>
+            {historyJobs.length === 0 ? (
+              <div className="p-12 text-center">
+                <History className="h-8 w-8 text-slate-700 mx-auto mb-3" />
+                <p className="text-sm text-slate-500">No processing history yet</p>
+                <p className="text-xs text-slate-600 mt-1">Videos you process will appear here</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-white/5">
+                {historyJobs.map((job: any) => (
+                  <div key={job.id} className="flex items-center justify-between px-5 py-3.5">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-green-500/10 border border-green-500/20 flex-shrink-0">
+                        <Check className="h-3.5 w-3.5 text-green-400" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{job.fileName}</p>
+                        <p className="text-xs text-slate-600">
+                          {new Date(job.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        </p>
+                      </div>
                     </div>
-                    <div className="rounded-xl border border-white/[0.03] bg-white/[0.01] p-5">
-                      <p className="text-[10px] text-[#3D4050] font-semibold mb-1">
-                        Unique Copies
-                      </p>
-                      <p className="font-mono text-2xl font-bold text-purple-400">
-                        {usageData.totalCopies ?? 0}
-                      </p>
-                      <p className="text-[10px] text-[#2A2D3A] mt-1">
-                        last 30 days
-                      </p>
+                    <span className="text-xs text-slate-500 flex-shrink-0">
+                      {job.copies} {job.copies === 1 ? "copy" : "copies"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Stats tab */}
+      {activeTab === "stats" && (
+        <div className="mx-auto max-w-6xl px-6 py-8 space-y-6">
+          {!usageData ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="h-6 w-6 text-purple-400 animate-spin" />
+            </div>
+          ) : (usageData.totalJobs ?? 0) === 0 ? (
+            <div className="text-center py-16">
+              <BarChart3 className="h-10 w-10 text-slate-700 mx-auto mb-3" />
+              <p className="text-sm text-slate-500">No usage data yet</p>
+              <p className="text-xs text-slate-600 mt-1">Process some videos to see your stats here</p>
+            </div>
+          ) : (
+            <>
+              {/* Metric cards */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-5">
+                  <p className="text-xs text-slate-500 mb-1">Videos Processed</p>
+                  <p className="text-3xl font-bold text-white">{usageData.totalJobs ?? 0}</p>
+                  <p className="text-xs text-slate-600 mt-1">last 30 days</p>
+                </div>
+                <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-5">
+                  <p className="text-xs text-slate-500 mb-1">Unique Copies</p>
+                  <p className="text-3xl font-bold text-purple-400">{usageData.totalCopies ?? 0}</p>
+                  <p className="text-xs text-slate-600 mt-1">last 30 days</p>
+                </div>
+                <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-5">
+                  <p className="text-xs text-slate-500 mb-1">Credits Used</p>
+                  <p className="text-3xl font-bold text-white">{usageData.totalCopies ?? 0}</p>
+                  <p className="text-xs text-slate-600 mt-1">last 30 days</p>
+                </div>
+              </div>
+
+              {/* Activity chart */}
+              <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-5">
+                <h3 className="text-xs font-medium text-slate-500 mb-5">Daily Activity</h3>
+                <div className="h-44 flex items-end gap-[3px]">
+                  {(usageData.daily || []).slice(-14).map((d: any, i: number) => {
+                    const days14 = (usageData.daily || []).slice(-14);
+                    const max = Math.max(...days14.map((x: any) => x.copies || 0), 1);
+                    const h = ((d.copies || 0) / max) * 100;
+                    const isToday = d.date === new Date().toISOString().split("T")[0];
+                    return (
+                      <div key={i} className="flex-1 flex flex-col items-center gap-1.5 group">
+                        <span className="text-[10px] text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity tabular-nums">
+                          {d.copies || 0}
+                        </span>
+                        <div
+                          className={`w-full rounded-md transition-colors ${isToday ? "bg-purple-500 hover:bg-purple-400" : "bg-purple-500/30 hover:bg-purple-500/50"}`}
+                          style={{ height: `${Math.max(h, 4)}%` }}
+                          title={`${new Date(d.date).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}: ${d.copies} copies`}
+                        />
+                        <span className={`text-[10px] whitespace-nowrap ${isToday ? "text-purple-400 font-medium" : "text-slate-600"} ${i % 2 === 0 ? "" : "invisible"}`}>
+                          {new Date(d.date).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Refer & Earn tab */}
+      {activeTab === "duplicates" && (
+        <div className="mx-auto max-w-6xl px-6 py-8">
+          <div className="space-y-6">
+            <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-lg font-semibold flex items-center gap-2">
+                    <Search className="h-5 w-5 text-purple-400" />
+                    Duplicate Checker
+                  </h3>
+                  <p className="text-sm text-[--text-muted] mt-1">
+                    Scans all processed videos to find copies that are too similar to each other
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setDuplicatesLoading(true);
+                    fetch("/api/duplicates").then(r => r.json()).then(d => { setDuplicateData(d); setDuplicatesLoading(false); }).catch(() => setDuplicatesLoading(false));
+                  }}
+                  className="px-4 py-2 rounded-lg text-sm font-medium bg-purple-600 hover:bg-purple-700 text-white transition-all flex items-center gap-2"
+                >
+                  {duplicatesLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                  {duplicatesLoading ? "Scanning..." : "Scan Now"}
+                </button>
+              </div>
+
+              {duplicatesLoading && !duplicateData && (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-6 w-6 text-purple-400 animate-spin" />
+                </div>
+              )}
+
+              {duplicateData && (
+                <div className="space-y-4">
+                  {/* Summary stats */}
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="rounded-xl bg-white/[0.03] border border-white/5 p-4 text-center">
+                      <div className="text-2xl font-bold text-[--text-primary]">{duplicateData.totalVideos}</div>
+                      <div className="text-xs text-[--text-muted] mt-1">Total Processed</div>
                     </div>
-                    <div className="rounded-xl border border-white/[0.03] bg-white/[0.01] p-5">
-                      <p className="text-[10px] text-[#3D4050] font-semibold mb-1">
-                        Credits Used
-                      </p>
-                      <p className="font-mono text-2xl font-bold text-white">
-                        {usageData.totalCopies ?? 0}
-                      </p>
-                      <p className="text-[10px] text-[#2A2D3A] mt-1">
-                        last 30 days
-                      </p>
+                    <div className="rounded-xl bg-white/[0.03] border border-white/5 p-4 text-center">
+                      <div className="text-2xl font-bold text-[--text-primary]">{duplicateData.uniqueSources}</div>
+                      <div className="text-xs text-[--text-muted] mt-1">Unique Sources</div>
+                    </div>
+                    <div className={`rounded-xl border p-4 text-center ${
+                      duplicateData.duplicateGroups > 0
+                        ? "bg-red-500/5 border-red-500/20"
+                        : "bg-green-500/5 border-green-500/20"
+                    }`}>
+                      <div className={`text-2xl font-bold ${
+                        duplicateData.duplicateGroups > 0 ? "text-red-400" : "text-green-400"
+                      }`}>
+                        {duplicateData.duplicateGroups}
+                      </div>
+                      <div className="text-xs text-[--text-muted] mt-1">Duplicate Groups</div>
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-white/[0.03] bg-white/[0.01] p-5">
-                    <h3 className="text-[10px] font-bold text-[#3D4050] tracking-wider mb-5">
-                      DAILY ACTIVITY
-                    </h3>
-                    <div className="h-44 flex items-end gap-[3px]">
-                      {(usageData.daily || [])
-                        .slice(-14)
-                        .map((d: any, i: number) => {
-                          const days14 = (usageData.daily || []).slice(
-                            -14
-                          );
-                          const max = Math.max(
-                            ...days14.map(
-                              (x: any) => x.copies || 0
-                            ),
-                            1
-                          );
-                          const h =
-                            ((d.copies || 0) / max) * 100;
-                          const isToday =
-                            d.date ===
-                            new Date()
-                              .toISOString()
-                              .split("T")[0];
-                          return (
-                            <div
-                              key={i}
-                              className="flex-1 flex flex-col items-center gap-1.5 group"
-                            >
-                              <span className="font-mono text-[10px] text-[#3D4050] opacity-0 group-hover:opacity-100 transition-opacity">
-                                {d.copies || 0}
-                              </span>
-                              <div
-                                className={`w-full rounded-sm transition-colors ${isToday ? "bg-purple-400 hover:bg-purple-300" : "bg-purple-500/[0.15] hover:bg-purple-500/[0.25]"}`}
-                                style={{
-                                  height: `${Math.max(h, 4)}%`,
-                                }}
-                                title={`${new Date(d.date).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}: ${d.copies} copies`}
-                              />
-                              <span
-                                className={`text-[10px] whitespace-nowrap ${isToday ? "text-purple-400 font-medium" : "text-[#2A2D3A]"} ${i % 2 === 0 ? "" : "invisible"}`}
-                              >
-                                {new Date(
-                                  d.date
-                                ).toLocaleDateString("en-GB", {
-                                  day: "numeric",
-                                  month: "short",
-                                })}
+                  {/* Duplicate groups */}
+                  {duplicateData.duplicateGroups === 0 ? (
+                    <div className="rounded-xl bg-green-500/5 border border-green-500/20 p-6 text-center">
+                      <Check className="h-8 w-8 text-green-400 mx-auto mb-2" />
+                      <p className="text-sm font-medium text-green-400">All clear — no duplicate copies detected</p>
+                      <p className="text-xs text-[--text-muted] mt-1">Every processed video has unique enough parameters</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {duplicateData.groups.map((group: any, gi: number) => (
+                        <div key={gi} className="rounded-xl bg-red-500/5 border border-red-500/20 p-4">
+                          <div className="flex items-start justify-between mb-3">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <AlertTriangle className="h-4 w-4 text-red-400" />
+                                <span className="text-sm font-medium text-[--text-primary]">{group.fileName}</span>
+                              </div>
+                              <span className="text-xs text-[--text-muted]">
+                                {group.copies} copies — {group.duplicates.length} similar pair{group.duplicates.length !== 1 ? "s" : ""}
                               </span>
                             </div>
-                          );
-                        })}
+                            <span className="text-xs bg-red-500/20 text-red-300 px-2 py-1 rounded-full">
+                              {group.sourceHash}
+                            </span>
+                          </div>
+                          <div className="space-y-2">
+                            {group.duplicates.map((dup: any, di: number) => (
+                              <div key={di} className="rounded-lg bg-white/[0.03] p-3 text-xs">
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="text-red-300 font-medium">{dup.similarity}% similar</span>
+                                  <span className="text-[--text-muted]">
+                                    {new Date(dup.date1).toLocaleDateString()} vs {new Date(dup.date2).toLocaleDateString()}
+                                  </span>
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                                  {dup.details.map((d: string, k: number) => (
+                                    <span key={k} className="bg-red-500/10 text-red-300 px-2 py-0.5 rounded text-[10px]">
+                                      {d}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === "refer" && (
+        <div className="mx-auto max-w-6xl px-6 py-8">
+          <div className="max-w-lg mx-auto space-y-6">
+            <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-6 text-center">
+              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-purple-500/10 border border-purple-500/20">
+                <Gift className="h-7 w-7 text-purple-400" />
+              </div>
+              <h2 className="text-lg font-bold mb-2">Refer & Earn Credits</h2>
+              <p className="text-sm text-slate-400 mb-6">
+                Share your referral code. When someone signs up with it, you both get <span className="text-purple-400 font-semibold">50 free credits</span>!
+              </p>
+
+              {!referralData ? (
+                <Loader2 className="h-6 w-6 text-purple-400 animate-spin mx-auto" />
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 p-3 rounded-xl bg-white/5 border border-white/10 mb-4">
+                    <code className="flex-1 text-sm font-mono text-purple-300 select-all">{referralData.code}</code>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(referralData.code);
+                        setReferralCopied(true);
+                        setTimeout(() => setReferralCopied(false), 2000);
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium transition-all flex items-center gap-1.5"
+                    >
+                      {referralCopied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                      {referralCopied ? "Copied!" : "Copy"}
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-xl bg-white/5 border border-white/10 p-4">
+                      <p className="text-xl font-bold text-white">{referralData.totalReferred ?? 0}</p>
+                      <p className="text-xs text-slate-500 mt-1">People referred</p>
+                    </div>
+                    <div className="rounded-xl bg-white/5 border border-white/10 p-4">
+                      <p className="text-xl font-bold text-purple-400">{(referralData.totalReferred ?? 0) * 50}</p>
+                      <p className="text-xs text-slate-500 mt-1">Credits earned</p>
                     </div>
                   </div>
                 </>
               )}
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* ═══ DUPLICATES TAB ═══ */}
-        {activeTab === "duplicates" && (
-          <div className="flex-1 overflow-y-auto p-6">
-            <div className="max-w-4xl mx-auto">
-              <div className="rounded-xl border border-white/[0.03] bg-white/[0.01] p-6">
-                <div className="flex items-center justify-between mb-6">
-                  <div>
-                    <h3 className="text-base font-bold text-white flex items-center gap-2">
-                      <Search className="h-4 w-4 text-purple-400" />
-                      Duplicate Checker
-                    </h3>
-                    <p className="text-xs text-[#3D4050] mt-1">
-                      Scans processed videos to find copies that are too
-                      similar
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setDuplicatesLoading(true);
-                      fetch("/api/duplicates")
-                        .then((r) => r.json())
-                        .then((d) => {
-                          setDuplicateData(d);
-                          setDuplicatesLoading(false);
-                        })
-                        .catch(() => setDuplicatesLoading(false));
-                    }}
-                    className="px-4 py-2 rounded-lg text-[12px] font-bold bg-gradient-to-r from-purple-500/[0.1] to-purple-500/[0.06] border border-purple-500/[0.15] text-purple-400 transition-all flex items-center gap-2 hover:from-purple-500/[0.15]"
-                  >
-                    {duplicatesLoading ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Search className="h-3.5 w-3.5" />
-                    )}
-                    {duplicatesLoading ? "Scanning..." : "Scan Now"}
-                  </button>
-                </div>
-
-                {duplicatesLoading && !duplicateData && (
-                  <div className="flex items-center justify-center py-12">
-                    <Loader2 className="h-6 w-6 text-purple-400 animate-spin" />
-                  </div>
-                )}
-
-                {duplicateData && (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-3 gap-3">
-                      <div className="rounded-lg bg-white/[0.02] border border-white/[0.03] p-4 text-center">
-                        <div className="font-mono text-xl font-bold text-white">
-                          {duplicateData.totalVideos}
-                        </div>
-                        <div className="text-[10px] text-[#3D4050] mt-1">
-                          Total Processed
-                        </div>
-                      </div>
-                      <div className="rounded-lg bg-white/[0.02] border border-white/[0.03] p-4 text-center">
-                        <div className="font-mono text-xl font-bold text-white">
-                          {duplicateData.uniqueSources}
-                        </div>
-                        <div className="text-[10px] text-[#3D4050] mt-1">
-                          Unique Sources
-                        </div>
-                      </div>
-                      <div
-                        className={`rounded-lg border p-4 text-center ${
-                          duplicateData.duplicateGroups > 0
-                            ? "bg-red-500/[0.03] border-red-500/[0.1]"
-                            : "bg-emerald-500/[0.03] border-emerald-500/[0.1]"
-                        }`}
-                      >
-                        <div
-                          className={`font-mono text-xl font-bold ${duplicateData.duplicateGroups > 0 ? "text-red-400" : "text-emerald-400"}`}
-                        >
-                          {duplicateData.duplicateGroups}
-                        </div>
-                        <div className="text-[10px] text-[#3D4050] mt-1">
-                          Duplicate Groups
-                        </div>
-                      </div>
-                    </div>
-
-                    {duplicateData.duplicateGroups === 0 ? (
-                      <div className="rounded-lg bg-emerald-500/[0.03] border border-emerald-500/[0.1] p-6 text-center">
-                        <Check className="h-8 w-8 text-emerald-400 mx-auto mb-2" />
-                        <p className="text-sm font-medium text-emerald-400">
-                          All clear — no duplicate copies detected
-                        </p>
-                        <p className="text-[10px] text-[#3D4050] mt-1">
-                          Every processed video has unique enough
-                          parameters
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {duplicateData.groups.map(
-                          (group: any, gi: number) => (
-                            <div
-                              key={gi}
-                              className="rounded-lg bg-red-500/[0.03] border border-red-500/[0.1] p-4"
-                            >
-                              <div className="flex items-start justify-between mb-3">
-                                <div>
-                                  <div className="flex items-center gap-2">
-                                    <AlertTriangle className="h-4 w-4 text-red-400" />
-                                    <span className="text-sm font-medium text-white">
-                                      {group.fileName}
-                                    </span>
-                                  </div>
-                                  <span className="text-[10px] text-[#3D4050]">
-                                    {group.copies} copies —{" "}
-                                    {group.duplicates.length} similar
-                                    pair
-                                    {group.duplicates.length !== 1
-                                      ? "s"
-                                      : ""}
-                                  </span>
-                                </div>
-                                <span className="text-[10px] bg-red-500/[0.1] text-red-300 px-2 py-0.5 rounded-full font-mono">
-                                  {group.sourceHash}
-                                </span>
-                              </div>
-                              <div className="space-y-2">
-                                {group.duplicates.map(
-                                  (dup: any, di: number) => (
-                                    <div
-                                      key={di}
-                                      className="rounded-md bg-white/[0.02] p-3 text-xs"
-                                    >
-                                      <div className="flex items-center justify-between mb-2">
-                                        <span className="text-red-300 font-bold font-mono">
-                                          {dup.similarity}% similar
-                                        </span>
-                                        <span className="text-[#3D4050]">
-                                          {new Date(
-                                            dup.date1
-                                          ).toLocaleDateString()}{" "}
-                                          vs{" "}
-                                          {new Date(
-                                            dup.date2
-                                          ).toLocaleDateString()}
-                                        </span>
-                                      </div>
-                                      <div className="flex flex-wrap gap-1">
-                                        {dup.details.map(
-                                          (
-                                            d: string,
-                                            k: number
-                                          ) => (
-                                            <span
-                                              key={k}
-                                              className="bg-red-500/[0.08] text-red-300 px-2 py-0.5 rounded text-[10px]"
-                                            >
-                                              {d}
-                                            </span>
-                                          )
-                                        )}
-                                      </div>
-                                    </div>
-                                  )
-                                )}
-                              </div>
-                            </div>
-                          )
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ═══ REFER TAB ═══ */}
-        {activeTab === "refer" && (
-          <div className="flex-1 overflow-y-auto p-6">
-            <div className="max-w-md mx-auto">
-              <div className="rounded-xl border border-white/[0.03] bg-white/[0.01] p-6 text-center">
-                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-purple-500/[0.08] border border-purple-500/[0.15]">
-                  <Gift className="h-6 w-6 text-purple-400" />
-                </div>
-                <h2 className="text-base font-bold text-white mb-2">
-                  Refer & Earn Credits
-                </h2>
-                <p className="text-xs text-[#3D4050] mb-6">
-                  Share your referral code. When someone signs up with it,
-                  you both get{" "}
-                  <span className="text-purple-400 font-bold">
-                    50 free credits
-                  </span>
-                  !
-                </p>
-
-                {!referralData ? (
-                  <Loader2 className="h-6 w-6 text-purple-400 animate-spin mx-auto" />
-                ) : (
-                  <>
-                    <div className="flex items-center gap-2 p-3 rounded-lg bg-white/[0.03] border border-white/[0.06] mb-4">
-                      <code className="flex-1 text-sm font-mono text-purple-400 select-all">
-                        {referralData.code}
-                      </code>
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(
-                            referralData.code
-                          );
-                          setReferralCopied(true);
-                          setTimeout(
-                            () => setReferralCopied(false),
-                            2000
-                          );
-                        }}
-                        className="px-3 py-1.5 rounded-md bg-purple-500/[0.1] border border-purple-500/[0.15] text-purple-400 text-xs font-bold transition-all flex items-center gap-1.5 hover:bg-purple-500/[0.15]"
-                      >
-                        {referralCopied ? (
-                          <Check className="h-3 w-3" />
-                        ) : (
-                          <Copy className="h-3 w-3" />
-                        )}
-                        {referralCopied ? "Copied!" : "Copy"}
-                      </button>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="rounded-lg bg-white/[0.02] border border-white/[0.03] p-4">
-                        <p className="font-mono text-xl font-bold text-white">
-                          {referralData.totalReferred ?? 0}
-                        </p>
-                        <p className="text-[10px] text-[#3D4050] mt-1">
-                          People referred
-                        </p>
-                      </div>
-                      <div className="rounded-lg bg-white/[0.02] border border-white/[0.03] p-4">
-                        <p className="font-mono text-xl font-bold text-purple-400">
-                          {(referralData.totalReferred ?? 0) * 50}
-                        </p>
-                        <p className="text-[10px] text-[#3D4050] mt-1">
-                          Credits earned
-                        </p>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-
-      {/* ═══ MODALS ═══ */}
-
-      {/* Preview modal */}
-      {previewVid &&
-        previewVid.outputs &&
-        previewVid.outputs.length > 0 && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm px-4">
-            <div className="w-full max-w-4xl rounded-xl border border-white/[0.06] bg-[#0A0B10] p-6 relative">
-              <button
-                onClick={() => setPreviewVid(null)}
-                className="absolute top-4 right-4 text-[#3D4050] hover:text-white transition-colors"
-              >
-                <X className="h-5 w-5" />
-              </button>
-              <h2 className="text-sm font-bold text-white mb-4">
-                Before / After Preview
-              </h2>
-              <div className="grid md:grid-cols-2 gap-4">
-                <div>
-                  <p className="text-[10px] text-[#3D4050] mb-2">
-                    Original
-                  </p>
-                  <video
-                    src={URL.createObjectURL(previewVid.file)}
-                    controls
-                    className="w-full rounded-lg border border-white/[0.06]"
-                  />
-                </div>
-                <div>
-                  <p className="text-[10px] text-[#3D4050] mb-2">
-                    Processed
-                  </p>
-                  <video
-                    src={previewVid.outputs[0].url}
-                    controls
-                    className="w-full rounded-lg border border-white/[0.06]"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-      {/* Low credits popup */}
-      {showLowCredits && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-          <div className="w-full max-w-md rounded-xl border border-white/[0.06] bg-[#0A0B10] p-8 relative text-center">
+      {/* Before/after preview modal */}
+      {previewVid && previewVid.outputs && previewVid.outputs.length > 0 && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm px-4">
+          <div className="w-full max-w-4xl rounded-2xl border border-white/10 bg-[#010313] p-6 relative">
             <button
-              onClick={() => setShowLowCredits(false)}
-              className="absolute top-4 right-4 text-[#3D4050] hover:text-white transition-colors"
+              onClick={() => setPreviewVid(null)}
+              className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors"
             >
               <X className="h-5 w-5" />
             </button>
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500/[0.08] border border-amber-500/[0.15]">
-              <Zap className="h-6 w-6 text-amber-400" />
+            <h2 className="text-sm font-semibold mb-4">Before / After Preview</h2>
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs text-slate-500 mb-2">Original</p>
+                <video
+                  src={URL.createObjectURL(previewVid.file)}
+                  controls
+                  className="w-full rounded-xl border border-white/10"
+                />
+              </div>
+              <div>
+                <p className="text-xs text-slate-500 mb-2">Processed</p>
+                <video
+                  src={previewVid.outputs[0].url}
+                  controls
+                  className="w-full rounded-xl border border-white/10"
+                />
+              </div>
             </div>
-            <h2 className="text-base font-bold text-white mb-2">
-              Running low on credits
-            </h2>
-            <p className="text-xs text-[#3D4050] mb-6">
-              You have{" "}
-              <span className="text-white font-bold">{credits}</span>{" "}
-              credit{credits !== 1 ? "s" : ""} remaining.
+          </div>
+        </div>
+      )}
+
+
+      {/* Plans modal */}
+      {/* Low credits popup */}
+      {showLowCredits && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#010313] p-8 relative text-center">
+            <button
+              onClick={() => setShowLowCredits(false)}
+              className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-amber-500/10 border border-amber-500/20">
+              <Zap className="h-7 w-7 text-amber-400" />
+            </div>
+            <h2 className="text-lg font-bold mb-2">Running low on credits</h2>
+            <p className="text-sm text-slate-400 mb-6">
+              You have <span className="text-white font-semibold">{credits}</span> credit{credits !== 1 ? "s" : ""} remaining. Top up or subscribe to keep generating.
             </p>
             <div className="flex gap-3">
               <button
-                onClick={() => {
-                  setShowLowCredits(false);
-                  setShowTopUp(true);
-                }}
-                className={`${isTeamMember ? "w-full" : "flex-1"} py-2.5 rounded-lg text-[12px] font-bold bg-white/[0.03] hover:bg-white/[0.06] text-white border border-white/[0.06] transition-all`}
+                onClick={() => { setShowLowCredits(false); setShowTopUp(true); }}
+                className={`${isTeamMember ? "w-full" : "flex-1"} py-3 rounded-xl text-sm font-medium bg-white/5 hover:bg-white/10 text-white border border-white/10 transition-all`}
               >
                 Top Up Credits
               </button>
               {!isTeamMember && (
-                <button
-                  onClick={() => {
-                    setShowLowCredits(false);
-                    setShowPlans(true);
-                  }}
-                  className="flex-1 py-2.5 rounded-lg text-[12px] font-bold bg-purple-600 hover:bg-purple-700 text-white transition-all"
-                >
-                  View Plans
-                </button>
+              <button
+                onClick={() => { setShowLowCredits(false); setShowPlans(true); }}
+                className="flex-1 py-3 rounded-xl text-sm font-medium bg-purple-600 hover:bg-purple-700 text-white transition-all"
+              >
+                View Plans
+              </button>
               )}
             </div>
           </div>
         </div>
       )}
 
-      {/* Plans modal */}
       {showPlans && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-          <div className="w-full max-w-2xl rounded-xl border border-white/[0.06] bg-[#0A0B10] p-6 relative max-h-[90vh] overflow-y-auto">
+          <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#010313] p-4 sm:p-8 relative max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => setShowPlans(false)}
-              className="absolute top-4 right-4 text-[#3D4050] hover:text-white transition-colors"
+              className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors"
             >
               <X className="h-5 w-5" />
             </button>
+
             <div className="text-center mb-6">
-              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-purple-500/[0.08] border border-purple-500/[0.15]">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-purple-500/10 border border-purple-500/20">
                 <Crown className="h-6 w-6 text-purple-400" />
               </div>
-              <h2 className="text-lg font-bold text-white">
-                Choose a Plan
-              </h2>
-              <p className="text-xs text-[#3D4050] mt-1">
+              <h2 className="text-xl font-bold">Choose a Plan</h2>
+              <p className="text-sm text-slate-500 mt-1">
                 Subscribe monthly and save on every credit
               </p>
             </div>
-            <div className="space-y-2 mb-6">
+
+            <div className="space-y-3 mb-6">
               {[
-                {
-                  key: "starter",
-                  label: "Starter",
-                  credits: "100",
-                  price: "24",
-                },
-                {
-                  key: "growth",
-                  label: "Growth",
-                  credits: "500",
-                  price: "75",
-                },
-                {
-                  key: "pro",
-                  label: "Pro",
-                  credits: "1,500",
-                  price: "150",
-                },
-                {
-                  key: "business",
-                  label: "Business",
-                  credits: "5,000",
-                  price: "350",
-                },
-                {
-                  key: "agency",
-                  label: "Agency",
-                  credits: "15,000",
-                  price: "750",
-                },
-              ]
-                .filter((p) => (planRank[p.key] ?? 0) > currentRank)
-                .map((p) => (
-                  <button
-                    type="button"
-                    key={p.key}
-                    disabled={subscribingPlan === p.key}
-                    onClick={async () => {
-                      setSubscribingPlan(p.key);
-                      try {
-                        const res = await fetch(
-                          "/api/stripe/subscribe",
-                          {
-                            method: "POST",
-                            headers: {
-                              "Content-Type": "application/json",
-                            },
-                            body: JSON.stringify({
-                              planKey: p.key,
-                            }),
-                          }
-                        );
-                        const data = await res.json();
-                        if (data.url)
-                          window.location.href = data.url;
-                        else {
-                          addToast(
-                            data.error ||
-                              "Failed to start checkout",
-                            "error"
-                          );
-                          setSubscribingPlan(null);
-                        }
-                      } catch {
-                        addToast(
-                          "Failed to connect to payment service",
-                          "error"
-                        );
+                { key: "starter", label: "Starter", credits: "100", price: "24", icon: "\u2728" },
+                { key: "growth", label: "Growth", credits: "500", price: "75", icon: "\u2728" },
+                { key: "pro", label: "Pro", credits: "1,500", price: "150", icon: "\u2b50" },
+                { key: "business", label: "Business", credits: "5,000", price: "350", icon: "\ud83c\udfe2" },
+                { key: "agency", label: "Agency", credits: "15,000", price: "750", icon: "\ud83d\udc51" },
+              ].filter((p) => (planRank[p.key] ?? 0) > currentRank).map((p) => (
+                <button
+                  type="button"
+                  key={p.key}
+                  disabled={subscribingPlan === p.key}
+                  onClick={async () => {
+                    setSubscribingPlan(p.key);
+                    try {
+                      const res = await fetch("/api/stripe/subscribe", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ planKey: p.key }),
+                      });
+                      const data = await res.json();
+                      if (data.url) {
+                        window.location.href = data.url;
+                      } else {
+                        addToast(data.error || "Failed to start checkout", "error");
                         setSubscribingPlan(null);
                       }
-                    }}
-                    className="w-full flex items-center justify-between p-4 rounded-lg border border-white/[0.06] bg-white/[0.01] hover:border-purple-500/[0.15] hover:bg-purple-500/[0.02] transition-all text-left cursor-pointer disabled:opacity-50"
-                  >
-                    <div>
-                      <div className="text-sm font-bold text-white">
-                        {p.label}
-                      </div>
-                      <div className="text-[10px] text-[#3D4050]">
-                        {p.credits} credits/mo
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm font-bold text-white">
-                        £{p.price}/mo
-                      </span>
-                      {subscribingPlan === p.key ? (
-                        <Loader2 className="h-4 w-4 text-purple-400 animate-spin" />
-                      ) : (
-                        <span className="text-[11px] font-bold text-purple-400">
-                          Subscribe →
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                ))}
+                    } catch {
+                      addToast("Failed to connect to payment service", "error");
+                      setSubscribingPlan(null);
+                    }
+                  }}
+                  className="w-full flex items-center justify-between p-4 rounded-xl border border-white/10 bg-white/[0.02] hover:border-purple-500/30 hover:bg-purple-500/[0.03] transition-all text-left cursor-pointer disabled:opacity-50"
+                >
+                  <div>
+                    <div className="text-sm font-semibold text-white">{p.label}</div>
+                    <div className="text-xs text-slate-500">{p.credits} credits/mo</div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-semibold text-white">£{p.price}/mo</span>
+                    {subscribingPlan === p.key ? (
+                      <Loader2 className="h-4 w-4 text-purple-400 animate-spin" />
+                    ) : (
+                      <span className="text-xs font-medium text-purple-400">Subscribe →</span>
+                    )}
+                  </div>
+                </button>
+              ))}
             </div>
+
             {plan === "agency" && (
-              <div className="text-center py-6 text-xs text-[#3D4050]">
-                You&apos;re on the top plan — Agency with 15,000
-                credits/mo.
+              <div className="text-center py-6 text-sm text-slate-400">
+                You&apos;re on the top plan — Agency with 15,000 credits/mo.
               </div>
             )}
+
             <button
               onClick={() => setShowPlans(false)}
-              className="w-full py-2.5 rounded-lg text-[12px] font-bold bg-white/[0.03] hover:bg-white/[0.06] text-white border border-white/[0.06] transition-all"
+              className="w-full py-3 rounded-xl text-sm font-medium bg-white/5 hover:bg-white/10 text-white border border-white/10 transition-all"
             >
               Cancel
             </button>
           </div>
         </div>
       )}
-
-      {/* Top-up modal */}
+      {/* Top-up credits modal */}
       {showTopUp && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-          <div className="w-full max-w-lg rounded-xl border border-white/[0.06] bg-[#0A0B10] p-6 relative max-h-[90vh] overflow-y-auto">
+          <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#010313] p-4 sm:p-8 relative max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => setShowTopUp(false)}
-              className="absolute top-4 right-4 text-[#3D4050] hover:text-white transition-colors"
+              className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors"
             >
               <X className="h-5 w-5" />
             </button>
+
             <div className="text-center mb-6">
-              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-purple-500/[0.08] border border-purple-500/[0.15]">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-purple-500/10 border border-purple-500/20">
                 <ShoppingCart className="h-6 w-6 text-purple-400" />
               </div>
-              <h2 className="text-lg font-bold text-white">
-                Top Up Credits
-              </h2>
-              <p className="text-xs text-[#3D4050] mt-1">
+              <h2 className="text-xl font-bold">Top Up Credits</h2>
+              <p className="text-sm text-slate-500 mt-1">
                 Buy extra credits without changing your plan
               </p>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-6">
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
               {[
                 { credits: 20, price: "5.20" },
                 { credits: 50, price: "13" },
@@ -1972,74 +1704,54 @@ export default function Dashboard() {
                   onClick={async (e) => {
                     e.stopPropagation();
                     try {
-                      const res = await fetch(
-                        "/api/stripe/checkout",
-                        {
-                          method: "POST",
-                          headers: {
-                            "Content-Type": "application/json",
-                          },
-                          body: JSON.stringify({
-                            credits: pack.credits,
-                          }),
-                        }
-                      );
+                      const res = await fetch("/api/stripe/checkout", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ credits: pack.credits }),
+                      });
                       const data = await res.json();
                       if (data.url) {
                         window.location.href = data.url;
                       } else {
-                        addToast(
-                          data.error ||
-                            "Failed to start checkout",
-                          "error"
-                        );
+                        addToast(data.error || "Failed to start checkout", "error");
                       }
                     } catch (err) {
                       console.error("Checkout error:", err);
-                      addToast(
-                        "Failed to connect to payment service",
-                        "error"
-                      );
+                      addToast("Failed to connect to payment service", "error");
                     }
                   }}
-                  className="group p-3.5 rounded-lg border border-white/[0.06] bg-white/[0.01] hover:border-purple-500/[0.15] hover:bg-purple-500/[0.02] transition-all text-left cursor-pointer"
+                  className="group p-4 rounded-xl border border-white/10 bg-white/[0.02] hover:border-purple-500/30 hover:bg-purple-500/[0.03] transition-all text-left cursor-pointer relative z-10"
                 >
-                  <div className="flex items-baseline justify-between mb-0.5">
-                    <span className="font-mono text-lg font-bold text-white">
-                      {pack.credits.toLocaleString()}
-                    </span>
-                    <span className="text-[10px] text-[#3D4050]">
-                      26p/ea
-                    </span>
+                  <div className="flex items-baseline justify-between mb-1">
+                    <span className="text-lg font-bold text-white">{pack.credits.toLocaleString()}</span>
+                    <span className="text-xs text-slate-500">26p/ea</span>
                   </div>
-                  <div className="text-[10px] text-[#3D4050] mb-2">
-                    credits
-                  </div>
-                  <div className="text-sm font-bold text-purple-400">
-                    £{pack.price}
-                  </div>
+                  <div className="text-xs text-slate-500 mb-3">credits</div>
+                  <div className="text-sm font-semibold text-purple-400">£{pack.price}</div>
                 </button>
               ))}
             </div>
+
             {!isTeamMember && (
-              <p className="text-[10px] text-[#2A2D3A] text-center mb-4">
-                All top-ups at 26p per credit. Save more with a plan.
-              </p>
+            <p className="text-[11px] text-slate-600 text-center mb-4">
+              All top-ups at 26p per credit. Save more with a plan — from 5p/credit on higher tiers.
+            </p>
             )}
+
             <div className="flex gap-3">
               <button
                 onClick={() => setShowTopUp(false)}
-                className={`${isTeamMember ? "w-full" : "flex-1"} py-2.5 rounded-lg text-[12px] font-bold bg-white/[0.03] hover:bg-white/[0.06] text-white border border-white/[0.06] transition-all`}
+                className={`${isTeamMember ? "w-full" : "flex-1"} py-3 rounded-xl text-sm font-medium bg-white/5 hover:bg-white/10 text-white border border-white/10 transition-all`}
               >
                 Cancel
               </button>
               {!isTeamMember && (
-                <a
-                  href="/account"
-                  className="flex-1 py-2.5 rounded-lg text-[12px] font-bold bg-purple-600 hover:bg-purple-700 text-white text-center transition-all"
-                >
-                  View Plans
-                </a>
+              <a
+                href="/account"
+                className="flex-1 py-3 rounded-xl text-sm font-medium bg-purple-600 hover:bg-purple-700 text-white text-center transition-all hover:shadow-lg hover:shadow-purple-500/20"
+              >
+                View Plans
+              </a>
               )}
             </div>
           </div>

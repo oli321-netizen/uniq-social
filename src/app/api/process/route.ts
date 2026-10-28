@@ -32,17 +32,7 @@ interface ProcessingConfig {
   mirror: boolean;
   metadata: MetadataProfile | MetadataProfile[];
   thumbnailRandomise: boolean;
-  hiddenEmoji: boolean;
-  speedShift: boolean;
-  cropOffset: boolean;
-  hueShift: boolean;
 }
-
-// Tiny emojis to overlay — visually invisible at 1-2% opacity in a corner
-const HIDDEN_EMOJIS = [
-  "✦", "·", "᛫", "⋅", "⁘", "⁖", "⁙", "⁛", "∘", "∙",
-  "◦", "◌", "◍", "◎", "●", "○", "◯", "⬡", "⬢", "⬣",
-];
 
 // Realistic Lavf version strings (CapCut uses ffmpeg internally)
 const LAVF_VERSIONS = [
@@ -127,7 +117,7 @@ function buildMetadataProfile(profileName: string): { format: string[]; video: s
           "-metadata:s:a", "language=und",
           "-metadata:s:a", "vendor_id=[0][0][0][0]",
         ],
-        brand: "mp42",
+        brand: "isom",
       };
     }
 
@@ -155,7 +145,7 @@ function buildMetadataProfile(profileName: string): { format: string[]; video: s
           "-metadata:s:a", "language=und",
           "-metadata:s:a", "vendor_id=appl",
         ],
-        brand: "qt  ",
+        brand: "isom",
       };
     }
 
@@ -259,10 +249,10 @@ export async function POST(req: NextRequest) {
     const config: ProcessingConfig = configStr
       ? JSON.parse(configStr)
       : {
-          trimMin: 0.05,
-          trimMax: 0.15,
-          cutsMin: 0,
-          cutsMax: 0,
+          trimMin: 0.3,
+          trimMax: 0.7,
+          cutsMin: 3,
+          cutsMax: 7,
           zoomMin: 1,
           zoomMax: 7,
           grain: true,
@@ -272,10 +262,6 @@ export async function POST(req: NextRequest) {
           mirror: true,
           metadata: "random",
           thumbnailRandomise: false,
-          hiddenEmoji: true,
-          speedShift: true,
-          cropOffset: true,
-          hueShift: true,
         };
 
     const jobId = randomUUID();
@@ -308,112 +294,25 @@ export async function POST(req: NextRequest) {
     // === Hash source video for history tracking ===
     const sourceHash = createHash("sha256").update(buffer).digest("hex");
 
-    // === UNIQUENESS MEMORY: fetch ALL previous copies of this source video ===
-    const previousCopies = await prisma.processingHistory.findMany({
-      where: { userId, sourceHash },
-      select: {
-        mirror: true,
-        speedFactor: true,
-        brightnessDelta: true,
-        contrastDelta: true,
-        saturationDelta: true,
-        hueRotation: true,
-        cropOffsetX: true,
-        cropOffsetY: true,
-        startTrim: true,
-        zoomPct: true,
-        crfValue: true,
-      },
-    });
-
-    // Similarity check — returns 0-1 (1 = identical, 0 = completely different)
-    // Counts how many of 11 parameter checks are "too close"
-    const paramSimilarity = (
-      params: { startTrim: number; zoomPct: number; mirror: boolean; speedFactor: number; brightnessDelta: number; contrastDelta: number; saturationDelta: number; hueRotation: number; cropOffsetX: number; cropOffsetY: number; crfValue: number },
-      prev: typeof previousCopies[0]
-    ): number => {
-      let matchCount = 0;
-      const totalChecks = 11;
-
-      if (params.mirror === prev.mirror) matchCount++;
-      if (Math.abs(params.startTrim - prev.startTrim) < 0.04) matchCount++;
-      if (Math.abs(params.zoomPct - prev.zoomPct) < 0.6) matchCount++;
-      if (Math.abs(params.speedFactor - prev.speedFactor) < 0.004) matchCount++;
-      if (Math.abs(params.brightnessDelta - prev.brightnessDelta) < 0.006) matchCount++;
-      if (Math.abs(params.contrastDelta - prev.contrastDelta) < 0.006) matchCount++;
-      if (Math.abs(params.saturationDelta - prev.saturationDelta) < 0.012) matchCount++;
-      if (Math.abs(params.hueRotation - prev.hueRotation) < 1.5) matchCount++;
-      if (Math.abs(params.cropOffsetX - prev.cropOffsetX) < 4) matchCount++;
-      if (Math.abs(params.cropOffsetY - prev.cropOffsetY) < 4) matchCount++;
-      if (Math.abs(params.crfValue - prev.crfValue) < 2) matchCount++;
-
-      return matchCount / totalChecks;
-    };
-
-    // Generate ALL randomised parameters at once (including trim & zoom)
-    // Wider ranges give more uniqueness headroom for heavy reuse
-    const generateParams = () => {
-      return {
-        startTrim: parseFloat(rand(config.trimMin, config.trimMax).toFixed(3)),
-        zoomPct: parseFloat(rand(config.zoomMin, config.zoomMax).toFixed(2)),
-        speedFactor: config.speedShift ? parseFloat(rand(0.97, 1.03).toFixed(4)) : 1.0,
-        brightnessDelta: parseFloat(rand(-0.02, 0.02).toFixed(4)),
-        contrastDelta: parseFloat(rand(0.98, 1.02).toFixed(4)),
-        saturationDelta: parseFloat(rand(0.96, 1.04).toFixed(4)),
-        crfValue: Math.floor(rand(17, 23)),
-        gopSize: Math.floor(rand(24, 72)),
-        hueRotation: config.hueShift ? parseFloat(rand(-3.5, 3.5).toFixed(2)) : 0,
-        cropOffsetX: config.cropOffset ? Math.floor(rand(-10, 10)) : 0,
-        cropOffsetY: config.cropOffset ? Math.floor(rand(-10, 10)) : 0,
-        mirror: config.mirror,
-      };
-    };
-
-    // Try up to 30 times to find params unique against ALL history
-    const MAX_SIMILARITY = 0.45; // Less than 5 of 11 checks can match
-    let params = generateParams();
-    let bestParams = params;
-    let bestMaxSim = 1.0;
-
-    if (previousCopies.length > 0) {
-      for (let attempt = 0; attempt < 30; attempt++) {
-        const candidate = generateParams();
-
-        // Find the WORST similarity (most-similar historical copy)
-        let maxSim = 0;
-        for (const prev of previousCopies) {
-          const sim = paramSimilarity(candidate, prev);
-          if (sim > maxSim) maxSim = sim;
-        }
-
-        // Below threshold against every previous copy = unique enough
-        if (maxSim < MAX_SIMILARITY) {
-          params = candidate;
-          bestMaxSim = maxSim;
-          break;
-        }
-
-        // Track the best candidate (lowest worst-case similarity)
-        if (maxSim < bestMaxSim) {
-          bestMaxSim = maxSim;
-          bestParams = candidate;
-        }
-
-        // On last attempt, use the best we found
-        if (attempt === 29) {
-          params = bestParams;
-        }
-      }
-
-      console.log(
-        `[Uniqueness] source=${sourceHash.slice(0, 12)}… history=${previousCopies.length} ` +
-        `similarity=${(bestMaxSim * 100).toFixed(0)}% unique=${bestMaxSim < 0.55}`
-      );
-    }
-
-    const { startTrim, zoomPct, speedFactor, brightnessDelta, contrastDelta, saturationDelta, crfValue, gopSize, hueRotation, cropOffsetX, cropOffsetY } = params;
+    // === Fingerprint-breaking: re-encode with different params ===
+    // Re-encoding alone completely changes the video bitstream.
+    // Tiny invisible tweaks to brightness/contrast/saturation shift the DCT hash.
+    // NO speed changes, NO intro frames, NO pixel padding — just clean re-encode.
+    const speedFactor = 1.0;
+    const brightnessDelta = parseFloat(rand(-0.01, 0.01).toFixed(4));
+    const contrastDelta = parseFloat(rand(0.99, 1.01).toFixed(4));
+    const saturationDelta = parseFloat(rand(0.98, 1.02).toFixed(4));
+    const crfValue = Math.floor(rand(18, 22));
+    const gopSize = Math.floor(rand(24, 72));
+    const hueRotation = 0;
     const gammaShift = 1.0;
+    const cropOffsetX = 0;
+    const cropOffsetY = 0;
     const introFadeDuration = 0;
+
+    // Random parameters
+    const startTrim = parseFloat(rand(config.trimMin, config.trimMax).toFixed(3));
+    const zoomPct = parseFloat(rand(config.zoomMin, config.zoomMax).toFixed(2));
     const effectiveDuration = duration - startTrim;
 
     // Generate random cut points
@@ -447,11 +346,8 @@ export async function POST(req: NextRequest) {
     let cropH = Math.floor(origH / zoomFactor);
     cropW = cropW - (cropW % 2);
     cropH = cropH - (cropH % 2);
-    const cropXBase = Math.floor((origW - cropW) / 2);
-    const cropYBase = Math.floor((origH - cropH) / 2);
-    // Clamp offsets so crop stays within frame
-    const cropX = Math.max(0, Math.min(origW - cropW, cropXBase + cropOffsetX));
-    const cropY = Math.max(0, Math.min(origH - cropH, cropYBase + cropOffsetY));
+    const cropX = Math.floor((origW - cropW) / 2);
+    const cropY = Math.floor((origH - cropH) / 2);
 
     // Build filter chain
     let vf = `crop=${cropW}:${cropH}:${cropX}:${cropY},scale=${origW}:${origH}`;
@@ -459,34 +355,6 @@ export async function POST(req: NextRequest) {
     if (config.grain) vf += `,noise=alls=${config.grainIntensity}:allf=t`;
     if (config.sharpen) vf += `,unsharp=3:3:${config.sharpenAmount}:3:3:0.0`;
     vf += `,eq=brightness=${brightnessDelta}:contrast=${contrastDelta}:saturation=${saturationDelta}`;
-    if (hueRotation !== 0) vf += `,hue=h=${hueRotation}`;
-
-    // Slight speed shift — changes frame timing against perceptual hash
-    if (speedFactor !== 1.0) {
-      vf += `,setpts=${(1 / speedFactor).toFixed(4)}*PTS`;
-    }
-
-    // Hidden emoji overlay — near-invisible but changes perceptual hash significantly
-    if (config.hiddenEmoji) {
-      const emoji = pickRandom(HIDDEN_EMOJIS);
-      // Random corner position
-      const positions = [
-        { x: "8", y: "8" },           // top-left
-        { x: "(w-24)", y: "8" },      // top-right
-        { x: "8", y: "(h-24)" },      // bottom-left
-        { x: "(w-24)", y: "(h-24)" }, // bottom-right
-      ];
-      const pos = pickRandom(positions);
-      // Very low opacity (0.03-0.06) — practically invisible but present in the pixel data
-      const opacity = parseFloat(rand(0.03, 0.06).toFixed(2));
-      vf += `,drawtext=text='${emoji}':fontsize=14:fontcolor=white@${opacity}:x=${pos.x}:y=${pos.y}`;
-    }
-
-    // Audio speed adjustment to match video
-    let af = "";
-    if (speedFactor !== 1.0) {
-      af = `atempo=${speedFactor.toFixed(3)}`;
-    }
 
     // === SPEED OPTIMISATION 1: Process segments in PARALLEL (3 at a time) ===
     const segFiles: string[] = new Array(segments.length);
@@ -499,10 +367,9 @@ export async function POST(req: NextRequest) {
         const segDur = segEnd - segStart;
 
         // === SPEED OPTIMISATION 2: Use ultrafast preset with randomised CRF/GOP ===
-        const afArg = af ? `-af "${af}" ` : "";
         await execAsync(
           `ffmpeg -y -ss ${actualStart} -i "${inputPath}" -t ${segDur} ` +
-            `-vf "${vf}" ${afArg}-c:v libx264 -preset ultrafast -crf ${crfValue} -g ${gopSize} ` +
+            `-vf "${vf}" -c:v libx264 -preset ultrafast -crf ${crfValue} -g ${gopSize} ` +
             `-c:a aac -b:a 128k -pix_fmt yuv420p -threads 2 "${segPath}"`,
           EXEC_OPTIONS
         );
@@ -521,7 +388,7 @@ export async function POST(req: NextRequest) {
     // === SPEED OPTIMISATION 3: Apply metadata with stream copy, NOT re-encode ===
     // Previously this did a FULL re-encode just to add metadata tags — insane.
     // Now we concat + apply metadata in a single pass with -c copy.
-    const { args: metadataArgs, brand } = getMetadataArgs(config.metadata);
+    const { args: metadataArgs } = getMetadataArgs(config.metadata);
     const quotedMetadataArgs = metadataArgs.map((arg) => {
       if (arg.includes("=") && arg.includes(" ")) {
         const eqIndex = arg.indexOf("=");
@@ -536,10 +403,11 @@ export async function POST(req: NextRequest) {
     });
 
     // Concat segments with stream copy + metadata
+    // -f mp4 ensures proper MP4 container; isom brand + compatible_brands for iOS Camera Roll
     await execAsync(
       `ffmpeg -y -f concat -safe 0 -i "${concatPath}" ` +
-        `-c copy ` +
-        `${quotedMetadataArgs.join(" ")} -brand ${brand} -movflags +faststart "${outputPath}"`,
+        `-c copy -f mp4 -disposition:v default -disposition:a default ` +
+        `${quotedMetadataArgs.join(" ")} -brand isom -movflags +faststart "${outputPath}"`,
       EXEC_OPTIONS
     );
 
@@ -553,7 +421,8 @@ export async function POST(req: NextRequest) {
       const hueShift = Math.floor(rand(1, 360));
       await execAsync(
         `ffmpeg -y -i "${outputPath}" -vf "select='if(lt(n\\,2),1,1)',hue=h='if(lt(t,0.08),${hueShift},0)'" ` +
-          `-c:v libx264 -preset ultrafast -crf ${crfValue} -c:a copy "${thumbPath}"`,
+          `-c:v libx264 -preset ultrafast -crf ${crfValue} -pix_fmt yuv420p -c:a copy ` +
+          `-f mp4 -brand isom -movflags +faststart "${thumbPath}"`,
         EXEC_OPTIONS
       );
       finalOutputPath = thumbPath;
