@@ -110,7 +110,6 @@ export default function ProcessView(props: {
   const [tab, setTab] = useState<PanelTab>("edits");
   const [open, setOpen] = useState({ vary: true, preset: true, anti: true, manual: true });
   const [zipping, setZipping] = useState(false);
-  const [postiz, setPostiz] = useState("");
   const { settings } = props;
 
   const rows = props.videos.flatMap((video, videoIndex) => {
@@ -420,10 +419,8 @@ export default function ProcessView(props: {
             <button type="button" disabled={zipping || totalOutputs === 0} onClick={downloadZip} className="rounded-md border border-[#1e2130] px-2.5 py-1 text-[12px] text-[#b4b7c8] disabled:opacity-40">
               {zipping ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><Download className="mr-1 inline h-3.5 w-3.5" />Download zip</>}
             </button>
-            <button type="button" className="ml-1.5 rounded-md bg-[#7c5cff] px-3 py-1 text-[12px] font-medium text-white" onClick={() => setPostiz(postiz ? "" : "Postiz is not connected in this deploy. Nothing is sent.")}>Push to Postiz</button>
           </div>
         </div>
-        {postiz && <p className="text-[12px] text-[#8a8ea3]">{postiz}</p>}
         {processing && <p className="text-[12px] text-[#8a8ea3]">Processing — do not close this tab.</p>}
 
         <button type="button" className="fixed bottom-3 left-3 right-3 z-30 flex items-center justify-center gap-2 rounded-[9px] bg-[#7c5cff] py-2.5 text-[13px] font-medium text-white lg:hidden" onClick={() => props.setSettingsOpen(true)}>
