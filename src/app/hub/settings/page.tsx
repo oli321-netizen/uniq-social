@@ -5,7 +5,7 @@ export default function SettingsPage() {
     <div className="mx-auto flex max-w-xl flex-col gap-4 px-6 py-10">
       <h1 className="text-2xl font-medium tracking-tight">Settings</h1>
       <p className="text-[14px] leading-relaxed text-[#8A8A9A]">
-        Billing, password, and the existing subscription portal stay on the account page. Postiz scheduling is a separate integration and is not connected in this deploy: there is no API key field yet, and nothing is sent to Postiz.
+        Billing, password, and the existing subscription portal stay on the account page.
       </p>
       <div className="flex flex-wrap gap-2">
         <Link
