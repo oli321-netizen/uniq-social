@@ -6,7 +6,10 @@ import OpenAI from "openai";
 
 export const dynamic = "force-dynamic";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+function getOpenAI() {
+  if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY not set");
+  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -26,6 +29,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "OpenAI API key not configured" }, { status: 500 });
     }
 
+    const openai = getOpenAI();
     const { text, count = 3 } = await req.json();
     if (!text || typeof text !== "string") {
       return NextResponse.json({ error: "No text provided" }, { status: 400 });
