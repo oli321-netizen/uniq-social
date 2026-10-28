@@ -91,15 +91,15 @@ export default function Inspector(props: {
     else props.onPreviewEditor(next);
   }
 
-  const shell = "flex w-[360px] shrink-0 flex-col border-l border-[#2c3038] bg-[#1a1d24]";
+  const shell = "flex w-[360px] shrink-0 flex-col border-l border-[#2a2c38] bg-[#12131c]";
 
   if (props.mode === "clip") {
     return (
       <aside className={shell} data-inspector="clip">
-        <header className="flex h-9 shrink-0 items-center border-b border-[#2c3038] px-3">
+        <header className="flex h-9 shrink-0 items-center border-b border-[#2a2c38] px-3">
           <p className="min-w-0 flex-1 truncate text-[12px] text-[#f4f4f5]">{props.heading || "Clip"}</p>
         </header>
-        <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-[#2c3038] px-3 py-1.5">
+        <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-[#2a2c38] px-3 py-1.5">
           {[
             ["Basic", "insp-basic"],
             ["Speed", "insp-speed"],
@@ -197,7 +197,7 @@ export default function Inspector(props: {
     const cue = props.cue;
     return (
       <aside className={shell} data-inspector="cue">
-        <header className="flex h-9 shrink-0 items-center border-b border-[#2c3038] px-3">
+        <header className="flex h-9 shrink-0 items-center border-b border-[#2a2c38] px-3">
           <p className="min-w-0 flex-1 truncate text-[12px] text-[#f4f4f5]">Caption</p>
         </header>
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-3 py-3">
@@ -222,7 +222,7 @@ export default function Inspector(props: {
                 props.onPreviewCues(props.cues.map((item) => (item.id === cue.id ? { ...item, words } : item)));
               }}
               onBlur={() => props.onGestureEnd("cues")}
-              className="mt-1 h-20 w-full resize-none rounded border border-[#2c3038] bg-[#121418] px-2 py-1.5 text-[12px] text-[#e8e8e8]"
+              className="mt-1 h-20 w-full resize-none rounded border border-[#2a2c38] bg-[#0a0b14] px-2 py-1.5 text-[12px] text-[#e8e8e8]"
             />
           </label>
           <div>
@@ -241,7 +241,7 @@ export default function Inspector(props: {
               aria-label="Caption font"
               value={props.style.font}
               onChange={(event) => props.onChange({ style: { ...props.style, font: event.target.value as CaptionFontId } })}
-              className="mt-1 h-7 w-full truncate rounded border border-[#2c3038] bg-[#121418] px-2 text-[12px] text-[#e8e8e8]"
+              className="mt-1 h-7 w-full truncate rounded border border-[#2a2c38] bg-[#0a0b14] px-2 text-[12px] text-[#e8e8e8]"
             >
               {CAPTION_FONTS.map((font) => (
                 <option key={font.id} value={font.id}>{font.id}</option>
@@ -279,7 +279,7 @@ export default function Inspector(props: {
     const layer = props.audioLayer;
     return (
       <aside className={shell} data-inspector="audio">
-        <header className="flex h-9 shrink-0 items-center border-b border-[#2c3038] px-3">
+        <header className="flex h-9 shrink-0 items-center border-b border-[#2a2c38] px-3">
           <p className="min-w-0 flex-1 truncate text-[12px] text-[#f4f4f5]">Audio</p>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
@@ -300,7 +300,7 @@ export default function Inspector(props: {
     const layer = props.overlayLayer;
     return (
       <aside className={shell} data-inspector="overlay">
-        <header className="flex h-9 shrink-0 items-center border-b border-[#2c3038] px-3">
+        <header className="flex h-9 shrink-0 items-center border-b border-[#2a2c38] px-3">
           <p className="min-w-0 flex-1 truncate text-[12px] text-[#f4f4f5]">Overlay</p>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
@@ -321,7 +321,7 @@ export default function Inspector(props: {
     const layer = props.textLayer;
     return (
       <aside className={shell} data-inspector="text">
-        <header className="flex h-9 shrink-0 items-center border-b border-[#2c3038] px-3">
+        <header className="flex h-9 shrink-0 items-center border-b border-[#2a2c38] px-3">
           <p className="min-w-0 flex-1 truncate text-[12px] text-[#f4f4f5]">Text</p>
         </header>
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-3 py-3">
@@ -336,7 +336,7 @@ export default function Inspector(props: {
                 patchEditor("texts", layer.id, { text: event.target.value.slice(0, 120) }, false);
               }}
               onBlur={() => props.onGestureEnd("clips")}
-              className="mt-1 h-20 w-full resize-none rounded border border-[#2c3038] bg-[#121418] px-2 py-1.5 text-[12px] text-[#e8e8e8]"
+              className="mt-1 h-20 w-full resize-none rounded border border-[#2a2c38] bg-[#0a0b14] px-2 py-1.5 text-[12px] text-[#e8e8e8]"
             />
           </label>
           <Slider label="Size" min={24} max={160} step={1} value={layer.size} display={`${layer.size}`} onStart={props.onGestureStart} onChange={(value) => patchEditor("texts", layer.id, { size: value }, false)} onEnd={() => props.onGestureEnd("clips")} />
@@ -348,7 +348,7 @@ export default function Inspector(props: {
 
   return (
     <aside className={shell} data-inspector="none">
-      <div className="grid h-9 shrink-0 grid-cols-5 border-b border-[#2c3038]" role="tablist">
+      <div className="grid h-9 shrink-0 grid-cols-5 border-b border-[#2a2c38]" role="tablist">
         {TABS.map((name) => (
           <button
             key={name}
@@ -357,7 +357,7 @@ export default function Inspector(props: {
             aria-selected={tab === name}
             title={name}
             onClick={() => setTab(name)}
-            className={`min-w-0 truncate px-0.5 text-center text-[11px] ${tab === name ? "border-b-2 border-[#22d3ee] text-[#f4f4f5]" : "text-[#8e939c]"}`}
+            className={`min-w-0 truncate px-0.5 text-center text-[11px] ${tab === name ? "border-b-2 border-[#7c5cff] text-[#f4f4f5]" : "text-[#8e939c]"}`}
           >
             {name}
           </button>
@@ -382,7 +382,7 @@ export default function Inspector(props: {
             <Section title="Compositing">
               <label className="block text-[11px] text-[#b7bcc4]">
                 Blend mode
-                <select aria-label="Blend mode" className="mt-1 h-7 w-full rounded border border-[#2c3038] bg-[#121418] px-2 text-[12px] text-[#e8e8e8]" defaultValue="normal">
+                <select aria-label="Blend mode" className="mt-1 h-7 w-full rounded border border-[#2a2c38] bg-[#0a0b14] px-2 text-[12px] text-[#e8e8e8]" defaultValue="normal">
                   <option value="normal">Normal</option>
                 </select>
               </label>
@@ -392,7 +392,7 @@ export default function Inspector(props: {
               {(clip?.crop || 0) > 0 ? (
                 <Slider label="Inset" min={0} max={30} step={1} value={Math.round((clip?.crop || 0) * 100)} display={`${Math.round((clip?.crop || 0) * 100)}%`} disabled={!clip} onStart={props.onGestureStart} onChange={(value) => patch({ crop: value / 100 }, false)} onEnd={() => props.onGestureEnd("clips")} />
               ) : (
-                <button type="button" disabled={!clip} onClick={() => patch({ crop: 0.08 }, true)} className="flex h-7 w-full items-center justify-center rounded border border-[#2c3038] text-[12px] text-[#d5d8de] disabled:opacity-40">
+                <button type="button" disabled={!clip} onClick={() => patch({ crop: 0.08 }, true)} className="flex h-7 w-full items-center justify-center rounded border border-[#2a2c38] text-[12px] text-[#d5d8de] disabled:opacity-40">
                   + Add Mask
                 </button>
               )}
@@ -474,7 +474,7 @@ export default function Inspector(props: {
                     true
                   )
                 }
-                className="flex h-7 w-full items-center justify-center rounded border border-[#2c3038] text-[12px] text-[#d5d8de] disabled:opacity-40"
+                className="flex h-7 w-full items-center justify-center rounded border border-[#2a2c38] text-[12px] text-[#d5d8de] disabled:opacity-40"
               >
                 Move right
               </button>
@@ -497,7 +497,7 @@ export default function Inspector(props: {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <details open className="group border-b border-[#2c3038]">
+    <details open className="group border-b border-[#2a2c38]">
       <summary className="flex cursor-pointer list-none items-center gap-1 px-3 py-2 text-[12px] text-[#e4e4e7] [&::-webkit-details-marker]:hidden">
         <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[#8e939c] group-open:rotate-180" />
         <span className="truncate">{title}</span>
@@ -541,7 +541,7 @@ function Slider(props: {
         onPointerUp={props.onEnd}
         onKeyUp={props.onEnd}
         onBlur={props.onEnd}
-        className="h-1 w-full accent-[#22d3ee] disabled:opacity-40"
+        className="h-1 w-full accent-[#7c5cff] disabled:opacity-40"
       />
     </label>
   );
@@ -569,7 +569,7 @@ function Num({ label, value, disabled, onCommit }: { label: string; value: numbe
           const next = Number(text);
           if (Number.isFinite(next)) onCommit(Math.max(-800, Math.min(800, Math.round(next))));
         }}
-        className="h-7 w-full min-w-0 rounded border border-[#2c3038] bg-[#121418] px-1.5 text-[12px] text-[#e8e8e8] disabled:opacity-40"
+        className="h-7 w-full min-w-0 rounded border border-[#2a2c38] bg-[#0a0b14] px-1.5 text-[12px] text-[#e8e8e8] disabled:opacity-40"
       />
     </label>
   );
@@ -582,7 +582,7 @@ function Toggle({ children, on, disabled, onClick }: { children: React.ReactNode
       aria-pressed={on}
       disabled={disabled}
       onClick={onClick}
-      className={`h-7 min-w-0 truncate rounded border px-2 text-[11px] capitalize disabled:opacity-40 ${on ? "border-[#22d3ee] text-[#f4f4f5]" : "border-[#2c3038] text-[#c8ccd2]"}`}
+      className={`h-7 min-w-0 truncate rounded border px-2 text-[11px] capitalize disabled:opacity-40 ${on ? "border-[#7c5cff] text-[#f4f4f5]" : "border-[#2a2c38] text-[#c8ccd2]"}`}
     >
       {children}
     </button>
@@ -593,7 +593,7 @@ function ColorField({ label, value, onChange }: { label: string; value: string; 
   return (
     <label className="flex min-w-0 flex-1 items-center gap-2 text-[11px] text-[#b7bcc4]">
       <span className="shrink-0">{label}</span>
-      <input aria-label={label} type="color" value={value} onChange={(event) => onChange(event.target.value)} className="h-7 w-10 shrink-0 cursor-pointer rounded border border-[#2c3038] bg-transparent" />
+      <input aria-label={label} type="color" value={value} onChange={(event) => onChange(event.target.value)} className="h-7 w-10 shrink-0 cursor-pointer rounded border border-[#2a2c38] bg-transparent" />
     </label>
   );
 }

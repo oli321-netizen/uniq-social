@@ -96,10 +96,10 @@ export default function NotificationsMenu() {
         className="relative rounded-lg p-2 text-[#8A8A9A] hover:bg-white/5 hover:text-[#E8E8F0]"
       >
         <Bell className="h-4 w-4" />
-        {unread > 0 && <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-[#8B5CF6]" />}
+        {unread > 0 && <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-[#7c5cff]" />}
       </button>
       {open && (
-        <div className="absolute right-0 z-50 mt-2 w-[min(100vw-1.5rem,22rem)] rounded-[10px] border border-[#23232F] bg-[#12121A] p-3 shadow-xl">
+        <div className="absolute right-0 z-50 mt-2 w-[min(100vw-1.5rem,22rem)] rounded-[10px] border border-[#1e2130] bg-[#10121c] p-3 shadow-xl">
           <div className="mb-2 flex items-center justify-between">
             <p className="text-[13px] font-medium">Notifications</p>
             <button type="button" onClick={markAll} className="text-[12px] text-[#C4B5FD] hover:underline">
@@ -114,7 +114,7 @@ export default function NotificationsMenu() {
                 role="tab"
                 aria-selected={tab === item.id}
                 onClick={() => setTab(item.id)}
-                className={`rounded-full px-2.5 py-1 text-[12px] ${tab === item.id ? "bg-[#8B5CF6] text-white" : "text-[#8A8A9A] hover:bg-white/5"}`}
+                className={`rounded-full px-2.5 py-1 text-[12px] ${tab === item.id ? "bg-[#7c5cff] text-white" : "text-[#8A8A9A] hover:bg-white/5"}`}
               >
                 {item.label}
               </button>
@@ -134,7 +134,7 @@ export default function NotificationsMenu() {
                   className={`w-full rounded-lg px-2 py-2 text-left hover:bg-white/5 ${item.read ? "opacity-70" : ""}`}
                 >
                   <span className="flex items-center gap-2 text-[13px] font-medium">
-                    {!item.read && <span className="h-1.5 w-1.5 rounded-full bg-[#8B5CF6]" />}
+                    {!item.read && <span className="h-1.5 w-1.5 rounded-full bg-[#7c5cff]" />}
                     {item.title}
                   </span>
                   {item.body && <span className="mt-0.5 block text-[12px] text-[#8A8A9A]">{item.body}</span>}
@@ -142,7 +142,7 @@ export default function NotificationsMenu() {
               </li>
             ))}
           </ul>
-          <div className="mt-3 space-y-2 border-t border-[#23232F] pt-3 text-[12px]">
+          <div className="mt-3 space-y-2 border-t border-[#1e2130] pt-3 text-[12px]">
             <label className="flex items-center justify-between gap-3">
               Email
               <input type="checkbox" checked={emailEnabled} onChange={(event) => toggle("emailEnabled", event.target.checked)} />

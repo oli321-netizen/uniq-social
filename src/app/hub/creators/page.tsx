@@ -127,7 +127,7 @@ export default function CreatorsPage() {
       )}
 
       <section className="mt-6 grid items-start gap-4 lg:grid-cols-[240px_minmax(0,1fr)_minmax(0,1fr)]">
-        <div className="space-y-3 rounded-md border border-white/10 bg-[#12121A] p-3">
+        <div className="space-y-3 rounded-md border border-white/10 bg-[#10121c] p-3">
           <h2 className="text-[16px] font-medium">Creators</h2>
           {creators === null && (
             <p className="flex items-center gap-2 text-[15px] text-slate-400">
@@ -176,32 +176,32 @@ export default function CreatorsPage() {
         {!selected ? (
           <p className="text-[13px] text-[#8A8A9A]">Add a creator to edit tone, words to use, words to avoid, and sample lines.</p>
         ) : (
-          <form onSubmit={saveVoice} className="space-y-3 rounded-[10px] border border-[#23232F] bg-[#12121A] p-4">
+          <form onSubmit={saveVoice} className="space-y-3 rounded-[10px] border border-[#1e2130] bg-[#10121c] p-4">
             <p className="text-[14px] font-medium">{selected.name}</p>
             <label className="block text-[13px]">
               <span className="mb-1 block text-[#8A8A9A]">Handle</span>
-              <input value={handle} onChange={(event) => setHandle(event.target.value)} className="w-full rounded-lg border border-[#23232F] bg-[#0A0A0F] px-3 py-2" />
+              <input value={handle} onChange={(event) => setHandle(event.target.value)} className="w-full rounded-lg border border-[#1e2130] bg-[#0A0A0F] px-3 py-2" />
             </label>
             <label className="block text-[13px]">
               <span className="mb-1 block text-[#8A8A9A]">Tone chips, comma separated</span>
-              <input value={chips} onChange={(event) => setChips(event.target.value)} placeholder="direct, specific" className="w-full rounded-lg border border-[#23232F] bg-[#0A0A0F] px-3 py-2" />
+              <input value={chips} onChange={(event) => setChips(event.target.value)} placeholder="direct, specific" className="w-full rounded-lg border border-[#1e2130] bg-[#0A0A0F] px-3 py-2" />
             </label>
             <label className="block text-[13px]">
               <span className="mb-1 block text-[#8A8A9A]">Words and phrases to use</span>
-              <input value={slang} onChange={(event) => setSlang(event.target.value)} placeholder="say it plain" className="w-full rounded-lg border border-[#23232F] bg-[#0A0A0F] px-3 py-2" />
+              <input value={slang} onChange={(event) => setSlang(event.target.value)} placeholder="say it plain" className="w-full rounded-lg border border-[#1e2130] bg-[#0A0A0F] px-3 py-2" />
             </label>
             <label className="block text-[13px]">
               <span className="mb-1 block text-[#8A8A9A]">Words to avoid</span>
-              <input value={avoid} onChange={(event) => setAvoid(event.target.value)} placeholder="hustle" className="w-full rounded-lg border border-[#23232F] bg-[#0A0A0F] px-3 py-2" />
+              <input value={avoid} onChange={(event) => setAvoid(event.target.value)} placeholder="hustle" className="w-full rounded-lg border border-[#1e2130] bg-[#0A0A0F] px-3 py-2" />
             </label>
             <label className="block text-[13px]">
               <span className="mb-1 block text-[#8A8A9A]">Tone notes</span>
-              <textarea value={voiceNotes} onChange={(event) => setVoiceNotes(event.target.value)} rows={2} className="w-full rounded-lg border border-[#23232F] bg-[#0A0A0F] px-3 py-2" />
+              <textarea value={voiceNotes} onChange={(event) => setVoiceNotes(event.target.value)} rows={2} className="w-full rounded-lg border border-[#1e2130] bg-[#0A0A0F] px-3 py-2" />
             </label>
             {[0, 1, 2].map((index) => (
               <label key={index} className="block text-[13px]">
                 <span className="mb-1 block text-[#8A8A9A]">Sample line {index + 1}</span>
-                <textarea value={posts[index]} onChange={(event) => setPosts((prev) => prev.map((post, i) => (i === index ? event.target.value : post)))} rows={2} className="w-full rounded-lg border border-[#23232F] bg-[#0A0A0F] px-3 py-2" />
+                <textarea value={posts[index]} onChange={(event) => setPosts((prev) => prev.map((post, i) => (i === index ? event.target.value : post)))} rows={2} className="w-full rounded-lg border border-[#1e2130] bg-[#0A0A0F] px-3 py-2" />
               </label>
             ))}
             <label className="block text-[13px]">
@@ -209,7 +209,7 @@ export default function CreatorsPage() {
               <input type="range" min={0} max={100} value={strength} onChange={(event) => setStrength(Number(event.target.value))} className="w-full" />
             </label>
             {voiceNote && <p className="text-[13px] text-[#34D399]">{voiceNote}</p>}
-            <button type="submit" className="rounded-lg bg-[#8B5CF6] px-4 py-2 text-[13px] font-medium text-white hover:bg-[#7C3AED]">Save voice</button>
+            <button type="submit" className="rounded-lg bg-[#7c5cff] px-4 py-2 text-[13px] font-medium text-white hover:bg-[#6d4ef0]">Save voice</button>
           </form>
         )}
         </div>

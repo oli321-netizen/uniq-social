@@ -19,7 +19,7 @@ export default function Soon({
       {href && action && (
         <Link
           href={href}
-          className="mt-2 inline-flex w-fit rounded-lg bg-[#8B5CF6] px-4 py-2 text-[13px] font-medium text-white hover:bg-[#7C3AED]"
+          className="mt-2 inline-flex w-fit rounded-lg bg-[#7c5cff] px-4 py-2 text-[13px] font-medium text-white hover:bg-[#6d4ef0]"
         >
           {action}
         </Link>

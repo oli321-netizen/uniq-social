@@ -3,16 +3,17 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { BarChart3, Clapperboard, Film, LayoutGrid, Settings, SlidersHorizontal, UserRound, Users } from "lucide-react";
 
 export const SECTIONS = [
-  { href: "/dashboard", label: "Process" },
-  { href: "/hub/editor-lab", label: "Editor Lab" },
-  { href: "/hub/variants", label: "Variants" },
-  { href: "/hub/creators", label: "Creators" },
-  { href: "/hub/results", label: "Results" },
-  { href: "/hub/presets", label: "Presets" },
-  { href: "/hub/team", label: "Team" },
-  { href: "/hub/settings", label: "Settings" },
+  { href: "/dashboard", label: "Process", icon: Clapperboard },
+  { href: "/hub/editor-lab", label: "Editor Lab", icon: Film },
+  { href: "/hub/variants", label: "Variants", icon: LayoutGrid },
+  { href: "/hub/creators", label: "Creators", icon: UserRound },
+  { href: "/hub/results", label: "Results", icon: BarChart3 },
+  { href: "/hub/presets", label: "Presets", icon: SlidersHorizontal },
+  { href: "/hub/team", label: "Team", icon: Users },
+  { href: "/hub/settings", label: "Settings", icon: Settings },
 ];
 
 export const EDITOR_PROJECT_KEY = "editor-lab-project";
@@ -37,7 +38,7 @@ function active(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export default function SectionNav({ variant }: { variant: "strip" | "sidebar" }) {
+export default function SectionNav({ collapsed }: { collapsed?: boolean }) {
   const pathname = usePathname() || "";
   const [projectId, setProjectId] = useState<string | null>(null);
   useEffect(() => {
@@ -53,35 +54,22 @@ export default function SectionNav({ variant }: { variant: "strip" | "sidebar" }
     return href === "/hub/editor-lab" ? editorLabHref(projectId) : href;
   }
 
-  if (variant === "sidebar") {
-    return (
-      <nav className="flex flex-1 flex-col gap-1 px-2" aria-label="Sections">
-        {SECTIONS.map((item) => {
-          const on = active(pathname, item.href);
-          return (
-            <Link
-              key={item.href}
-              href={hrefFor(item.href)}
-              className={`truncate rounded-md px-3 py-2 text-[14px] ${on ? "bg-purple-500/15 font-medium text-purple-200" : "text-slate-400 hover:bg-white/5 hover:text-white"}`}
-            >
-              {item.label}
-            </Link>
-          );
-        })}
-      </nav>
-    );
-  }
   return (
-    <nav className="flex h-9 items-center gap-1 overflow-x-auto border-b border-white/10 bg-[#0a0a1a] px-2" aria-label="Sections">
+    <nav className="flex flex-1 flex-col gap-0.5 px-2" aria-label="Sections">
       {SECTIONS.map((item) => {
         const on = active(pathname, item.href);
+        const Icon = item.icon;
         return (
           <Link
             key={item.href}
             href={hrefFor(item.href)}
-            className={`shrink-0 whitespace-nowrap rounded px-2.5 py-1 text-[13px] ${on ? "bg-purple-500/15 text-purple-200" : "text-slate-400 hover:text-white"}`}
+            title={item.label}
+            className={`flex items-center gap-2.5 rounded-[7px] px-2.5 py-[7px] text-[13px] ${
+              on ? "bg-[#171a2b] text-white" : "text-[#9a9eb2] hover:bg-white/[0.04] hover:text-white"
+            } ${collapsed ? "justify-center px-0" : ""}`}
           >
-            {item.label}
+            <Icon className={`h-4 w-4 shrink-0 ${on ? "text-[#7c5cff]" : ""}`} />
+            {collapsed ? <span className="sr-only">{item.label}</span> : <span className="truncate">{item.label}</span>}
           </Link>
         );
       })}

@@ -58,14 +58,14 @@ export default function PresetsPage() {
         <h1 className="text-xl font-medium">Presets</h1>
         <p className="mt-1 text-[13px] text-[#8A8A9A]">Save a named set of creative tests and a variant count. Load copies it back into this form. Delete removes it.</p>
       </div>
-      <form onSubmit={onCreate} className="space-y-3 rounded-[10px] border border-[#23232F] bg-[#12121A] p-4">
+      <form onSubmit={onCreate} className="space-y-3 rounded-[10px] border border-[#1e2130] bg-[#10121c] p-4">
         <label className="block text-[13px]">
           <span className="mb-1 block text-[#8A8A9A]">Name</span>
-          <input required minLength={2} value={name} onChange={(event) => setName(event.target.value)} className="w-full rounded-lg border border-[#23232F] bg-[#0A0A0F] px-3 py-2" />
+          <input required minLength={2} value={name} onChange={(event) => setName(event.target.value)} className="w-full rounded-lg border border-[#1e2130] bg-[#0A0A0F] px-3 py-2" />
         </label>
         <label className="block text-[13px]">
           <span className="mb-1 block text-[#8A8A9A]">Creator</span>
-          <select value={creatorId} onChange={(event) => setCreatorId(event.target.value)} className="w-full rounded-lg border border-[#23232F] bg-[#0A0A0F] px-3 py-2">
+          <select value={creatorId} onChange={(event) => setCreatorId(event.target.value)} className="w-full rounded-lg border border-[#1e2130] bg-[#0A0A0F] px-3 py-2">
             <option value="">Any creator</option>
             {creators.map((creator) => <option key={creator.id} value={creator.id}>{creator.name}</option>)}
           </select>
@@ -81,7 +81,7 @@ export default function PresetsPage() {
                   type="button"
                   aria-pressed={on}
                   onClick={() => setDimensions((prev) => (on ? prev.filter((item) => item !== dimension) : [...prev, dimension]))}
-                  className={`rounded-full px-3 py-1 text-[12px] ${on ? "bg-[#8B5CF6] text-white" : "border border-[#23232F]"}`}
+                  className={`rounded-full px-3 py-1 text-[12px] ${on ? "bg-[#7c5cff] text-white" : "border border-[#1e2130]"}`}
                 >
                   {dimension}
                 </button>
@@ -91,16 +91,16 @@ export default function PresetsPage() {
         </fieldset>
         <label className="flex items-center justify-between text-[13px]">
           Variants per video
-          <input type="number" min={1} max={12} value={count} onChange={(event) => setCount(Number(event.target.value))} className="w-20 rounded-lg border border-[#23232F] bg-[#0A0A0F] px-2 py-1 font-mono" />
+          <input type="number" min={1} max={12} value={count} onChange={(event) => setCount(Number(event.target.value))} className="w-20 rounded-lg border border-[#1e2130] bg-[#0A0A0F] px-2 py-1 font-mono" />
         </label>
         {error && <p className="text-[13px] text-[#F87171]" role="alert">{error}</p>}
-        <button type="submit" className="rounded-lg bg-[#8B5CF6] px-4 py-2 text-[13px] font-medium text-white hover:bg-[#7C3AED]">Save preset</button>
+        <button type="submit" className="rounded-lg bg-[#7c5cff] px-4 py-2 text-[13px] font-medium text-white hover:bg-[#6d4ef0]">Save preset</button>
       </form>
       {loading && <p className="text-[13px] text-[#8A8A9A]">Loading presets</p>}
       <ul className="space-y-2">
-        {!loading && presets.length === 0 && <li className="rounded-[10px] border border-dashed border-[#23232F] px-4 py-8 text-center text-[13px] text-[#8A8A9A]">No presets yet.</li>}
+        {!loading && presets.length === 0 && <li className="rounded-[10px] border border-dashed border-[#1e2130] px-4 py-8 text-center text-[13px] text-[#8A8A9A]">No presets yet.</li>}
         {presets.map((preset) => (
-          <li key={preset.id} className="flex flex-wrap items-center justify-between gap-3 rounded-[10px] border border-[#23232F] bg-[#12121A] px-4 py-3">
+          <li key={preset.id} className="flex flex-wrap items-center justify-between gap-3 rounded-[10px] border border-[#1e2130] bg-[#10121c] px-4 py-3">
             <div>
               <p className="text-[14px] font-medium">{preset.name}</p>
               <p className="text-[12px] text-[#8A8A9A]">{preset.dimensions.join(", ")} · {preset.variantsPerVideo} variants</p>
@@ -114,11 +114,11 @@ export default function PresetsPage() {
                   setDimensions(preset.dimensions);
                   setCount(preset.variantsPerVideo);
                 }}
-                className="rounded-lg bg-[#8B5CF6] px-3 py-1.5 text-[12px] font-medium text-white"
+                className="rounded-lg bg-[#7c5cff] px-3 py-1.5 text-[12px] font-medium text-white"
               >
                 Load
               </button>
-              <button type="button" onClick={() => remove(preset.id)} className="rounded-lg border border-[#23232F] px-3 py-1.5 text-[12px]">Delete</button>
+              <button type="button" onClick={() => remove(preset.id)} className="rounded-lg border border-[#1e2130] px-3 py-1.5 text-[12px]">Delete</button>
             </div>
           </li>
         ))}
