@@ -10,7 +10,7 @@ function SuccessContent() {
   const plan = searchParams.get("plan");
 
   return (
-    <div className="min-h-screen bg-[#010313] flex items-center justify-center px-4">
+    <div className="min-h-screen bg-[#0a0b14] flex items-center justify-center px-4">
       <div className="fixed inset-0 grid-bg opacity-30 pointer-events-none" />
 
       <div className="w-full max-w-md relative z-10 text-center">
@@ -54,7 +54,7 @@ export default function PaymentSuccessPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-[#010313] flex items-center justify-center">
+        <div className="min-h-screen bg-[#0a0b14] flex items-center justify-center">
           <div className="text-purple-400">Loading...</div>
         </div>
       }

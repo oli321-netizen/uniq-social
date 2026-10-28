@@ -138,10 +138,10 @@ export default function ResultsPage() {
       {loading && <p className="text-[13px] text-[#8A8A9A]">Loading results</p>}
       {error && <p className="text-[13px] text-[#F87171]" role="alert">{error}</p>}
       {note && <p className="text-[13px] text-[#C4B5FD]">{note}</p>}
-      <form onSubmit={onManual} className="grid gap-3 rounded-[10px] border border-[#23232F] bg-[#12121A] p-4 sm:grid-cols-2">
+      <form onSubmit={onManual} className="grid gap-3 rounded-[10px] border border-[#1e2130] bg-[#10121c] p-4 sm:grid-cols-2">
         <label className="text-[13px] sm:col-span-2">
           <span className="mb-1 block text-[#8A8A9A]">Variant</span>
-          <select value={variantId} onChange={(event) => setVariantId(event.target.value)} className="w-full rounded-lg border border-[#23232F] bg-[#0A0A0F] px-3 py-2">
+          <select value={variantId} onChange={(event) => setVariantId(event.target.value)} className="w-full rounded-lg border border-[#1e2130] bg-[#0A0A0F] px-3 py-2">
             {rows.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
           </select>
         </label>
@@ -156,15 +156,15 @@ export default function ResultsPage() {
         ].map(([label, value, setter, type]) => (
           <label key={String(label)} className="text-[13px]">
             <span className="mb-1 block text-[#8A8A9A]">{label as string}</span>
-            <input type={type as string} value={value as string} onChange={(event) => (setter as (value: string) => void)(event.target.value)} className="w-full rounded-lg border border-[#23232F] bg-[#0A0A0F] px-3 py-2" />
+            <input type={type as string} value={value as string} onChange={(event) => (setter as (value: string) => void)(event.target.value)} className="w-full rounded-lg border border-[#1e2130] bg-[#0A0A0F] px-3 py-2" />
           </label>
         ))}
         <label className="text-[13px]">
           <span className="mb-1 block text-[#8A8A9A]">Posted at</span>
-          <input type="date" value={postedAt} onChange={(event) => setPostedAt(event.target.value)} className="w-full rounded-lg border border-[#23232F] bg-[#0A0A0F] px-3 py-2" />
+          <input type="date" value={postedAt} onChange={(event) => setPostedAt(event.target.value)} className="w-full rounded-lg border border-[#1e2130] bg-[#0A0A0F] px-3 py-2" />
         </label>
         <div className="sm:col-span-2">
-          <button type="submit" className="rounded-lg bg-[#8B5CF6] px-4 py-2 text-[13px] font-medium text-white hover:bg-[#7C3AED]">Save result</button>
+          <button type="submit" className="rounded-lg bg-[#7c5cff] px-4 py-2 text-[13px] font-medium text-white hover:bg-[#6d4ef0]">Save result</button>
         </div>
       </form>
       <div className="flex flex-wrap items-center gap-3">
@@ -174,7 +174,7 @@ export default function ResultsPage() {
         </label>
         <button type="button" onClick={downloadTemplate} className="text-[13px] text-[#C4B5FD] hover:underline">Download template</button>
       </div>
-      <section className="rounded-[10px] border border-[#23232F] bg-[#12121A] p-4">
+      <section className="rounded-[10px] border border-[#1e2130] bg-[#10121c] p-4">
         <h2 className="text-[14px] font-medium">Average watch time by test</h2>
         {!loading && chart.length === 0 && <p className="mt-3 text-[13px] text-[#8A8A9A]">No variants yet.</p>}
         <div className="mt-3 space-y-2">
@@ -182,8 +182,8 @@ export default function ResultsPage() {
             <div key={item.label} className="grid grid-cols-[120px_1fr_48px] items-center gap-2 text-[12px]">
               <span className="truncate text-[#8A8A9A]">{item.label}</span>
               <svg viewBox="0 0 100 8" className="h-2 w-full" role="img" aria-label={`${item.label} ${item.value.toFixed(1)} seconds`}>
-                <rect width="100" height="8" rx="2" fill="#23232F" />
-                <rect width={Math.max(0, (item.value / maxWatch) * 100)} height="8" rx="2" fill="#8B5CF6" />
+                <rect width="100" height="8" rx="2" fill="#1e2130" />
+                <rect width={Math.max(0, (item.value / maxWatch) * 100)} height="8" rx="2" fill="#7c5cff" />
               </svg>
               <span className="font-mono text-right">{item.value.toFixed(1)}s</span>
             </div>
@@ -192,12 +192,12 @@ export default function ResultsPage() {
       </section>
       <div className="flex gap-2 text-[12px]">
         {(["views", "watch", "shares"] as const).map((key) => (
-          <button key={key} type="button" onClick={() => setSort(key)} className={`rounded-full px-3 py-1 ${sort === key ? "bg-[#8B5CF6] text-white" : "border border-[#23232F]"}`}>
+          <button key={key} type="button" onClick={() => setSort(key)} className={`rounded-full px-3 py-1 ${sort === key ? "bg-[#7c5cff] text-white" : "border border-[#1e2130]"}`}>
             Sort by {key}
           </button>
         ))}
       </div>
-      <div className="overflow-x-auto rounded-[10px] border border-[#23232F]">
+      <div className="overflow-x-auto rounded-[10px] border border-[#1e2130]">
         <table className="w-full text-left text-[13px]">
           <thead className="text-[#8A8A9A]">
             <tr>
@@ -215,7 +215,7 @@ export default function ResultsPage() {
               <tr><td colSpan={7} className="px-3 py-8 text-center text-[#8A8A9A]">Finish a render, then log a result.</td></tr>
             )}
             {ranked.map((row, index) => (
-              <tr key={row.id} className="border-t border-[#23232F]">
+              <tr key={row.id} className="border-t border-[#1e2130]">
                 <td className="px-3 py-2">{index === 0 && row.views > 0 ? "Winner · " : ""}{row.name}</td>
                 <td className="px-3 py-2 text-[#8A8A9A]">{row.testsDimension}</td>
                 <td className="px-3 py-2 font-mono">{row.views}</td>

@@ -245,7 +245,7 @@ export default function EditorTimeline(props: Props) {
   const tick = props.zoom < 48 ? 5 : props.zoom < 90 ? 2 : 1;
   const iconBtn = "flex h-7 w-7 shrink-0 items-center justify-center rounded text-[#c8ccd2] hover:bg-white/10 disabled:opacity-30";
   const toolBtn = "h-7 shrink-0 whitespace-nowrap rounded px-2 text-[11px] text-[#e8e8e8] hover:bg-white/10";
-  const toolOn = "h-7 shrink-0 whitespace-nowrap rounded bg-white/10 px-2 text-[11px] text-[#22d3ee]";
+  const toolOn = "h-7 shrink-0 whitespace-nowrap rounded bg-white/10 px-2 text-[11px] text-[#7c5cff]";
   const videoOn = props.selKind === "clip";
   const muteOn = videoOn ? (selectedSeg?.volume ?? 1) <= 0 : Boolean(props.layerMuted);
 
@@ -308,8 +308,8 @@ export default function EditorTimeline(props: Props) {
   );
 
   return (
-    <section className="shrink-0 border-t border-[#2c3038] bg-[#14161c]" aria-label="Timeline">
-      <div className="flex h-8 min-w-0 items-center gap-1 border-b border-[#2c3038] px-2">
+    <section className="shrink-0 border-t border-[#2a2c38] bg-[#14161c]" aria-label="Timeline">
+      <div className="flex h-8 min-w-0 items-center gap-1 border-b border-[#2a2c38] px-2">
         {props.selKind ? (
           <div aria-label="Clip toolbar" className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden">
             {tools}
@@ -334,17 +334,17 @@ export default function EditorTimeline(props: Props) {
           <button type="button" aria-label="Zoom out" onClick={() => props.onZoom(Math.max(36, props.zoom / 1.25))} className={iconBtn}>
             <ZoomOut className="h-3.5 w-3.5" />
           </button>
-          <input aria-label="Zoom timeline" type="range" min={36} max={280} value={props.zoom} onChange={(event) => props.onZoom(Number(event.target.value))} className="w-24 accent-[#22d3ee]" />
+          <input aria-label="Zoom timeline" type="range" min={36} max={280} value={props.zoom} onChange={(event) => props.onZoom(Number(event.target.value))} className="w-24 accent-[#7c5cff]" />
           <button type="button" aria-label="Zoom in" onClick={() => props.onZoom(Math.min(280, props.zoom * 1.25))} className={iconBtn}>
             <ZoomIn className="h-3.5 w-3.5" />
           </button>
-          <button type="button" title="Snap" aria-label="Snap" aria-pressed={props.snap} onClick={() => props.onSnap(!props.snap)} className={`${iconBtn} ${props.snap ? "text-[#22d3ee]" : ""}`}>
+          <button type="button" title="Snap" aria-label="Snap" aria-pressed={props.snap} onClick={() => props.onSnap(!props.snap)} className={`${iconBtn} ${props.snap ? "text-[#7c5cff]" : ""}`}>
             <Magnet className="h-3.5 w-3.5" />
           </button>
         </div>
       </div>
       <div className="flex">
-        <div className="w-[92px] shrink-0 border-r border-[#2c3038] bg-[#121418] text-[11px] text-[#9aa0a8]">
+        <div className="w-[92px] shrink-0 border-r border-[#2a2c38] bg-[#0a0b14] text-[11px] text-[#9aa0a8]">
           <div style={{ height: RULER }} />
           <Label height={VIDEO_H}>Video 1</Label>
           <Label height={ROW_H}>Audio 1</Label>
@@ -376,7 +376,7 @@ export default function EditorTimeline(props: Props) {
                     data-clip={seg.id}
                     data-track="video"
                     data-selected={selected ? "true" : "false"}
-                    className={`absolute top-1 overflow-hidden rounded-sm border-2 ${selected ? "border-[#22d3ee]" : "border-white/10"} bg-[#2a3344]`}
+                    className={`absolute top-1 overflow-hidden rounded-sm border-2 ${selected ? "border-[#7c5cff]" : "border-white/10"} bg-[#2a3344]`}
                     style={{ left: left * props.zoom, width: Math.max(18, span * props.zoom), height: VIDEO_H - 8 }}
                     onPointerDown={(event) => {
                       if (event.button !== 0) return;
@@ -412,7 +412,7 @@ export default function EditorTimeline(props: Props) {
                     data-clip={seg.id}
                     data-track="audio"
                     data-selected={selected ? "true" : "false"}
-                    className={`absolute top-1 overflow-hidden rounded-sm border-2 ${selected ? "border-[#22d3ee]" : "border-transparent"} bg-[#163528]`}
+                    className={`absolute top-1 overflow-hidden rounded-sm border-2 ${selected ? "border-[#7c5cff]" : "border-transparent"} bg-[#163528]`}
                     style={{ left: left * props.zoom, width: Math.max(18, span * props.zoom), height: ROW_H - 8 }}
                     onPointerDown={(event) => {
                       if (event.button !== 0) return;
@@ -472,7 +472,7 @@ export default function EditorTimeline(props: Props) {
                     data-kind="cue"
                     data-clip={cue.id}
                     data-selected={selected ? "true" : "false"}
-                    className={`absolute top-1 flex items-center overflow-hidden rounded-sm border-2 px-1.5 text-[11px] text-[#f6edd4] ${selected ? "border-[#22d3ee] bg-[#b08a3e]" : "border-transparent bg-[#8d6b32]"}`}
+                    className={`absolute top-1 flex items-center overflow-hidden rounded-sm border-2 px-1.5 text-[11px] text-[#f6edd4] ${selected ? "border-[#7c5cff] bg-[#b08a3e]" : "border-transparent bg-[#8d6b32]"}`}
                     style={{ left: cue.start * props.zoom, width: Math.max(16, (cue.end - cue.start) * props.zoom), height: ROW_H - 8 }}
                     onPointerDown={(event) => {
                       if (event.button !== 0) return;
@@ -513,7 +513,7 @@ export default function EditorTimeline(props: Props) {
 
 function Label({ children, height }: { children: string; height: number }) {
   return (
-    <div className="flex items-center border-t border-[#2c3038] px-2" style={{ height }}>
+    <div className="flex items-center border-t border-[#2a2c38] px-2" style={{ height }}>
       <span className="truncate">{children}</span>
     </div>
   );
@@ -522,7 +522,7 @@ function Label({ children, height }: { children: string; height: number }) {
 function Track({ children, height, onEmpty }: { children: ReactNode; height: number; onEmpty: () => void }) {
   return (
     <div
-      className="relative border-t border-[#2c3038] bg-[#1b1e25]"
+      className="relative border-t border-[#2a2c38] bg-[#1b1e25]"
       style={{ height }}
       onPointerDown={(event) => {
         if (event.target === event.currentTarget) onEmpty();
@@ -558,7 +558,7 @@ function SpanBlock({
       data-kind={kind}
       data-clip={span.id}
       data-selected={selected ? "true" : "false"}
-      className={`absolute top-1 flex items-center overflow-hidden rounded-sm border-2 px-1.5 ${selected ? "border-[#22d3ee]" : "border-transparent"} ${className}`}
+      className={`absolute top-1 flex items-center overflow-hidden rounded-sm border-2 px-1.5 ${selected ? "border-[#7c5cff]" : "border-transparent"} ${className}`}
       style={{ left: span.start * zoom, width: Math.max(16, (span.end - span.start) * zoom), height: ROW_H - 8 }}
       onPointerDown={(event) => {
         if (event.button !== 0) return;

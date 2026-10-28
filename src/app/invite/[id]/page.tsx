@@ -50,7 +50,7 @@ export default function InvitePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#010313] flex items-center justify-center">
+      <div className="min-h-screen bg-[#0a0b14] flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-purple-400" />
       </div>
     );
@@ -58,7 +58,7 @@ export default function InvitePage() {
 
   if (error || !invite) {
     return (
-      <div className="min-h-screen bg-[#010313] flex items-center justify-center px-4">
+      <div className="min-h-screen bg-[#0a0b14] flex items-center justify-center px-4">
         <div className="fixed inset-0 grid-bg opacity-30 pointer-events-none" />
         <div className="w-full max-w-md relative z-10 text-center">
           <div className="rounded-2xl border border-white/5 bg-white/[0.02] backdrop-blur-sm p-8">
@@ -80,7 +80,7 @@ export default function InvitePage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#010313] flex items-center justify-center px-4">
+    <div className="min-h-screen bg-[#0a0b14] flex items-center justify-center px-4">
       <div className="fixed inset-0 grid-bg opacity-30 pointer-events-none" />
 
       <div className="w-full max-w-md relative z-10">
