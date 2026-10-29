@@ -3,6 +3,7 @@ import { mkdir, readdir, readFile, rm } from "fs/promises";
 import path from "path";
 import type { WordStamp } from "@/lib/edit-timeline";
 import { clampKind, plainKind } from "@/lib/ai-editor/plan";
+import { EDITOR_GUIDANCE, visionModels } from "@/lib/ai-editor/verify";
 import type { ContentKind, ReadResult, Shot } from "@/lib/ai-editor/types";
 import { transcribeFile } from "@/lib/transcribe";
 
@@ -133,32 +134,42 @@ function labelScenes(scenes: Shot[], vision: Shot[], kind: ContentKind): Shot[] 
 }
 
 async function askVision(key: string, frames: string[], scenes: Shot[], transcript: string, duration: number) {
-  const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
   const content: { type: string; text?: string; image_url?: { url: string } }[] = [
     {
       type: "text",
-      text: `Duration ${duration.toFixed(2)}s. Scene changes at ${scenes.map((shot) => shot.start.toFixed(2)).join(", ") || "none"}. Speech: ${transcript.slice(0, 2500) || "none"}. Frames are in time order, about one every 1 to 2 seconds. Return JSON {kind, summary, shots:[{start,end,summary,quality,continuous}]}. kind is one of talking, process, before-after, montage, product, gym, food, b-roll, other. A haircut, tattoo, cook, or makeup that is one action is process: each shot stays whole and continuous true. quality is 0 to 1. Use the scene times. Do not invent cuts in the middle of a continuous action.`,
+      text: `Duration ${duration.toFixed(2)}s. Scene changes at ${scenes.map((shot) => shot.start.toFixed(2)).join(", ") || "none"}. Speech: ${transcript.slice(0, 2500) || "none"}. Frames are in time order, about one every 1 to 2 seconds. Return JSON {kind, summary, shots:[{start,end,summary,quality,continuous}]}. kind is one of talking, process, before-after, montage, product, gym, food, b-roll, other. Mark a haircut, tattoo, workout rep, or cooking step continuous true. quality is 0 to 1. Use the scene times. Do not invent a cut in the middle of a continuous action.\n\nHow a good editor would cut:\n${EDITOR_GUIDANCE}`,
     },
   ];
   for (const frame of frames.slice(0, 8)) {
     content.push({ type: "image_url", image_url: { url: `data:image/jpeg;base64,${frame}` } });
   }
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model,
-      temperature: 0.2,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: "You read a video from still frames, scene times, and any transcript. Reply with one JSON object only." },
-        { role: "user", content },
-      ],
-    }),
-  });
-  if (!res.ok) throw new Error(`Vision ${res.status}`);
-  const body = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-  const parsed = JSON.parse(String(body.choices?.[0]?.message?.content || "{}")) as { kind?: unknown; summary?: unknown; shots?: unknown[] };
+  let lastStatus = 0;
+  let parsed: { kind?: unknown; summary?: unknown; shots?: unknown[] } | null = null;
+  for (const model of visionModels()) {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model,
+        temperature: 0.2,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: "You read a video from still frames, scene times, and any transcript. Reply with one JSON object only. Follow the editing examples." },
+          { role: "user", content },
+        ],
+      }),
+    });
+    if (res.ok) {
+      const body = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+      parsed = JSON.parse(String(body.choices?.[0]?.message?.content || "{}")) as { kind?: unknown; summary?: unknown; shots?: unknown[] };
+      break;
+    }
+    lastStatus = res.status;
+    const detail = await res.text();
+    const missing = res.status === 404 || /model/i.test(detail);
+    if (!missing || model === "gpt-4o-mini") break;
+  }
+  if (!parsed) throw new Error(`Vision ${lastStatus || "failed"}`);
   const shots: Shot[] = [];
   if (Array.isArray(parsed.shots)) {
     for (const item of parsed.shots) {

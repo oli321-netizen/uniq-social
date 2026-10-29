@@ -10,6 +10,7 @@ import { applyBeat, buildVariants, plainKind, settingsFrom } from "@/lib/ai-edit
 import { readClip } from "@/lib/ai-editor/read";
 import { renderVariant } from "@/lib/ai-editor/render";
 import { detectBeats, downloadAudio } from "@/lib/ai-editor/music";
+import { checkOutput, logEdit, renderWithCheck, saferPlan, verifyPlans } from "@/lib/ai-editor/verify";
 import type { EditorSettings, ReadResult, VariantPlan } from "@/lib/ai-editor/types";
 import { mediaDuration } from "@/lib/transcribe";
 import { refundCredits, spendCredits, type CreditSource } from "@/lib/users";
@@ -138,8 +139,17 @@ async function runJob(job: AiJob, duration: number) {
     job.read = read;
     job.summary = read.summary || plainKind(read.kind);
     const beats = job.musicPath && job.settings.beatSync ? await detectBeats(job.musicPath).catch(() => []) : [];
-    const plans = applyBeat(buildVariants(read, job.settings), beats, read.kind);
-    plans.forEach((plan, index) => {
+    const drafted = applyBeat(buildVariants(read, job.settings), beats, read.kind);
+    const verified = verifyPlans(drafted, read);
+    await logEdit(job.dir, {
+      file: job.fileName,
+      kind: read.kind,
+      summary: read.summary,
+      shots: read.shots.map((shot) => ({ start: shot.start, end: shot.end, summary: shot.summary, quality: shot.quality, continuous: shot.continuous })),
+      checks: verified.checks,
+      plans: verified.plans.map((plan) => ({ title: plan.title, why: plan.why, segments: plan.segments, speed: plan.speed, silence: plan.silence, zoom: plan.zoom })),
+    });
+    verified.plans.forEach((plan, index) => {
       const variant = job.variants[index];
       if (!variant) return;
       variant.plan = plan;
@@ -169,7 +179,10 @@ async function runJob(job: AiJob, duration: number) {
 async function rerender(job: AiJob, variant: StoredVariant, source: CreditSource, salt: number) {
   try {
     if (!job.read) throw new Error("Could not read that video.");
-    const [plan] = buildVariants(job.read, { ...job.settings, variants: 1 }, salt);
+    const drafted = buildVariants(job.read, { ...job.settings, variants: 1 }, salt);
+    const verified = verifyPlans(drafted, job.read);
+    const plan = verified.plans[0];
+    await logEdit(job.dir, { regenerate: variant.index, check: verified.checks[0], plan: { title: plan.title, why: plan.why, segments: plan.segments, speed: plan.speed } });
     variant.plan = plan;
     variant.title = plan.title;
     variant.why = plan.why;
@@ -186,15 +199,44 @@ async function rerender(job: AiJob, variant: StoredVariant, source: CreditSource
 async function renderOne(job: AiJob, variant: StoredVariant, source: CreditSource) {
   const output = variantFile(job, variant.index);
   try {
-    if (!variant.plan || !output) throw new Error("Could not build that edit.");
-    await renderVariant({
-      videoPath: job.inputPath,
-      musicPath: job.musicPath || undefined,
-      outputPath: output,
-      words: job.read?.words || [],
+    if (!variant.plan || !output || !job.read) throw new Error("Could not build that edit.");
+    const safer = saferPlan(job.read, job.settings, variant.index + 1);
+    safer.captions = variant.plan.captions;
+    safer.keepOriginal = variant.plan.keepOriginal;
+    safer.musicVolume = variant.plan.musicVolume;
+    const result = await renderWithCheck({
       plan: variant.plan,
-      duration: job.read?.duration || 0,
+      safer,
+      render: async (plan) => {
+        await renderVariant({
+          videoPath: job.inputPath,
+          musicPath: job.musicPath || undefined,
+          outputPath: output,
+          words: job.read?.words || [],
+          plan,
+          duration: job.read?.duration || 0,
+        });
+      },
+      inspect: () =>
+        checkOutput(output, {
+          audio: Boolean(job.musicPath) || Boolean(variant.plan && variant.plan.keepOriginal && job.read?.speech),
+          sourceDuration: job.read?.duration || 0,
+          motion: (job.read?.shots.length || 0) > 1,
+        }),
     });
+    await logEdit(job.dir, {
+      variant: variant.index,
+      retried: result.retried,
+      plan: brief(result.used),
+      first: result.first,
+      second: result.second,
+    });
+    if (!result.ok) throw new Error("Could not finish that edit.");
+    if (result.retried) {
+      variant.plan = safer;
+      variant.title = safer.title;
+      variant.why = safer.why;
+    }
     variant.status = "done";
     variant.error = "";
   } catch (error) {
@@ -203,6 +245,10 @@ async function renderOne(job: AiJob, variant: StoredVariant, source: CreditSourc
     if (output) await rm(output, { force: true }).catch(() => {});
     await refundCredits(job.userId, CREDITS_PER_VIDEO, source).catch(() => {});
   }
+}
+
+function brief(plan: VariantPlan) {
+  return { title: plan.title, why: plan.why, segments: plan.segments, speed: plan.speed, silence: plan.silence, zoom: plan.zoom };
 }
 
 function finish(job: AiJob) {
