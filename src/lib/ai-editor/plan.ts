@@ -1,5 +1,6 @@
 import { MAX_VARIANTS, MIN_VARIANTS } from "@/lib/ai-editor/cost";
-import type { CaptionLook, ContentKind, EditorSettings, ReadResult, Segment, Shot, VariantPlan } from "@/lib/ai-editor/types";
+import { outputLimit, planSegments } from "@/lib/ai-editor/verify";
+import type { CaptionLook, ContentKind, EditorSettings, ReadResult, Segment, VariantPlan } from "@/lib/ai-editor/types";
 
 const KINDS: ContentKind[] = ["talking", "process", "before-after", "montage", "product", "gym", "food", "b-roll", "other"];
 const LOOKS: CaptionLook[] = ["bold", "karaoke", "minimal"];
@@ -34,16 +35,15 @@ export function buildVariants(read: ReadResult, settings: EditorSettings, salt =
 function oneVariant(read: ReadResult, settings: EditorSettings, index: number): VariantPlan {
   const process = read.kind === "process" || read.kind === "before-after" || read.kind === "food" || read.kind === "gym";
   const talking = read.kind === "talking";
-  const processPick = process ? processSegments(read.shots, index) : null;
-  const segments = processPick ? processPick.segments : talking ? talkingSegments(read.shots, index) : montageSegments(read.shots, index);
-  const safe = clampSegments(segments.length ? segments : [{ start: 0, end: read.duration }], read.duration);
+  const safe = clampSegments(planSegments(read, index), read.duration);
+  const covered = safe.reduce((sum, segment) => sum + (segment.end - segment.start), 0);
   const speed = SPEEDS[index % SPEEDS.length];
   const notes = settings.mode === "describe" ? settings.prompt.toLowerCase() : "";
   const zoom = notes.includes("zoom") || (!process && index % 2 === 1) || (process && index % 2 === 1);
   const look = settings.captions ? LOOKS[(LOOKS.indexOf(settings.captionStyle) + index) % LOOKS.length] : settings.captionStyle;
   return {
     title: titleFor(read, safe, index),
-    why: whyFor(read, Boolean(processPick?.dropped)),
+    why: whyFor(read, covered < read.duration - 0.35),
     segments: safe,
     speed: notes.includes("slow") ? 1 : speed,
     silence: talking,
@@ -61,44 +61,21 @@ function oneVariant(read: ReadResult, settings: EditorSettings, index: number): 
   };
 }
 
-function processSegments(shots: Shot[], index: number): { segments: Segment[]; dropped: boolean } {
-  const ordered = shots.slice().sort((a, b) => a.start - b.start);
-  let chosen = ordered.slice();
-  let dropped = false;
-  if (index % 2 === 1 && chosen.length >= 3) {
-    const middle = chosen.slice(1, -1);
-    const worst = middle.reduce((best, shot) => (shot.quality < best.quality ? shot : best));
-    chosen = chosen.filter((shot) => shot !== worst);
-    dropped = true;
-  }
-  return { segments: chosen.map((shot) => ({ start: shot.start, end: shot.end })), dropped };
-}
-
-function talkingSegments(shots: Shot[], index: number): Segment[] {
-  if (shots.length === 0) return [];
-  const open = shots[index % shots.length];
-  const rest = shots.filter((shot) => shot !== open).sort((a, b) => a.start - b.start);
-  return [open, ...rest].map((shot) => ({ start: shot.start, end: shot.end }));
-}
-
-function montageSegments(shots: Shot[], index: number): Segment[] {
-  if (shots.length === 0) return [];
-  const shift = index % shots.length;
-  const rotated = shots.slice(shift).concat(shots.slice(0, shift));
-  const drop = index % 3 === 2 && rotated.length > 3 ? 1 : 0;
-  return rotated.slice(0, Math.max(2, rotated.length - drop)).map((shot) => ({ start: shot.start, end: shot.end }));
-}
-
 export function clampSegments(segments: Segment[], duration: number): Segment[] {
+  const limit = outputLimit(duration);
   const out: Segment[] = [];
   for (const segment of segments) {
     const start = clamp(segment.start, 0, Math.max(0, duration - 0.4), 0);
-    const end = clamp(segment.end, start + 0.4, duration, Math.min(duration, start + 4));
+    const end = clamp(segment.end, start + 0.4, duration, Math.min(duration, start + limit));
     if (end - start < 0.4) continue;
     out.push({ start: round2(start), end: round2(end) });
     if (out.length >= 8) break;
   }
-  if (!out.length) out.push({ start: 0, end: round2(Math.max(0.4, duration)) });
+  if (!out.length) {
+    const length = round2(Math.min(duration, Math.max(0.4, limit)));
+    const start = duration > 12 ? round2(Math.max(0, duration - length)) : 0;
+    out.push({ start, end: round2(Math.min(duration, start + length)) });
+  }
   return out;
 }
 
@@ -111,13 +88,15 @@ function titleFor(read: ReadResult, segments: Segment[], index: number) {
 function whyFor(read: ReadResult, dropped: boolean) {
   if (read.kind === "process" || read.kind === "before-after" || read.kind === "food" || read.kind === "gym") {
     return dropped
-      ? "Kept each step whole and in order, and left out the weakest middle step."
+      ? "Kept the ending, stayed in order, and cut this shorter than the original."
       : "Kept each step whole and in order so the process is not cut in half.";
   }
   if (read.kind === "talking") {
     return "Opened on a different line, cut at the end of sentences, and dropped the quiet gaps.";
   }
-  return "Opened on a different shot and cut only where the picture changes.";
+  return dropped
+    ? "Opened on a different shot and left part of the original out."
+    : "Opened on a different shot and cut only where the picture changes.";
 }
 
 export function applyBeat(plans: VariantPlan[], beats: number[], kind: ContentKind) {

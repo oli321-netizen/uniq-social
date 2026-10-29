@@ -187,6 +187,7 @@ async function askVision(key: string, frames: string[], scenes: Shot[], transcri
       });
     }
   }
+  if (!shots.length) throw new Error("Vision returned no shots");
   return { kind: clampKind(parsed.kind), summary: String(parsed.summary || "").replace(/\s+/g, " ").trim().slice(0, 140), shots };
 }
 

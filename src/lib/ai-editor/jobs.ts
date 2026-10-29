@@ -10,7 +10,7 @@ import { applyBeat, buildVariants, plainKind, settingsFrom } from "@/lib/ai-edit
 import { readClip } from "@/lib/ai-editor/read";
 import { renderVariant } from "@/lib/ai-editor/render";
 import { detectBeats, downloadAudio } from "@/lib/ai-editor/music";
-import { checkOutput, logEdit, renderWithCheck, saferPlan, verifyPlans } from "@/lib/ai-editor/verify";
+import { checkOutput, editFailure, logEdit, matchesSource, renderWithCheck, saferPlan, verifyPlans } from "@/lib/ai-editor/verify";
 import type { EditorSettings, ReadResult, VariantPlan } from "@/lib/ai-editor/types";
 import { mediaDuration } from "@/lib/transcribe";
 import { refundCredits, spendCredits, type CreditSource } from "@/lib/users";
@@ -158,6 +158,14 @@ async function runJob(job: AiJob, duration: number) {
     });
     job.status = "rendering";
     for (const variant of job.variants) {
+      const check = verified.checks[variant.index];
+      if (check && !check.ok) {
+        variant.status = "failed";
+        variant.error = "Couldn't make a real edit from that clip.";
+        await logEdit(job.dir, { variant: variant.index, skipped: true, check, plan: variant.plan ? brief(variant.plan) : null });
+        await refundCredits(job.userId, CREDITS_PER_VIDEO, job.creditSource).catch(() => {});
+        continue;
+      }
       variant.status = "rendering";
       await renderOne(job, variant, job.creditSource);
     }
@@ -186,6 +194,13 @@ async function rerender(job: AiJob, variant: StoredVariant, source: CreditSource
     variant.plan = plan;
     variant.title = plan.title;
     variant.why = plan.why;
+    if (verified.checks[0] && !verified.checks[0].ok) {
+      variant.status = "failed";
+      variant.error = "Couldn't make a real edit from that clip.";
+      await refundCredits(job.userId, CREDITS_PER_VIDEO, source).catch(() => {});
+      finish(job);
+      return;
+    }
     await renderOne(job, variant, source);
     finish(job);
   } catch (error) {
@@ -200,10 +215,13 @@ async function renderOne(job: AiJob, variant: StoredVariant, source: CreditSourc
   const output = variantFile(job, variant.index);
   try {
     if (!variant.plan || !output || !job.read) throw new Error("Could not build that edit.");
+    if (matchesSource(variant.plan, job.read.duration)) throw new Error("Couldn't make a real edit from that clip.");
     const safer = saferPlan(job.read, job.settings, variant.index + 1);
     safer.captions = variant.plan.captions;
     safer.keepOriginal = variant.plan.keepOriginal;
     safer.musicVolume = variant.plan.musicVolume;
+    if (matchesSource(safer, job.read.duration)) throw new Error("Couldn't make a real edit from that clip.");
+    const commands: string[][] = [];
     const result = await renderWithCheck({
       plan: variant.plan,
       safer,
@@ -215,13 +233,14 @@ async function renderOne(job: AiJob, variant: StoredVariant, source: CreditSourc
           words: job.read?.words || [],
           plan,
           duration: job.read?.duration || 0,
+          onCommand: (args) => commands.push(args),
         });
       },
       inspect: () =>
         checkOutput(output, {
           audio: Boolean(job.musicPath) || Boolean(variant.plan && variant.plan.keepOriginal && job.read?.speech),
           sourceDuration: job.read?.duration || 0,
-          motion: (job.read?.shots.length || 0) > 1,
+          motion: true,
         }),
     });
     await logEdit(job.dir, {
@@ -230,8 +249,9 @@ async function renderOne(job: AiJob, variant: StoredVariant, source: CreditSourc
       plan: brief(result.used),
       first: result.first,
       second: result.second,
+      ffmpeg: commands,
     });
-    if (!result.ok) throw new Error("Could not finish that edit.");
+    if (!result.ok) throw new Error(editFailure([...result.first.issues, ...(result.second ? result.second.issues : [])]));
     if (result.retried) {
       variant.plan = safer;
       variant.title = safer.title;
