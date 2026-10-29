@@ -1,20 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import Link from "next/link";
 import JSZip from "jszip";
-import { Loader2, Settings, Upload } from "lucide-react";
-import type { AiPlan } from "@/lib/ai-editor/plan";
+import { Loader2, Upload } from "lucide-react";
+import { CREDITS_PER_VIDEO } from "@/lib/ai-editor/cost";
 
-type ClipView = {
-  id: string;
-  title: string;
-  hook: string;
-  reason: string;
-  start: number;
-  end: number;
-  enabled: boolean;
-  speed: number;
+type Access = { allowed: boolean; plan: string; label: string; credits: number; teamCredits: number };
+
+type VariantView = {
+  index: number;
   status: string;
+  title: string;
+  why: string;
   error: string;
   download: string;
 };
@@ -22,229 +20,166 @@ type ClipView = {
 type JobView = {
   id: string;
   fileName: string;
-  mode: "prompt" | "full";
   status: string;
   error: string;
-  notice: string;
-  lines: string[];
-  plan: AiPlan | null;
-  clips: ClipView[];
-  transcript: string;
-  duration: number;
-  download: string;
+  summary: string;
+  variants: VariantView[];
 };
 
-type Row = {
-  localId: string;
-  file: File;
-  job?: JobView;
-  error: string;
-};
-
-type Mode = "prompt" | "full";
+type Track = { id: string; name: string; artist: string; url: string };
 
 const STATUS: Record<string, string> = {
   queued: "Queued",
-  transcribing: "Transcribing",
-  planned: "Ready",
-  proposed: "Ready",
+  reading: "Reading",
   rendering: "Rendering",
   done: "Done",
   failed: "Failed",
-  skipped: "Skipped",
 };
 
 export default function AiEditor() {
   const fileRef = useRef<HTMLInputElement>(null);
-  const [rows, setRows] = useState<Row[]>([]);
-  const [mode, setMode] = useState<Mode>("prompt");
-  const [prompt, setPrompt] = useState("");
-  const [captions, setCaptions] = useState(true);
+  const musicRef = useRef<HTMLInputElement>(null);
+  const [access, setAccess] = useState<Access | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [variants, setVariants] = useState(3);
+  const [captions, setCaptions] = useState(false);
   const [captionStyle, setCaptionStyle] = useState<"bold" | "karaoke" | "minimal">("bold");
-  const [captionPosition, setCaptionPosition] = useState<"top" | "middle" | "bottom">("bottom");
-  const [fontSize, setFontSize] = useState(64);
-  const [language, setLanguage] = useState("auto");
-  const [autoEdit, setAutoEdit] = useState(true);
-  const [silence, setSilence] = useState(true);
-  const [zoom, setZoom] = useState(false);
-  const [vertical, setVertical] = useState(true);
-  const [sheet, setSheet] = useState(false);
-  const [active, setActive] = useState("");
+  const [mode, setMode] = useState<"auto" | "describe">("auto");
+  const [prompt, setPrompt] = useState("");
+  const [musicFile, setMusicFile] = useState<File | null>(null);
+  const [musicUrl, setMusicUrl] = useState("");
+  const [musicName, setMusicName] = useState("");
+  const [query, setQuery] = useState("");
+  const [tracks, setTracks] = useState<Track[]>([]);
+  const [musicNotice, setMusicNotice] = useState("");
+  const [keepOriginal, setKeepOriginal] = useState(true);
+  const [volume, setVolume] = useState(0.35);
+  const [duck, setDuck] = useState(true);
+  const [fade, setFade] = useState(true);
+  const [beat, setBeat] = useState(false);
+  const [jobs, setJobs] = useState<JobView[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   const [zipping, setZipping] = useState(false);
-  const [banner, setBanner] = useState("");
 
-  const toggles = { captions, captionStyle, captionPosition, fontSize, language, autoEdit, silence, zoom, vertical };
+  const cost = files.length * variants * CREDITS_PER_VIDEO;
+  const affordable = !access || access.credits >= cost || access.teamCredits >= cost;
+
+  useEffect(() => {
+    fetch("/api/ai-editor/access")
+      .then((res) => res.json())
+      .then((data) => setAccess(data.access || { allowed: false, plan: "free", label: "Free", credits: 0, teamCredits: 0 }))
+      .catch(() => setAccess({ allowed: false, plan: "free", label: "Free", credits: 0, teamCredits: 0 }));
+  }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
-      setRows((current) => {
-        current.forEach((row) => {
-          const status = row.job?.status;
-          if (!row.job || status === "done" || status === "failed" || status === "planned") return;
-          fetch(`/api/ai-editor/jobs/${row.job.id}`)
-            .then((res) => res.json())
-            .then((data) => {
-              if (!data.job) return;
-              setRows((latest) => latest.map((item) => {
-                if (item.localId !== row.localId || !item.job) return item;
-                const clips = data.job.mode === "full"
-                  ? (data.job.clips as ClipView[]).map((clip) => {
-                      const local = item.job?.clips.find((entry) => entry.id === clip.id);
-                      return local && data.job.status === "planned" ? { ...clip, enabled: local.enabled } : clip;
-                    })
-                  : data.job.clips;
-                return { ...item, job: { ...data.job, clips }, error: data.job.error || "" };
-              }));
-              if (data.job.notice) setBanner(data.job.notice);
-            })
-            .catch(() => {});
-        });
-        return current;
+      jobs.forEach((job) => {
+        if (job.status === "done" || job.status === "failed") return;
+        fetch(`/api/ai-editor/jobs/${job.id}`)
+          .then((res) => res.json())
+          .then((data) => {
+            if (!data.job) return;
+            setJobs((current) => current.map((item) => (item.id === job.id ? data.job : item)));
+            if (data.job.status === "done" || data.job.status === "failed") window.dispatchEvent(new Event("uniq-credits"));
+          })
+          .catch(() => {});
       });
     }, 1000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [jobs]);
 
   function addFiles(list: File[]) {
-    const videos = list.filter((file) => file.type.startsWith("video/") || /\.(mp4|mov|webm|mkv)$/i.test(file.name));
-    setRows((current) => [
-      ...current,
-      ...videos.map((file) => ({ localId: `${file.name}-${file.size}-${Math.random().toString(16).slice(2)}`, file, error: "" })),
-    ]);
-  }
-
-  async function prepare(row: Row) {
-    setRows((current) => current.map((item) => (item.localId === row.localId ? { ...item, error: "", job: item.job ? { ...item.job, status: "queued", error: "" } : item.job } : item)));
-    const body = new FormData();
-    body.append("video", row.file);
-    body.append("fileName", row.file.name);
-    body.append("prompt", mode === "full" ? "" : prompt);
-    body.append("mode", mode);
-    appendToggles(body, toggles);
-    const res = await fetch("/api/ai-editor/jobs", { method: "POST", body });
-    const data = await res.json();
-    if (!res.ok) {
-      setRows((current) => current.map((item) => (item.localId === row.localId ? { ...item, error: data.error || "Could not start." } : item)));
-      return;
-    }
-    setRows((current) => current.map((item) => (item.localId === row.localId ? { ...item, job: data.job } : item)));
-    setActive(row.localId);
-    if (data.job.notice) setBanner(data.job.notice);
-  }
-
-  async function rerun(row: Row) {
-    if (!row.job) {
-      await prepare(row);
-      return;
-    }
-    const res = await fetch(`/api/ai-editor/jobs/${row.job.id}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt: row.job.mode === "full" ? "" : prompt, toggles }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      setRows((current) => current.map((item) => (item.localId === row.localId ? { ...item, error: data.error || "Could not update the plan." } : item)));
-      return;
-    }
-    setRows((current) => current.map((item) => (item.localId === row.localId ? { ...item, job: data.job } : item)));
-    if (row.job.mode === "full") return;
-    window.setTimeout(() => {
-      setRows((current) => {
-        const latest = current.find((item) => item.localId === row.localId);
-        if (latest?.job?.status === "planned" && latest.job.plan) void render(latest, latest.job.plan);
-        return current;
-      });
-    }, 1200);
-  }
-
-  async function render(row: Row, plan: AiPlan) {
-    if (!row.job) return;
-    const res = await fetch(`/api/ai-editor/jobs/${row.job.id}/render`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ plan }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      setRows((current) => current.map((item) => (item.localId === row.localId ? { ...item, error: data.error || "Could not render." } : item)));
-      return;
-    }
-    setRows((current) => current.map((item) => (item.localId === row.localId ? { ...item, job: data.job, error: "" } : item)));
-    window.dispatchEvent(new Event("uniq-credits"));
-  }
-
-  async function renderClips(row: Row) {
-    if (!row.job) return;
-    const res = await fetch(`/api/ai-editor/jobs/${row.job.id}/render`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        clips: row.job.clips.map((clip) => ({ id: clip.id, enabled: clip.enabled })),
-        captions,
-        captionStyle,
-        captionPosition,
-        fontSize,
-        language,
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      setRows((current) => current.map((item) => (item.localId === row.localId ? { ...item, error: data.error || "Could not render." } : item)));
-      return;
-    }
-    setRows((current) => current.map((item) => (item.localId === row.localId ? { ...item, job: data.job, error: "" } : item)));
-    window.dispatchEvent(new Event("uniq-credits"));
-  }
-
-  function patchPlan(localId: string, partial: Partial<AiPlan>) {
-    setRows((current) =>
-      current.map((item) => {
-        if (item.localId !== localId || !item.job?.plan) return item;
-        const plan = { ...item.job.plan, ...partial };
-        return { ...item, job: { ...item.job, plan } };
-      })
-    );
-  }
-
-  function toggleClip(localId: string, clipId: string) {
-    setRows((current) =>
-      current.map((item) => {
-        if (item.localId !== localId || !item.job) return item;
-        return {
-          ...item,
-          job: {
-            ...item.job,
-            clips: item.job.clips.map((clip) => (clip.id === clipId ? { ...clip, enabled: !clip.enabled } : clip)),
-          },
-        };
-      })
-    );
-  }
-
-  function downloads() {
-    const files: { name: string; url: string }[] = [];
-    for (const row of rows) {
-      const base = row.file.name.replace(/\.mp4$/i, "");
-      if (row.job?.download) files.push({ name: `${base}-ai.mp4`, url: row.job.download });
-      for (const clip of row.job?.clips || []) {
-        if (clip.download) files.push({ name: `${base}-${clip.id}.mp4`, url: clip.download });
+    setFiles((current) => {
+      const next = current.slice();
+      for (const file of list) {
+        const video = file.type.startsWith("video/") || /\.(mp4|mov|webm|mkv)$/i.test(file.name);
+        if (!video) continue;
+        const key = `${file.name}:${file.size}:${file.lastModified}`;
+        if (next.some((item) => `${item.name}:${item.size}:${item.lastModified}` === key)) continue;
+        next.push(file);
       }
-    }
-    return files;
+      return next;
+    });
+    setError("");
   }
 
-  async function downloadZip() {
-    const ready = downloads();
-    if (ready.length === 0) return;
+  async function searchMusic() {
+    setMusicNotice("");
+    const res = await fetch(`/api/ai-editor/music?q=${encodeURIComponent(query)}`);
+    const data = await res.json();
+    if (!res.ok) {
+      setMusicNotice(data.error || "Music search isn't set up yet. Upload your own audio instead.");
+      return;
+    }
+    setTracks(data.tracks || []);
+    setMusicNotice(data.notice || "");
+  }
+
+  async function generate() {
+    if (!files.length || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      for (const file of files) {
+        const body = new FormData();
+        body.append("video", file);
+        body.append("fileName", file.name);
+        body.append("variants", String(variants));
+        body.append("captions", captions ? "1" : "0");
+        body.append("captionStyle", captionStyle);
+        body.append("mode", mode);
+        body.append("prompt", mode === "describe" ? prompt : "");
+        body.append("keepOriginal", keepOriginal ? "1" : "0");
+        body.append("musicVolume", String(volume));
+        body.append("duck", duck ? "1" : "0");
+        body.append("fade", fade ? "1" : "0");
+        body.append("beatSync", beat ? "1" : "0");
+        if (musicFile) body.append("music", musicFile);
+        else if (musicUrl.trim()) body.append("musicUrl", musicUrl.trim());
+        const res = await fetch("/api/ai-editor/jobs", { method: "POST", body });
+        const data = await res.json();
+        if (!res.ok) {
+          setError(data.error || "Could not start.");
+          break;
+        }
+        setJobs((current) => [...current, data.job]);
+        setFiles((current) => current.filter((item) => item !== file));
+      }
+      const refreshed = await fetch("/api/ai-editor/access").then((res) => res.json()).catch(() => null);
+      if (refreshed?.access) setAccess(refreshed.access);
+      window.dispatchEvent(new Event("uniq-credits"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function regenerate(jobId: string, index: number) {
+    const res = await fetch(`/api/ai-editor/jobs/${jobId}/regenerate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ index }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setError(data.error || "Could not regenerate that edit.");
+      return;
+    }
+    setJobs((current) => current.map((job) => (job.id === jobId ? data.job : job)));
+    window.dispatchEvent(new Event("uniq-credits"));
+  }
+
+  async function downloadAll() {
+    const ready = jobs.flatMap((job) => job.variants.filter((variant) => variant.download).map((variant) => ({ job, variant })));
+    if (!ready.length) return;
     setZipping(true);
     try {
       const zip = new JSZip();
       await Promise.all(
-        ready.map(async (file) => {
-          const res = await fetch(file.url);
+        ready.map(async ({ job, variant }) => {
+          const res = await fetch(variant.download);
           if (!res.ok) return;
-          zip.file(file.name, await res.blob());
+          zip.file(`${job.fileName.replace(/\.mp4$/i, "")}-${variant.index + 1}.mp4`, await res.blob());
         })
       );
       const blob = await zip.generateAsync({ type: "blob", compression: "STORE" });
@@ -259,224 +194,206 @@ export default function AiEditor() {
     }
   }
 
-  const selected = rows.find((row) => row.localId === active) || rows[0];
-  const fullRows = rows.filter((row) => row.job?.mode === "full" && (row.job.clips?.length || 0) > 0);
+  if (!access) return <p className="p-4 text-[13px] text-[#8a8ea3]">Loading…</p>;
+
+  if (!access.allowed) {
+    return (
+      <div className="mx-auto flex max-w-md flex-col gap-3 px-4 py-10 text-[13px] text-[#e6e7ee]">
+        <h1 className="text-[15px] font-medium">AI Editor</h1>
+        <p className="text-[#b4b7c8]">AI Editor is part of a paid plan. You are on {access.label}.</p>
+        <p className="text-[12px] text-[#8a8ea3]">Subscribe to generate edits. Credits are used when a video is created.</p>
+        <Link href="/account" className="mt-2 inline-flex h-10 items-center justify-center rounded-[9px] bg-[#7c5cff] px-4 font-medium text-white">
+          View plans
+        </Link>
+      </div>
+    );
+  }
+
+  const reason = !files.length ? "Add a video first." : !affordable ? `Not enough credits. This needs ${cost}.` : "";
 
   return (
-    <div className="flex min-h-0 flex-col gap-3 p-3 text-[13px] text-[#e6e7ee] sm:p-4 lg:flex-row lg:p-5">
-      <section
-        className="flex min-w-0 flex-1 flex-col gap-3"
+    <div className="mx-auto flex w-full max-w-xl flex-col gap-4 px-3 pb-28 pt-3 text-[13px] text-[#e6e7ee] lg:max-w-3xl lg:pb-8 lg:pt-5">
+      <div
+        className="flex cursor-pointer items-center gap-3 rounded-[10px] border border-dashed border-[#2c3046] bg-[#0d0f19] px-4 py-4"
+        onClick={() => fileRef.current?.click()}
         onDragOver={(event) => event.preventDefault()}
         onDrop={(event) => {
           event.preventDefault();
           addFiles(Array.from(event.dataTransfer.files));
         }}
       >
-        <div className="flex w-fit overflow-hidden rounded-[8px] border border-[#1e2130] text-[12px]">
-          <button type="button" aria-pressed={mode === "prompt"} onClick={() => setMode("prompt")} className={`px-3 py-1.5 ${mode === "prompt" ? "bg-[#171a2b] text-[#c9bcff]" : "text-[#8a8ea3]"}`}>Prompt</button>
-          <button type="button" aria-pressed={mode === "full"} onClick={() => setMode("full")} className={`px-3 py-1.5 ${mode === "full" ? "bg-[#171a2b] text-[#c9bcff]" : "text-[#8a8ea3]"}`}>Full auto</button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="video/*"
+          multiple
+          className="hidden"
+          onChange={(event) => {
+            if (event.target.files) addFiles(Array.from(event.target.files));
+            event.target.value = "";
+          }}
+        />
+        <Upload className="h-5 w-5 shrink-0 text-[#8a8ea3]" />
+        <div>
+          <p className="font-medium">Add a video</p>
+          <p className="text-[12px] text-[#8a8ea3]">Or drop one or more files. Nothing runs until you press Generate.</p>
         </div>
-        <div className="flex cursor-pointer items-center gap-3 rounded-[10px] border border-dashed border-[#2c3046] bg-[#0d0f19] px-4 py-4" onClick={() => fileRef.current?.click()}>
-          <input ref={fileRef} type="file" accept="video/*" multiple className="hidden" onChange={(event) => { if (event.target.files) addFiles(Array.from(event.target.files)); }} />
-          <Upload className="h-5 w-5 text-[#8a8ea3]" />
-          <div className="min-w-0 flex-1">
-            <p className="font-medium">Upload a video</p>
-            <p className="text-[#8a8ea3]">or drag and drop one or more files</p>
-          </div>
-          <span className="hidden text-[12px] text-[#8a8ea3] sm:inline">MP4, MOV, WebM · Max 200MB · 10 min</span>
+      </div>
+      {files.length > 0 && (
+        <ul className="rounded-[10px] border border-[#1e2130] bg-[#10121c]">
+          {files.map((file) => (
+            <li key={`${file.name}-${file.size}-${file.lastModified}`} className="flex items-center justify-between gap-3 border-b border-[#191c2a] px-3 py-2 last:border-b-0">
+              <span className="truncate">{file.name}</span>
+              <button type="button" className="shrink-0 text-[12px] text-[#b3a2ff]" onClick={() => setFiles((current) => current.filter((item) => item !== file))}>
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <Field label="Variants" hint="How many different edits to make from each video.">
+        <div className="flex items-center gap-2">
+          <button type="button" className="h-8 w-8 rounded-[6px] border border-[#262a3c]" onClick={() => setVariants((value) => Math.max(1, value - 1))} aria-label="Fewer variants">–</button>
+          <span className="w-6 text-center">{variants}</span>
+          <button type="button" className="h-8 w-8 rounded-[6px] border border-[#262a3c]" onClick={() => setVariants((value) => Math.min(10, value + 1))} aria-label="More variants">+</button>
         </div>
-        {mode === "prompt" ? (
-          <label className="block">
-            <span className="mb-1 block text-[12px] text-[#8a8ea3]">Prompt</span>
-            <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} rows={3} placeholder="Add bold captions, cut the silences, zoom in on key moments, make it 9:16, punchy pacing" className="w-full resize-none rounded-[10px] border border-[#1e2130] bg-[#10121c] px-3 py-2 text-[13px] outline-none" />
-          </label>
-        ) : (
-          <p className="text-[12px] text-[#8a8ea3]">Upload a video and find clips. No prompt.</p>
+      </Field>
+
+      <Field label="Captions" hint="Words on the picture. Off until you turn them on.">
+        <Toggle on={captions} label="Burn captions" onClick={() => setCaptions((value) => !value)} />
+        {captions && (
+          <select aria-label="Caption style" value={captionStyle} onChange={(event) => setCaptionStyle(event.target.value as typeof captionStyle)} className="mt-2 h-8 w-full rounded-[6px] border border-[#262a3c] bg-[#0d0f19] px-2">
+            <option value="bold">Bold white with outline</option>
+            <option value="karaoke">Karaoke highlight</option>
+            <option value="minimal">Small lower line</option>
+          </select>
         )}
-        {banner && <p className="rounded-[8px] border border-[#1e2130] bg-[#10121c] px-3 py-2 text-[12px] text-[#c9bcff]">{banner}</p>}
-        <p className="text-[12px] text-[#8a8ea3]">
-          {mode === "prompt"
-            ? "The prompt box uses OPENAI_API_KEY. Without that key, the switches still render the video."
-            : "Clip ideas use OPENAI_API_KEY. Without that key, clips follow sentence breaks and the edit still runs."}
-        </p>
-        <div className="flex items-center justify-between">
-          <h2 className="font-medium">Results <span className="ml-1 rounded border border-[#1e2130] px-1.5 text-[11px] font-normal text-[#8a8ea3]">{rows.length}</span></h2>
-          <button type="button" disabled={zipping || downloads().length === 0} onClick={downloadZip} className="rounded-md border border-[#1e2130] px-2 py-1 text-[12px] text-[#b4b7c8] disabled:opacity-40">
-            {zipping ? "Zipping…" : "Download all"}
-          </button>
-        </div>
-        <div className="overflow-auto rounded-[10px] border border-[#1e2130] bg-[#10121c]">
-          <table className="w-full border-collapse">
-            <thead>
-              <tr className="text-left text-[12px] text-[#8a8ea3]">
-                <th className="px-3 py-2 font-medium">Video</th>
-                <th className="px-3 py-2 font-medium">Status</th>
-                <th className="px-3 py-2 font-medium">Preview</th>
-                <th className="px-3 py-2 font-medium" />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="px-3 py-8 text-center text-[12px] text-[#8a8ea3]">No videos yet.</td>
-                </tr>
-              )}
-              {rows.map((row) => (
-                <tr key={row.localId} className="border-t border-[#191c2a]">
-                  <td className="max-w-[180px] px-3 py-2">
-                    <div className="truncate font-medium">{row.file.name}</div>
-                    {row.error && <div className="text-[12px] text-red-300">{row.error}</div>}
-                  </td>
-                  <td className="px-3 py-2 whitespace-nowrap text-[12px]">
-                    {row.job?.status === "transcribing" || row.job?.status === "rendering" ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : null}
-                    {row.job ? STATUS[row.job.status] || row.job.status : "—"}
-                  </td>
-                  <td className="px-3 py-2">
-                    {row.job?.download ? <video src={row.job.download} controls playsInline className="h-16 w-10 rounded bg-black object-cover" /> : <span className="text-[#8a8ea3]">—</span>}
-                  </td>
-                  <td className="px-3 py-2 text-right whitespace-nowrap">
-                    {!row.job && mode === "prompt" && <button type="button" className="px-2 text-[12px] text-[#c9bcff]" onClick={() => prepare(row)}>Build plan</button>}
-                    {!row.job && mode === "full" && <button type="button" className="px-2 text-[12px] text-[#c9bcff]" onClick={() => prepare(row)}>Find clips</button>}
-                    {row.job?.mode !== "full" && row.job?.status === "planned" && row.job.plan && <button type="button" className="px-2 text-[12px] text-[#c9bcff]" onClick={() => render(row, row.job!.plan!)}>Render</button>}
-                    {row.job?.mode === "full" && (row.job.status === "planned" || row.job.status === "done" || row.job.status === "failed") && (
-                      <button type="button" className="px-2 text-[12px] text-[#c9bcff]" onClick={() => renderClips(row)}>Render selected</button>
-                    )}
-                    {row.job?.download && <a href={row.job.download} className="px-2 text-[12px] text-[#c9bcff]">Download</a>}
-                    {row.job?.mode !== "full" && row.job && <button type="button" className="px-2 text-[12px] text-[#b4b7c8]" onClick={() => rerun(row)}>Edit prompt and re-run</button>}
-                    {row.job?.mode === "full" && <button type="button" className="px-2 text-[12px] text-[#b4b7c8]" onClick={() => rerun(row)}>Find again</button>}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {selected?.job?.mode !== "full" && selected?.job?.lines && selected.job.lines.length > 0 && (
-          <div className="rounded-[10px] border border-[#1e2130] bg-[#10121c] px-3 py-2">
-            <p className="mb-1 font-medium">{selected.file.name}</p>
-            <ul className="list-disc space-y-1 pl-4 text-[12px] text-[#c9cbd8]">
-              {selected.job.lines.map((line) => <li key={line}>{line}</li>)}
-            </ul>
-            {selected.job.plan && (
-              <div className="mt-2 flex flex-wrap gap-2 text-[12px]">
-                <Toggle label="Captions" on={selected.job.plan.captions} onClick={() => patchPlan(selected.localId, { captions: !selected.job!.plan!.captions })} />
-                <Toggle label="Silences" on={selected.job.plan.silence} onClick={() => patchPlan(selected.localId, { silence: !selected.job!.plan!.silence })} />
-                <Toggle label="Zoom" on={selected.job.plan.zoom} onClick={() => patchPlan(selected.localId, { zoom: !selected.job!.plan!.zoom })} />
-                <Toggle label="9:16" on={selected.job.plan.aspect === "9:16"} onClick={() => patchPlan(selected.localId, { aspect: selected.job!.plan!.aspect === "9:16" ? "original" : "9:16" })} />
-              </div>
-            )}
+      </Field>
+
+      <Field label="Music" hint="Your own track, a search, or a link to an audio file.">
+        <div className="flex flex-col gap-2">
+          <input ref={musicRef} type="file" accept="audio/*,video/mp4" className="hidden" onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (!file) return;
+            setMusicFile(file);
+            setMusicName(file.name);
+            setMusicUrl("");
+            event.target.value = "";
+          }} />
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="rounded-[6px] border border-[#262a3c] px-2 py-1 text-[12px]" onClick={() => musicRef.current?.click()}>Upload audio</button>
+            {musicName && <span className="text-[12px] text-[#8a8ea3]">{musicName}</span>}
           </div>
-        )}
-        {fullRows.map((row) => (
-          <div key={row.localId} className="rounded-[10px] border border-[#1e2130] bg-[#10121c]">
-            <p className="border-b border-[#191c2a] px-3 py-2 font-medium">{row.file.name}</p>
-            <ul>
-              {row.job!.clips.map((clip) => (
-                <li key={clip.id} className="border-b border-[#191c2a] px-3 py-2 last:border-b-0">
-                  <div className="flex items-start gap-3">
-                    <button type="button" aria-label={`Include ${clip.title}`} aria-pressed={clip.enabled} onClick={() => toggleClip(row.localId, clip.id)} className="mt-0.5 shrink-0">
-                      <span className={`block h-4 w-4 rounded-[3px] border ${clip.enabled ? "border-[#7c5cff] bg-[#7c5cff]" : "border-[#3a3f56]"}`} />
-                    </button>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-baseline gap-x-2">
-                        <span className="font-medium">{clip.title}</span>
-                        <span className="text-[12px] text-[#8a8ea3]">{fmt(clip.start)}–{fmt(clip.end)}</span>
-                        <span className="text-[12px] text-[#8a8ea3]">{STATUS[clip.status] || clip.status}</span>
-                      </div>
-                      <p className="text-[12px] text-[#c9cbd8]">{clip.hook}</p>
-                      <p className="text-[12px] text-[#8a8ea3]">{clip.reason}</p>
-                      <p className="text-[12px] text-[#8a8ea3]">Dead air removed, {Number(clip.speed || 1.08).toFixed(2)}× pacing, zoom, 9:16.</p>
-                      {clip.error && <p className="text-[12px] text-red-300">{clip.error}</p>}
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      {clip.download ? <video src={clip.download} controls playsInline className="h-16 w-10 rounded bg-black object-cover" /> : null}
-                      {clip.download && <a href={clip.download} className="text-[12px] text-[#c9bcff]">Download</a>}
-                    </div>
-                  </div>
+          <div className="flex gap-2">
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search a song name" aria-label="Search songs" className="h-8 min-w-0 flex-1 rounded-[6px] border border-[#262a3c] bg-[#0d0f19] px-2" />
+            <button type="button" className="rounded-[6px] border border-[#262a3c] px-2 text-[12px]" onClick={searchMusic}>Search</button>
+          </div>
+          {musicNotice && <p className="text-[12px] text-[#c9bcff]">{musicNotice}</p>}
+          {tracks.length > 0 && (
+            <ul className="rounded-[8px] border border-[#1e2130]">
+              {tracks.map((track) => (
+                <li key={track.id}>
+                  <button type="button" className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-[12px] hover:bg-[#171a2b]" onClick={() => { setMusicUrl(track.url); setMusicFile(null); setMusicName(`${track.name} — ${track.artist}`); }}>
+                    <span className="truncate">{track.name}</span>
+                    <span className="shrink-0 text-[#8a8ea3]">{track.artist}</span>
+                  </button>
                 </li>
               ))}
             </ul>
-          </div>
-        ))}
-        <button type="button" className="fixed bottom-3 left-3 right-3 z-30 flex items-center justify-center gap-2 rounded-[9px] bg-[#7c5cff] py-2.5 font-medium text-white lg:hidden" onClick={() => setSheet(true)}>
-          <Settings className="h-4 w-4" /> Settings
-        </button>
-      </section>
-      {sheet && <button type="button" aria-label="Close settings" className="fixed inset-0 z-30 bg-black/70 lg:hidden" onClick={() => setSheet(false)} />}
-      <aside className={`${sheet ? "fixed inset-x-0 bottom-0 z-40 flex max-h-[86vh]" : "hidden"} w-full flex-col overflow-y-auto rounded-t-[14px] border border-[#1e2130] bg-[#10121c] p-3 lg:sticky lg:top-4 lg:flex lg:max-h-[calc(100vh-84px)] lg:w-[320px] lg:shrink-0 lg:rounded-[10px]`}>
-        <div className="mb-2 flex items-center justify-between lg:hidden">
-          <span className="font-semibold">Settings</span>
-          <button type="button" className="text-[#b3a2ff]" onClick={() => setSheet(false)}>Done</button>
+          )}
+          <input value={musicUrl} onChange={(event) => { setMusicUrl(event.target.value); setMusicFile(null); }} placeholder="Or paste a direct audio link" aria-label="Audio link" className="h-8 w-full rounded-[6px] border border-[#262a3c] bg-[#0d0f19] px-2" />
+          <label className="text-[12px] text-[#8a8ea3]">Volume {Math.round(volume * 100)}%
+            <input aria-label="Music volume" type="range" min={5} max={100} value={Math.round(volume * 100)} onChange={(event) => setVolume(Number(event.target.value) / 100)} className="mt-1 w-full accent-[#7c5cff]" />
+          </label>
+          <Toggle on={keepOriginal} label="Keep original audio" onClick={() => setKeepOriginal((value) => !value)} />
+          <Toggle on={duck} label="Lower music under speech" onClick={() => setDuck((value) => !value)} />
+          <Toggle on={fade} label="Fade in and out" onClick={() => setFade((value) => !value)} />
+          <Toggle on={beat} label="Cut montages on the beat" onClick={() => setBeat((value) => !value)} />
+          <p className="text-[12px] text-[#8a8ea3]">Trending Instagram songs have to be added in Instagram when you post.</p>
         </div>
-        <p className="mb-2 font-medium">Captions</p>
-        <Toggle label="Burn captions" on={captions} onClick={() => setCaptions(!captions)} />
-        <label className="mt-2 block text-[12px] text-[#8a8ea3]">Style
-          <select aria-label="Caption style" value={captionStyle} onChange={(event) => setCaptionStyle(event.target.value as typeof captionStyle)} className="mt-1 h-8 w-full rounded-[6px] border border-[#262a3c] bg-[#0d0f19] px-2 text-[13px]">
-            <option value="bold">Bold white with outline</option>
-            <option value="karaoke">Karaoke word highlight in purple</option>
-            <option value="minimal">Minimal lower third</option>
-          </select>
-        </label>
-        <label className="mt-2 block text-[12px] text-[#8a8ea3]">Position
-          <select aria-label="Caption position" value={captionPosition} onChange={(event) => setCaptionPosition(event.target.value as typeof captionPosition)} className="mt-1 h-8 w-full rounded-[6px] border border-[#262a3c] bg-[#0d0f19] px-2 text-[13px]">
-            <option value="top">Top</option>
-            <option value="middle">Middle</option>
-            <option value="bottom">Bottom</option>
-          </select>
-        </label>
-        <label className="mt-2 block text-[12px] text-[#8a8ea3]">Font size {fontSize}
-          <input aria-label="Font size" type="range" min={32} max={96} value={fontSize} onChange={(event) => setFontSize(Number(event.target.value))} className="mt-1 w-full accent-[#7c5cff]" />
-        </label>
-        <label className="mt-2 block text-[12px] text-[#8a8ea3]">Language
-          <select aria-label="Caption language" value={language} onChange={(event) => setLanguage(event.target.value)} className="mt-1 h-8 w-full rounded-[6px] border border-[#262a3c] bg-[#0d0f19] px-2 text-[13px]">
-            <option value="auto">Auto-detect</option>
-            <option value="en">English</option>
-            <option value="es">Spanish</option>
-            <option value="fr">French</option>
-          </select>
-        </label>
-        {mode === "prompt" ? (
-          <>
-            <p className="mb-1 mt-4 font-medium">Auto edit</p>
-            <Toggle label="Auto AI edit" on={autoEdit} onClick={() => setAutoEdit(!autoEdit)} />
-            <Toggle label="Remove silences" on={silence} onClick={() => setSilence(!silence)} />
-            <Toggle label="Zoom punch-ins" on={zoom} onClick={() => setZoom(!zoom)} />
-            <Toggle label="Reframe to 9:16" on={vertical} onClick={() => setVertical(!vertical)} />
-          </>
-        ) : (
-          <p className="mt-4 text-[12px] text-[#8a8ea3]">Full auto trims dead air, tightens pacing, punches in, and frames 9:16. Captions stay optional.</p>
+      </Field>
+
+      <Field label="Mode" hint={mode === "auto" ? "Reads the clip and edits it." : "Say what you want, in plain words."}>
+        <div className="flex w-fit overflow-hidden rounded-[8px] border border-[#1e2130] text-[12px]">
+          <button type="button" aria-pressed={mode === "auto"} className={`px-3 py-1.5 ${mode === "auto" ? "bg-[#171a2b] text-[#c9bcff]" : "text-[#8a8ea3]"}`} onClick={() => setMode("auto")}>Auto</button>
+          <button type="button" aria-pressed={mode === "describe"} className={`px-3 py-1.5 ${mode === "describe" ? "bg-[#171a2b] text-[#c9bcff]" : "text-[#8a8ea3]"}`} onClick={() => setMode("describe")}>Describe it</button>
+        </div>
+        {mode === "describe" && (
+          <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} rows={3} placeholder="Keep the haircut in order and end on the reveal" className="mt-2 w-full resize-none rounded-[8px] border border-[#1e2130] bg-[#10121c] px-3 py-2 outline-none" />
         )}
-      </aside>
+      </Field>
+
+      {error && <p className="rounded-[8px] border border-[#1e2130] px-3 py-2 text-[12px] text-red-300">{error}</p>}
+
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-[#1e2130] bg-[#0a0b14] p-3 lg:static lg:border-0 lg:bg-transparent lg:p-0">
+        {reason && <p className="mb-2 text-center text-[12px] text-[#8a8ea3] lg:text-left">{reason}</p>}
+        <button type="button" disabled={Boolean(reason) || busy} onClick={generate} className="flex h-11 w-full items-center justify-center gap-2 rounded-[9px] bg-[#7c5cff] font-medium text-white disabled:opacity-40">
+          {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+          Generate{files.length ? ` · ${cost} credits` : ""}
+        </button>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <h2 className="font-medium">Results</h2>
+        <button type="button" disabled={zipping || jobs.every((job) => job.variants.every((variant) => !variant.download))} onClick={downloadAll} className="rounded-md border border-[#1e2130] px-2 py-1 text-[12px] text-[#b4b7c8] disabled:opacity-40">
+          {zipping ? "Zipping…" : "Download all"}
+        </button>
+      </div>
+      {jobs.length === 0 && <p className="text-[12px] text-[#8a8ea3]">Edits show up here after you generate.</p>}
+      {jobs.map((job) => (
+        <section key={job.id} className="rounded-[10px] border border-[#1e2130] bg-[#10121c]">
+          <div className="border-b border-[#191c2a] px-3 py-2">
+            <p className="truncate font-medium">{job.fileName}</p>
+            <p className="text-[12px] text-[#8a8ea3]">{STATUS[job.status] || job.status}{job.summary ? ` · ${job.summary}` : ""}</p>
+            {job.error && <p className="text-[12px] text-red-300">{job.error}</p>}
+          </div>
+          {job.variants.map((variant) => (
+            <div key={variant.index} className="flex flex-col gap-2 border-b border-[#191c2a] px-3 py-3 last:border-b-0 sm:flex-row">
+              <div className="w-full max-w-[180px] shrink-0">
+                {variant.download ? (
+                  <video src={variant.download} controls playsInline className="aspect-[9/16] w-full rounded bg-black object-cover" />
+                ) : (
+                  <div className="flex aspect-[9/16] w-full items-center justify-center rounded bg-[#0a0b14] text-[12px] text-[#8a8ea3]">
+                    {variant.status === "rendering" || variant.status === "reading" || job.status === "reading" ? <Loader2 className="h-4 w-4 animate-spin" /> : "—"}
+                  </div>
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="font-medium">{variant.title}</p>
+                <p className="text-[12px] text-[#c9cbd8]">{variant.why}</p>
+                <p className="mt-1 text-[12px] text-[#8a8ea3]">{STATUS[variant.status] || variant.status}</p>
+                {variant.error && <p className="text-[12px] text-red-300">{variant.error}</p>}
+                <div className="mt-2 flex gap-3 text-[12px]">
+                  {variant.download && <a href={variant.download} className="text-[#c9bcff]">Download</a>}
+                  <button type="button" className="text-[#b4b7c8]" onClick={() => regenerate(job.id, variant.index)}>Regenerate</button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </section>
+      ))}
     </div>
   );
 }
 
-function fmt(seconds: number) {
-  const safe = Math.max(0, seconds);
-  const mins = Math.floor(safe / 60);
-  const rest = (safe % 60).toFixed(1);
-  if (mins <= 0) return `${Number(rest).toFixed(1)}s`;
-  return `${mins}:${rest.padStart(4, "0")}`;
+function Field({ label, hint, children }: { label: string; hint: string; children: ReactNode }) {
+  return (
+    <section className="rounded-[10px] border border-[#1e2130] bg-[#10121c] px-3 py-3">
+      <p className="font-medium">{label}</p>
+      <p className="mb-2 text-[12px] text-[#8a8ea3]">{hint}</p>
+      {children}
+    </section>
+  );
 }
 
-function Toggle({ label, on, onClick }: { label: string; on: boolean; onClick: () => void }) {
+function Toggle({ on, label, onClick }: { on: boolean; label: string; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} className="flex items-center justify-between gap-3 py-1 text-left text-[13px] text-[#c9cbd8]">
+    <button type="button" onClick={onClick} className="flex w-full items-center justify-between gap-3 py-1 text-left text-[13px]">
       <span>{label}</span>
       <span className={`relative h-4 w-7 shrink-0 rounded-full ${on ? "bg-[#7c5cff]" : "bg-[#2a2e42]"}`} aria-pressed={on}>
         <span className={`absolute top-0.5 h-3 w-3 rounded-full ${on ? "left-3.5 bg-white" : "left-0.5 bg-[#9a9eb2]"}`} />
       </span>
     </button>
   );
-}
-
-function appendToggles(body: FormData, toggles: { captions: boolean; captionStyle: string; captionPosition: string; fontSize: number; language: string; autoEdit: boolean; silence: boolean; zoom: boolean; vertical: boolean }) {
-  body.append("captions", toggles.captions ? "1" : "0");
-  body.append("captionStyle", toggles.captionStyle);
-  body.append("captionPosition", toggles.captionPosition);
-  body.append("fontSize", String(toggles.fontSize));
-  body.append("language", toggles.language);
-  body.append("autoEdit", toggles.autoEdit ? "1" : "0");
-  body.append("silence", toggles.silence ? "1" : "0");
-  body.append("zoom", toggles.zoom ? "1" : "0");
-  body.append("vertical", toggles.vertical ? "1" : "0");
 }

@@ -5,65 +5,46 @@ import { pipeline } from "stream/promises";
 import os from "os";
 import path from "path";
 import { randomUUID } from "crypto";
-import type { WordStamp } from "@/lib/edit-timeline";
-import { mediaDuration, transcribeFile } from "@/lib/transcribe";
-import { clampPlan, clipsFromSpeech, planFromPrompt, planLines, type AiClip, type AiPlan, type CaptionLook, type CaptionPlace, type ManualToggles } from "@/lib/ai-editor/plan";
-import { renderAiVideo } from "@/lib/ai-editor/render";
-import { deductCredits } from "@/lib/users";
-import { prisma } from "@/lib/prisma";
+import { CREDITS_PER_VIDEO } from "@/lib/ai-editor/cost";
+import { applyBeat, buildVariants, plainKind, settingsFrom } from "@/lib/ai-editor/plan";
+import { readClip } from "@/lib/ai-editor/read";
+import { renderVariant } from "@/lib/ai-editor/render";
+import { detectBeats, downloadAudio } from "@/lib/ai-editor/music";
+import type { EditorSettings, ReadResult, VariantPlan } from "@/lib/ai-editor/types";
+import { mediaDuration } from "@/lib/transcribe";
+import { refundCredits, spendCredits, type CreditSource } from "@/lib/users";
 
-export type JobStatus = "queued" | "transcribing" | "planned" | "rendering" | "done" | "failed";
-export type EditorMode = "prompt" | "full";
-export type ClipStatus = "proposed" | "rendering" | "done" | "failed" | "skipped";
+export type VariantStatus = "queued" | "reading" | "rendering" | "done" | "failed";
 
-type CaptionSettings = {
-  captions: boolean;
-  captionStyle: CaptionLook;
-  captionPosition: CaptionPlace;
-  fontSize: number;
-  language: string;
+type StoredVariant = {
+  index: number;
+  status: VariantStatus;
+  title: string;
+  why: string;
+  error: string;
+  plan: VariantPlan | null;
 };
-
-export type RenderBody = {
-  plan?: unknown;
-  clips?: { id?: string; enabled?: boolean }[];
-  captions?: boolean;
-  captionStyle?: string;
-  captionPosition?: string;
-  fontSize?: number;
-  language?: string;
-};
-
-type StoredClip = AiClip & { status: ClipStatus; error: string };
 
 export type AiJob = {
   id: string;
   userId: string;
   fileName: string;
-  mode: EditorMode;
   dir: string;
   inputPath: string;
-  outputPath: string;
-  status: JobStatus;
+  musicPath: string;
+  status: VariantStatus;
   error: string;
-  notice: string;
-  lines: string[];
-  plan: AiPlan | null;
-  clips: StoredClip[];
-  captions: CaptionSettings;
-  words: WordStamp[];
-  transcript: string;
-  duration: number;
+  summary: string;
+  settings: EditorSettings;
+  read: ReadResult | null;
+  variants: StoredVariant[];
+  creditSource: CreditSource;
   createdAt: number;
 };
 
 const MAX_BYTES = 200 * 1024 * 1024;
 const MAX_SECONDS = 600;
-const store = ((globalThis as { uniqAiJobs?: Map<string, AiJob> }).uniqAiJobs ||= new Map<string, AiJob>());
-
-export function listJobs(userId: string) {
-  return Array.from(store.values()).filter((job) => job.userId === userId);
-}
+const store = ((globalThis as { uniqAiEditorJobs?: Map<string, AiJob> }).uniqAiEditorJobs ||= new Map<string, AiJob>());
 
 export function getJob(id: string, userId: string) {
   const job = store.get(id);
@@ -71,271 +52,188 @@ export function getJob(id: string, userId: string) {
   return job;
 }
 
-export function clipOutput(job: AiJob, clipId: string) {
-  if (!/^c[1-5]$/.test(clipId)) return "";
-  const output = path.join(job.dir, `${clipId}.mp4`);
+export function variantFile(job: AiJob, index: number) {
+  if (!Number.isInteger(index) || index < 0 || index > 9) return "";
+  const output = path.join(job.dir, `v${index}.mp4`);
   if (!output.startsWith(job.dir + path.sep)) return "";
   return output;
 }
 
-export async function createJob(userId: string, file: Blob, fileName: string, toggles: ManualToggles, prompt: string, mode: EditorMode) {
-  if (file.size > MAX_BYTES) throw new Error("Max video size is 200MB.");
+export async function createJob(userId: string, video: Blob, fileName: string, rawSettings: Partial<EditorSettings>, music?: { file?: Blob; url?: string }) {
+  if (video.size > MAX_BYTES) throw new Error("Max video size is 200MB.");
+  const settings = settingsFrom(rawSettings);
   const id = randomUUID();
   const dir = path.join(os.tmpdir(), "uniq-social-ai", id);
   await mkdir(dir, { recursive: true });
   const inputPath = path.join(dir, "source.mp4");
-  const outputPath = path.join(dir, "render.mp4");
-  await pipeline(Readable.fromWeb(file.stream() as import("stream/web").ReadableStream<Uint8Array>), createWriteStream(inputPath));
-  const info = await stat(inputPath);
-  if (info.size > MAX_BYTES) {
-    await rm(dir, { recursive: true, force: true });
-    throw new Error("Max video size is 200MB.");
-  }
-  const duration = await mediaDuration(inputPath);
-  if (duration > MAX_SECONDS) {
-    await rm(dir, { recursive: true, force: true });
-    throw new Error("Max video length is 10 minutes.");
-  }
-  const job: AiJob = {
-    id,
-    userId,
-    fileName: fileName.slice(0, 120) || "video.mp4",
-    mode,
-    dir,
-    inputPath,
-    outputPath,
-    status: "queued",
-    error: "",
-    notice: "",
-    lines: [],
-    plan: null,
-    clips: [],
-    captions: captionSettings(toggles),
-    words: [],
-    transcript: "",
-    duration,
-    createdAt: Date.now(),
-  };
-  store.set(id, job);
-  void prepare(job, toggles, prompt);
-  return publicJob(job);
-}
-
-export async function replan(job: AiJob, toggles: ManualToggles, prompt: string) {
-  job.status = "transcribing";
-  job.error = "";
-  job.captions = captionSettings(toggles);
-  void prepare(job, toggles, prompt, true);
-  return publicJob(job);
-}
-
-export async function startRender(job: AiJob, rawPlan: unknown, body: RenderBody = {}) {
-  if (job.mode === "full") return startFullRender(job, body);
-  if (!job.plan && !rawPlan) throw new Error("Build a plan before rendering.");
-  if (!(await canAfford(job.userId, 1))) throw new Error("Not enough credits.");
-  const plan = rawPlan ? clampPlan(rawPlan, job.duration, job.words) : job.plan;
-  if (!plan) throw new Error("Build a plan before rendering.");
-  job.plan = plan;
-  job.lines = planLines(plan);
-  job.status = "rendering";
-  job.error = "";
-  void render(job, plan);
-  return publicJob(job);
-}
-
-async function prepare(job: AiJob, toggles: ManualToggles, prompt: string, keepWords = false) {
+  const musicPath = path.join(dir, "music.mp3");
   try {
-    job.status = "transcribing";
-    const needsSpeech = job.mode === "full" || toggles.captions || toggles.zoom || Boolean(prompt.trim());
-    if (needsSpeech && (!keepWords || job.words.length === 0)) {
-      const spoken = await transcribeFile(job.inputPath, job.duration, undefined, toggles.language);
-      job.words = spoken.words;
-      job.transcript = spoken.text;
-      if (spoken.stub) job.notice = "Local stub transcript, not Whisper.";
+    await pipeline(Readable.fromWeb(video.stream() as import("stream/web").ReadableStream<Uint8Array>), createWriteStream(inputPath));
+    const info = await stat(inputPath);
+    if (info.size > MAX_BYTES) throw new Error("Max video size is 200MB.");
+    const duration = await mediaDuration(inputPath);
+    if (duration > MAX_SECONDS) throw new Error("Max video length is 10 minutes.");
+    if (duration < 0.8) throw new Error("That video is too short.");
+    let hasMusic = false;
+    if (music?.file && music.file.size > 0) {
+      if (music.file.size > 20 * 1024 * 1024) throw new Error("Music files can be up to 20MB.");
+      await pipeline(Readable.fromWeb(music.file.stream() as import("stream/web").ReadableStream<Uint8Array>), createWriteStream(musicPath));
+      hasMusic = true;
+    } else if (music?.url) {
+      await downloadAudio(music.url, musicPath);
+      hasMusic = true;
     }
-    if (job.mode === "full") {
-      const planned = await clipsFromSpeech(job.transcript, job.duration, job.words);
-      job.clips = planned.clips.map((clip) => ({ ...clip, status: "proposed", error: "" }));
-      job.lines = [`${job.clips.length} clip${job.clips.length === 1 ? "" : "s"} from the transcript.`];
-      job.plan = null;
-      if (planned.notice) job.notice = planned.notice;
-      job.status = "planned";
-      return;
+    const cost = settings.variants * CREDITS_PER_VIDEO;
+    const source = await spendCredits(userId, cost);
+    if (!source) throw new Error(`Not enough credits. This needs ${cost}.`);
+    const job: AiJob = {
+      id,
+      userId,
+      fileName: fileName.slice(0, 120) || "video.mp4",
+      dir,
+      inputPath,
+      musicPath: hasMusic ? musicPath : "",
+      status: "reading",
+      error: "",
+      summary: "",
+      settings,
+      read: null,
+      variants: Array.from({ length: settings.variants }, (_, index) => ({
+        index,
+        status: "queued",
+        title: `Edit ${index + 1}`,
+        why: "",
+        error: "",
+        plan: null,
+      })),
+      creditSource: source,
+      createdAt: Date.now(),
+    };
+    store.set(id, job);
+    void runJob(job, duration);
+    return publicJob(job);
+  } catch (error) {
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+    throw error;
+  }
+}
+
+export async function regenerateVariant(job: AiJob, index: number) {
+  const variant = job.variants.find((item) => item.index === index);
+  if (!variant) throw new Error("That edit was not found.");
+  if (variant.status === "rendering" || variant.status === "reading" || job.status === "reading") throw new Error("This video is still working.");
+  const source = await spendCredits(job.userId, CREDITS_PER_VIDEO);
+  if (!source) throw new Error(`Not enough credits. This needs ${CREDITS_PER_VIDEO}.`);
+  variant.status = "rendering";
+  variant.error = "";
+  job.status = "rendering";
+  void rerender(job, variant, source, job.variants.length + index + 3);
+  return publicJob(job);
+}
+
+async function runJob(job: AiJob, duration: number) {
+  try {
+    job.status = "reading";
+    const read = await readClip(job.inputPath, duration, job.dir);
+    job.read = read;
+    job.summary = read.summary || plainKind(read.kind);
+    const beats = job.musicPath && job.settings.beatSync ? await detectBeats(job.musicPath).catch(() => []) : [];
+    const plans = applyBeat(buildVariants(read, job.settings), beats, read.kind);
+    plans.forEach((plan, index) => {
+      const variant = job.variants[index];
+      if (!variant) return;
+      variant.plan = plan;
+      variant.title = plan.title;
+      variant.why = plan.why;
+    });
+    job.status = "rendering";
+    for (const variant of job.variants) {
+      variant.status = "rendering";
+      await renderOne(job, variant, job.creditSource);
     }
-    const planned = await planFromPrompt(prompt, job.transcript, toggles, job.duration, job.words);
-    job.plan = planned.plan;
-    job.lines = planLines(planned.plan);
-    job.clips = [];
-    if (planned.notice) job.notice = planned.notice;
-    job.status = "planned";
+    finish(job);
   } catch (error) {
     job.status = "failed";
-    job.error = error instanceof Error ? error.message : "Could not prepare that video.";
+    job.error = publicError(error);
+    for (const variant of job.variants) {
+      if (variant.status === "done") continue;
+      if (variant.status !== "failed") {
+        variant.status = "failed";
+        variant.error = job.error;
+        await refundCredits(job.userId, CREDITS_PER_VIDEO, job.creditSource).catch(() => {});
+      }
+    }
   }
 }
 
-async function render(job: AiJob, plan: AiPlan) {
+async function rerender(job: AiJob, variant: StoredVariant, source: CreditSource, salt: number) {
   try {
-    const charged = await deductCredits(job.userId, 1);
-    if (!charged) throw new Error("Not enough credits.");
-    await renderAiVideo({ videoPath: job.inputPath, outputPath: job.outputPath, words: job.words, plan, duration: job.duration });
-    job.status = "done";
+    if (!job.read) throw new Error("Could not read that video.");
+    const [plan] = buildVariants(job.read, { ...job.settings, variants: 1 }, salt);
+    variant.plan = plan;
+    variant.title = plan.title;
+    variant.why = plan.why;
+    await renderOne(job, variant, source);
+    finish(job);
   } catch (error) {
-    job.status = "failed";
-    job.error = error instanceof Error ? error.message : "Render failed.";
-    await rm(job.outputPath, { force: true }).catch(() => {});
+    variant.status = "failed";
+    variant.error = publicError(error);
+    await refundCredits(job.userId, CREDITS_PER_VIDEO, source).catch(() => {});
+    finish(job);
   }
 }
 
-async function startFullRender(job: AiJob, body: RenderBody) {
-  if (!job.clips.length) throw new Error("Find clips before rendering.");
-  if (Array.isArray(body.clips)) {
-    for (const clip of job.clips) {
-      const match = body.clips.find((item) => item && item.id === clip.id);
-      if (match) clip.enabled = Boolean(match.enabled);
-    }
-  }
-  job.captions = captionSettings({
-    captions: body.captions ?? job.captions.captions,
-    captionStyle: body.captionStyle || job.captions.captionStyle,
-    captionPosition: body.captionPosition || job.captions.captionPosition,
-    fontSize: body.fontSize ?? job.captions.fontSize,
-    language: body.language || job.captions.language,
-  });
-  const selected = job.clips.filter((clip) => clip.enabled);
-  if (!selected.length) throw new Error("Select at least one clip.");
-  if (!(await canAfford(job.userId, selected.length))) throw new Error("Not enough credits.");
-  job.status = "rendering";
-  job.error = "";
-  void renderClips(job);
-  return publicJob(job);
-}
-
-async function renderClips(job: AiJob) {
-  let finished = 0;
-  for (const clip of job.clips) {
-    if (!clip.enabled) {
-      clip.status = "skipped";
-      clip.error = "";
-      continue;
-    }
-    clip.status = "rendering";
-    clip.error = "";
-    const output = clipOutput(job, clip.id);
-    try {
-      const charged = await deductCredits(job.userId, 1);
-      if (!charged) throw new Error("Not enough credits.");
-      await renderAiVideo({
-        videoPath: job.inputPath,
-        outputPath: output,
-        words: job.words,
-        plan: planForClip(clip, job),
-        duration: job.duration,
-        window: { start: clip.start, end: clip.end },
-      });
-      clip.status = "done";
-      finished += 1;
-    } catch (error) {
-      clip.status = "failed";
-      clip.error = error instanceof Error ? error.message : "Render failed.";
-      if (output) await rm(output, { force: true }).catch(() => {});
-    }
-  }
-  if (finished > 0) {
-    job.status = "done";
-    job.error = "";
-  } else {
-    job.status = "failed";
-    job.error = job.clips.find((clip) => clip.error)?.error || "Render failed.";
+async function renderOne(job: AiJob, variant: StoredVariant, source: CreditSource) {
+  const output = variantFile(job, variant.index);
+  try {
+    if (!variant.plan || !output) throw new Error("Could not build that edit.");
+    await renderVariant({
+      videoPath: job.inputPath,
+      musicPath: job.musicPath || undefined,
+      outputPath: output,
+      words: job.read?.words || [],
+      plan: variant.plan,
+      duration: job.read?.duration || 0,
+    });
+    variant.status = "done";
+    variant.error = "";
+  } catch (error) {
+    variant.status = "failed";
+    variant.error = publicError(error);
+    if (output) await rm(output, { force: true }).catch(() => {});
+    await refundCredits(job.userId, CREDITS_PER_VIDEO, source).catch(() => {});
   }
 }
 
-function planForClip(clip: AiClip, job: AiJob): AiPlan {
-  const localWords = job.words.filter((word) => {
-    const point = (word.start + word.end) / 2;
-    return point >= clip.start && point < clip.end;
-  });
-  const plan = clampPlan(
-    {
-      captions: job.captions.captions,
-      captionStyle: job.captions.captionStyle,
-      captionPosition: job.captions.captionPosition,
-      fontSize: job.captions.fontSize,
-      language: job.captions.language,
-      silence: true,
-      silenceDb: -32,
-      silenceMin: 0.55,
-      tighten: true,
-      speed: clip.speed,
-      zoom: true,
-      zoomScale: clip.zoomScale,
-      zoomMoments: clip.zoomMoments,
-      aspect: "9:16",
-      trimStart: 0,
-      trimEnd: 0,
-    },
-    job.duration,
-    localWords
-  );
-  plan.aspect = "9:16";
-  plan.silence = true;
-  plan.tighten = true;
-  plan.speed = clip.speed;
-  plan.zoom = true;
-  plan.zoomMoments = plan.zoomMoments
-    .map((moment) => ({ start: Math.max(clip.start, moment.start), end: Math.min(clip.end, moment.end) }))
-    .filter((moment) => moment.end - moment.start >= 0.3);
-  return plan;
-}
-
-function captionSettings(toggles: { captions?: boolean; captionStyle?: string; captionPosition?: string; fontSize?: number; language?: string }): CaptionSettings {
-  const style = toggles.captionStyle === "karaoke" || toggles.captionStyle === "minimal" ? toggles.captionStyle : "bold";
-  const position = toggles.captionPosition === "top" || toggles.captionPosition === "middle" ? toggles.captionPosition : "bottom";
-  const language = /^[a-z]{2}$/i.test(String(toggles.language || "")) ? String(toggles.language).toLowerCase() : "auto";
-  const fontSize = Number(toggles.fontSize);
-  return {
-    captions: Boolean(toggles.captions),
-    captionStyle: style,
-    captionPosition: position,
-    fontSize: Number.isFinite(fontSize) ? Math.min(96, Math.max(32, fontSize)) : 64,
-    language,
-  };
-}
-
-async function canAfford(userId: string, amount: number) {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user) return false;
-  if (user.credits >= amount) return true;
-  if (!user.teamId) return false;
-  const team = await prisma.team.findUnique({ where: { id: user.teamId } });
-  return Boolean(team && team.credits >= amount);
+function finish(job: AiJob) {
+  const done = job.variants.some((variant) => variant.status === "done");
+  const pending = job.variants.some((variant) => variant.status === "queued" || variant.status === "rendering" || variant.status === "reading");
+  if (pending) return;
+  job.status = done ? "done" : "failed";
+  if (!done) job.error = job.variants.find((variant) => variant.error)?.error || "Could not edit that video.";
 }
 
 export function publicJob(job: AiJob) {
   return {
     id: job.id,
     fileName: job.fileName,
-    mode: job.mode,
     status: job.status,
     error: job.error,
-    notice: job.notice,
-    lines: job.lines,
-    plan: job.plan,
-    clips: (job.clips || []).map((clip) => ({
-      id: clip.id,
-      title: clip.title,
-      hook: clip.hook,
-      reason: clip.reason,
-      start: clip.start,
-      end: clip.end,
-      enabled: clip.enabled,
-      speed: clip.speed,
-      status: clip.status,
-      error: clip.error,
-      download: clip.status === "done" ? `/api/ai-editor/jobs/${job.id}/file?clip=${clip.id}` : "",
+    summary: job.summary,
+    variants: job.variants.map((variant) => ({
+      index: variant.index,
+      status: variant.status,
+      title: variant.title,
+      why: variant.why,
+      error: variant.error,
+      download: variant.status === "done" ? `/api/ai-editor/jobs/${job.id}/file?variant=${variant.index}` : "",
     })),
-    transcript: job.transcript.slice(0, 500),
-    duration: job.duration,
-    download: job.mode === "prompt" && job.status === "done" ? `/api/ai-editor/jobs/${job.id}/file` : "",
   };
+}
+
+function publicError(error: unknown) {
+  const message = error instanceof Error ? error.message : "Something went wrong.";
+  if (/openai|api[_ ]?key|whisper|jamendo/i.test(message)) return "Couldn't read that clip.";
+  if (/ffmpeg|invalid argument|error opening|no such file|timed out|\/tmp\//i.test(message)) return "Could not finish that edit.";
+  return message.replace(/\s+/g, " ").trim().slice(0, 180);
 }
