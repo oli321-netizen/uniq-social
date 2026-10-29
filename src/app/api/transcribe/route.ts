@@ -36,9 +36,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No video file provided" }, { status: 400 });
     }
 
-    // Whisper accepts audio files — we send the video directly, it extracts audio
+    // Whisper needs a recognisable file extension. The browser File object
+    // may arrive with a generic name or no extension, so we rebuild it with
+    // an mp4 extension (the most common upload format). Whisper supports:
+    // flac, m4a, mp3, mp4, mpeg, mpga, oga, ogg, wav, webm
+    const ext = file.name?.split(".").pop()?.toLowerCase() || "";
+    const supportedExts = ["flac", "m4a", "mp3", "mp4", "mpeg", "mpga", "oga", "ogg", "wav", "webm"];
+    const finalName = supportedExts.includes(ext)
+      ? file.name
+      : `audio.mp4`;
+
+    const renamedFile = new File([file], finalName, { type: file.type || "video/mp4" });
+
     const transcription = await openai.audio.transcriptions.create({
-      file: file,
+      file: renamedFile,
       model: "whisper-1",
       response_format: "verbose_json",
       timestamp_granularities: ["word", "segment"],

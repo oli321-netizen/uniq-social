@@ -1,44 +1,26 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { useSession, signOut } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { useTheme } from "@/components/ThemeProvider";
 import { useToast } from "@/components/Toast";
 import {
-  Upload,
-  Fingerprint,
   X,
-  Download,
   Loader2,
-  FileVideo,
   Check,
-  Settings,
-  LogOut,
   Zap,
-  Plus,
   ShoppingCart,
   Mail,
   Crown,
   ArrowRight,
-  Sun,
-  Moon,
   BarChart3,
   Gift,
   History,
   Copy,
-  Shuffle,
   Search,
   AlertTriangle,
-  MessageSquare,
-  Type,
-  RefreshCw,
-  ChevronDown,
-  ChevronUp,
-  Sparkles,
 } from "lucide-react";
-import JSZip from "jszip";
-import InstallButton from "@/components/InstallButton";
+import ProcessView from "@/components/hub/ProcessView";
 
 type VideoOutput = {
   url: string;
@@ -55,67 +37,11 @@ type VideoFile = {
   outputUrl?: string;
   outputs?: VideoOutput[];
   completedCopies?: number;
+  durationSec?: number;
+  chips?: string[];
 };
 
-const PROCESSING_STEPS = [
-  "Analysing video",
-  "Applying cuts",
-  "Adjusting zoom",
-  "Mirroring frames",
-  "Adding grain",
-  "Sharpening",
-  "Injecting metadata",
-  "Encoding output",
-  "Finalising",
-];
-
 type MetadataProfile = "capcut" | "snapchat" | "iphone" | "random";
-
-function ProcessingStepText({ progress }: { progress: number }) {
-  const [dotCount, setDotCount] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => setDotCount((d) => (d + 1) % 4), 400);
-    return () => clearInterval(t);
-  }, []);
-  const stepIndex = Math.min(
-    Math.floor((progress / 100) * PROCESSING_STEPS.length),
-    PROCESSING_STEPS.length - 1
-  );
-  return (
-    <span className="text-purple-400/80 text-[11px] font-medium tracking-wide uppercase">
-      {PROCESSING_STEPS[stepIndex]}{".".repeat(dotCount)}
-    </span>
-  );
-}
-
-function CircularProgress({ progress, size = 44 }: { progress: number; size?: number }) {
-  const strokeWidth = 3;
-  const radius = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (progress / 100) * circumference;
-  return (
-    <svg width={size} height={size} className="transform -rotate-90">
-      <circle
-        cx={size / 2} cy={size / 2} r={radius}
-        stroke="currentColor" className="text-white/5"
-        strokeWidth={strokeWidth} fill="none"
-      />
-      <circle
-        cx={size / 2} cy={size / 2} r={radius}
-        stroke="url(#progressGrad)" strokeWidth={strokeWidth} fill="none"
-        strokeLinecap="round"
-        strokeDasharray={circumference} strokeDashoffset={offset}
-        className="transition-all duration-700 ease-out"
-      />
-      <defs>
-        <linearGradient id="progressGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#a855f7" />
-          <stop offset="100%" stopColor="#6366f1" />
-        </linearGradient>
-      </defs>
-    </svg>
-  );
-}
 
 function genId() {
   return Math.random().toString(36).slice(2, 10);
@@ -126,13 +52,60 @@ function formatSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function probeDuration(file: File) {
+  return new Promise<number>((resolve) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    video.onloadedmetadata = () => {
+      const duration = video.duration;
+      URL.revokeObjectURL(url);
+      resolve(Number.isFinite(duration) ? duration : 0);
+    };
+    video.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(0);
+    };
+    video.src = url;
+  });
+}
+
+function changeChips(
+  settings: {
+    trimMin: number;
+    trimMax: number;
+    hiddenEmoji: boolean;
+    speedShift: boolean;
+    cropOffset: boolean;
+    hueShift: boolean;
+    thumbnailRandomise: boolean;
+    mirror: boolean;
+    grain: boolean;
+    sharpen: boolean;
+  },
+  profiles: string[]
+) {
+  const chips: string[] = profiles.map((name) =>
+    name === "capcut" ? "CapCut" : name === "snapchat" ? "Snapchat" : name === "iphone" ? "iPhone" : "Random"
+  );
+  if (settings.hiddenEmoji) chips.push("Hidden overlay");
+  if (settings.speedShift) chips.push("Speed shift");
+  if (settings.cropOffset) chips.push("Crop offset");
+  if (settings.hueShift) chips.push("Hue shift");
+  if (settings.thumbnailRandomise) chips.push("Thumbnail");
+  if (settings.mirror) chips.push("Mirror");
+  if (settings.grain) chips.push("Grain");
+  if (settings.sharpen) chips.push("Sharpen");
+  chips.push(`Trim ${settings.trimMin}–${settings.trimMax}s`);
+  return chips;
+}
+
 export default function Dashboard() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [videos, setVideos] = useState<VideoFile[]>([]);
   const [metadata, setMetadata] = useState<MetadataProfile[]>(["random"]);
   const [copies, setCopies] = useState(1);
-  const [copiesInput, setCopiesInput] = useState("1");
   const [isProcessing, setIsProcessing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [credits, setCredits] = useState(0);
@@ -149,7 +122,6 @@ export default function Dashboard() {
   const outOfCreditsRef = useRef(false);
   const planRank: Record<string, number> = { free: 0, starter: 1, growth: 2, pro: 3, business: 4, agency: 5 };
   const currentRank = planRank[plan] ?? 0;
-  const [isZipping, setIsZipping] = useState(false);
   const [activeTab, setActiveTab] = useState<"process" | "history" | "stats" | "refer" | "duplicates">("process");
   const [duplicateData, setDuplicateData] = useState<any>(null);
   const [duplicatesLoading, setDuplicatesLoading] = useState(false);
@@ -157,17 +129,32 @@ export default function Dashboard() {
   const [usageData, setUsageData] = useState<any>(null);
   const [referralData, setReferralData] = useState<any>(null);
   const [referralCopied, setReferralCopied] = useState(false);
-  const { theme, toggleTheme } = useTheme();
   const { addToast } = useToast();
   const [previewVid, setPreviewVid] = useState<VideoFile | null>(null);
+  const [previewIndex, setPreviewIndex] = useState(0);
+  const [selectedRows, setSelectedRows] = useState<string[]>([]);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [showProcessMore, setShowProcessMore] = useState(false);
+
+  // Captions state
+  const [captionsEnabled, setCaptionsEnabled] = useState(false);
+  const [captionWords, setCaptionWords] = useState<{ word: string; start: number; end: number }[]>([]);
+  const [captionText, setCaptionText] = useState("");
+  const [captionStyle, setCaptionStyle] = useState<"classic" | "word" | "karaoke">("classic");
+  const [captionPosition, setCaptionPosition] = useState<"bottom" | "center" | "top">("bottom");
+  const [captionFontSize, setCaptionFontSize] = useState(24);
+  const [captionAllCaps, setCaptionAllCaps] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [captionVariants, setCaptionVariants] = useState<string[]>([]);
+  const [isGeneratingVariants, setIsGeneratingVariants] = useState(false);
+  const [showCaptionSettings, setShowCaptionSettings] = useState(false);
 
   // Edit parameter ranges
   const [editSettings, setEditSettings] = useState({
     trimMin: 0.05,
     trimMax: 0.15,
-    cutsMin: 0,
-    cutsMax: 0,
+    cutsMin: 2,
+    cutsMax: 5,
     zoomMin: 1,
     zoomMax: 7,
     grain: true,
@@ -181,75 +168,6 @@ export default function Dashboard() {
     cropOffset: true,
     hueShift: true,
   });
-
-  // Caption state
-  const [captionsEnabled, setCaptionsEnabled] = useState(false);
-  const [captionWords, setCaptionWords] = useState<{ word: string; start: number; end: number }[]>([]);
-  const [captionText, setCaptionText] = useState("");
-  const [captionStyle, setCaptionStyle] = useState<"bold-white" | "yellow-pop" | "minimal" | "shadow" | "outline">("bold-white");
-  const [captionPosition, setCaptionPosition] = useState<"bottom" | "center" | "top">("bottom");
-  const [captionFontSize, setCaptionFontSize] = useState<"small" | "medium" | "large">("medium");
-  const [captionAllCaps, setCaptionAllCaps] = useState(true);
-  const [isTranscribing, setIsTranscribing] = useState(false);
-  const [captionVariants, setCaptionVariants] = useState<string[]>([]);
-  const [isGeneratingVariants, setIsGeneratingVariants] = useState(false);
-  const [showCaptionSettings, setShowCaptionSettings] = useState(false);
-
-  // Transcribe the first uploaded video
-  const transcribeVideo = async () => {
-    const firstVideo = videos.find((v) => v.file);
-    if (!firstVideo) {
-      addToast("Upload a video first", "error");
-      return;
-    }
-    setIsTranscribing(true);
-    try {
-      const formData = new FormData();
-      formData.append("video", firstVideo.file);
-      const res = await fetch("/api/transcribe", { method: "POST", body: formData });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || "Transcription failed");
-      }
-      const data = await res.json();
-      setCaptionText(data.text || "");
-      setCaptionWords(data.words || []);
-      setCaptionsEnabled(true);
-      setShowCaptionSettings(true);
-      addToast("Transcription complete", "success");
-    } catch (err: unknown) {
-      addToast(err instanceof Error ? err.message : "Transcription failed", "error");
-    } finally {
-      setIsTranscribing(false);
-    }
-  };
-
-  // Generate caption variants using GPT
-  const generateVariants = async () => {
-    if (!captionText) {
-      addToast("Transcribe a video first", "error");
-      return;
-    }
-    setIsGeneratingVariants(true);
-    try {
-      const res = await fetch("/api/caption-variants", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: captionText, count: 4 }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || "Failed to generate variants");
-      }
-      const data = await res.json();
-      setCaptionVariants(data.variants || []);
-      addToast(`${data.variants?.length || 0} variants generated`, "success");
-    } catch (err: unknown) {
-      addToast(err instanceof Error ? err.message : "Failed to generate variants", "error");
-    } finally {
-      setIsGeneratingVariants(false);
-    }
-  };
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -273,6 +191,7 @@ export default function Dashboard() {
         setPlan(d.plan ?? "free");
         setCreditsLoaded(true);
         setEmailVerified(d.emailVerified !== false);
+        window.dispatchEvent(new Event("uniq-credits"));
         if (d.teamRole === "member") setIsTeamMember(true);
       })
       .catch(() => {});
@@ -318,7 +237,7 @@ export default function Dashboard() {
 
   if (status === "loading") {
     return (
-      <div className="min-h-screen bg-[#010313] flex items-center justify-center">
+      <div className="min-h-screen bg-[#0a0b14] flex items-center justify-center">
         <Loader2 className="h-8 w-8 text-purple-400 animate-spin" />
       </div>
     );
@@ -332,10 +251,16 @@ export default function Dashboard() {
       file: f,
       name: f.name,
       size: formatSize(f.size),
-      status: "pending",
+      status: "pending" as const,
       progress: 0,
+      chips: changeChips(editSettings, metadata),
     }));
     setVideos((prev) => [...prev, ...newVids]);
+    newVids.forEach((vid) => {
+      probeDuration(vid.file).then((durationSec) => {
+        setVideos((prev) => prev.map((item) => (item.id === vid.id ? { ...item, durationSec } : item)));
+      });
+    });
   };
 
   const removeVideo = (id: string) => {
@@ -343,6 +268,65 @@ export default function Dashboard() {
   };
 
   const clearAll = () => setVideos([]);
+
+  // Transcribe video for captions
+  const transcribeVideo = async () => {
+    const firstVideo = videos.find((v) => v.status === "pending" || v.status === "done");
+    if (!firstVideo) {
+      addToast("Upload a video first", "error");
+      return;
+    }
+    setIsTranscribing(true);
+    try {
+      const formData = new FormData();
+      formData.append("video", firstVideo.file);
+      const res = await fetch("/api/transcribe", { method: "POST", body: formData });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Transcription failed");
+      }
+      const data = await res.json();
+      setCaptionText(data.text || "");
+      setCaptionWords(
+        (data.words || []).map((w: any) => ({
+          word: w.word,
+          start: w.start,
+          end: w.end,
+        }))
+      );
+      setCaptionsEnabled(true);
+      setShowCaptionSettings(true);
+      addToast("Transcription complete", "success");
+    } catch (err: any) {
+      addToast(err.message || "Transcription failed", "error");
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
+  // Generate caption variants with AI
+  const generateVariants = async () => {
+    if (!captionText) {
+      addToast("Transcribe a video first", "error");
+      return;
+    }
+    setIsGeneratingVariants(true);
+    try {
+      const res = await fetch("/api/caption-variants", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: captionText }),
+      });
+      if (!res.ok) throw new Error("Failed to generate variants");
+      const data = await res.json();
+      setCaptionVariants(data.variants || []);
+      addToast(`${(data.variants || []).length} variants generated`, "success");
+    } catch (err: any) {
+      addToast(err.message || "Failed to generate variants", "error");
+    } finally {
+      setIsGeneratingVariants(false);
+    }
+  };
 
   const processVideo = async (vid: VideoFile, copyIndex: number, retries = 2): Promise<{ url: string; filename: string }> => {
     const formData = new FormData();
@@ -352,14 +336,17 @@ export default function Dashboard() {
       JSON.stringify({
         ...editSettings,
         metadata: metadata.length === 1 ? metadata[0] : metadata,
-        captions: captionsEnabled && captionWords.length > 0 ? {
-          enabled: true,
-          words: captionWords,
-          style: captionStyle,
-          position: captionPosition,
-          fontSize: captionFontSize,
-          allCaps: captionAllCaps,
-        } : undefined,
+        ...(captionsEnabled && captionWords.length > 0 ? {
+          captions: {
+            enabled: true,
+            words: captionWords,
+            text: captionText,
+            style: captionStyle,
+            position: captionPosition,
+            fontSize: captionFontSize,
+            allCaps: captionAllCaps,
+          },
+        } : {}),
       })
     );
 
@@ -449,7 +436,7 @@ export default function Dashboard() {
         batchVids.map(async (vid) => {
           setVideos((prev) =>
             prev.map((v) =>
-              v.id === vid.id ? { ...v, status: "processing", progress: 5 } : v
+              v.id === vid.id ? { ...v, status: "processing", progress: 5, chips: v.chips?.length ? v.chips : changeChips(editSettings, metadata) } : v
             )
           );
 
@@ -518,57 +505,7 @@ export default function Dashboard() {
   const doneCount = videos.filter((v) => v.status === "done").length;
 
   return (
-    <div className="min-h-screen bg-[#010313]">
-      {/* Top bar */}
-      <header className="border-b border-white/5 bg-[#010313]/80 backdrop-blur-xl sticky top-0 z-50">
-        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-3 sm:px-6">
-          <div className="flex items-center gap-3 sm:gap-6">
-            <a href="/" className="flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-purple-500/10 border border-purple-500/20">
-                <Fingerprint className="h-3.5 w-3.5 text-purple-400" />
-              </div>
-              <span className="text-sm font-semibold tracking-tight hidden sm:inline">
-                Uniq<span className="text-purple-400">Social</span>
-              </span>
-            </a>
-            <span className="text-xs text-slate-600 hidden sm:inline">Dashboard</span>
-          </div>
-
-          <div className="flex items-center gap-2 sm:gap-4">
-            <div className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg bg-purple-500/10 border border-purple-500/20">
-              <Zap className="h-3.5 w-3.5 text-purple-400" />
-              <span className="text-xs sm:text-sm font-medium text-purple-300">
-                {credits}
-              </span>
-            </div>
-            <button
-              onClick={() => setShowTopUp(true)}
-              className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium transition-all hover:shadow-lg hover:shadow-purple-500/20"
-            >
-              <Plus className="h-3 w-3" />
-              <span className="hidden sm:inline">Buy Credits</span>
-            </button>
-            <InstallButton />
-            <button
-              onClick={toggleTheme}
-              className="text-slate-500 hover:text-white transition-colors"
-              title="Toggle theme"
-            >
-              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </button>
-            <a href="/account" className="text-slate-500 hover:text-white transition-colors">
-              <Settings className="h-4 w-4" />
-            </a>
-            <button
-              onClick={() => signOut({ callbackUrl: "/login" })}
-              className="text-slate-500 hover:text-white transition-colors"
-            >
-              <LogOut className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      </header>
-
+    <div className="bg-[#0a0b14] text-[#e7e8ee]">
       {/* Email verification banner */}
       {!emailVerified && (
         <div className="bg-amber-500/10 border-b border-amber-500/20">
@@ -663,854 +600,52 @@ export default function Dashboard() {
       </div>
 
       {activeTab === "process" && (
-      <div className="mx-auto max-w-6xl px-3 sm:px-6 py-4 sm:py-8">
-        <div className="grid lg:grid-cols-[1fr_320px] gap-4 sm:gap-8">
-          {/* Main area */}
-          <div className="space-y-4 sm:space-y-6">
-            {/* Upload zone */}
-            <div
-              onDrop={onDrop}
-              onDragOver={(e) => e.preventDefault()}
-              onClick={() => fileInputRef.current?.click()}
-              className="group cursor-pointer rounded-2xl border-2 border-dashed border-white/10 hover:border-purple-500/30 bg-white/[0.01] hover:bg-purple-500/[0.02] transition-all duration-300 p-6 sm:p-12 text-center"
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                accept="video/*"
-                className="hidden"
-                onChange={(e) => {
-                  if (e.target.files) addFiles(Array.from(e.target.files));
-                }}
-              />
-              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-purple-500/10 border border-purple-500/20 group-hover:bg-purple-500/15 transition-colors">
-                <Upload className="h-6 w-6 text-purple-400" />
-              </div>
-              <p className="text-sm font-medium text-slate-300 mb-1">
-                Drop videos here or click to upload
-              </p>
-              <p className="text-xs text-slate-600">
-                MP4, MOV, AVI, MKV — up to 500MB per file
-              </p>
-            </div>
-
-            {/* Video list */}
-            {videos.length > 0 && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-medium text-slate-300">
-                    {videos.length} video{videos.length !== 1 ? "s" : ""}{" "}
-                    {doneCount > 0 && (
-                      <span className="text-purple-400">
-                        &middot; {doneCount} done
-                      </span>
-                    )}
-                  </h3>
-                  <button
-                    onClick={clearAll}
-                    className="text-xs text-slate-600 hover:text-red-400 transition-colors"
-                  >
-                    Clear all
-                  </button>
-                </div>
-
-                {videos.map((vid) => (
-                  <div
-                    key={vid.id}
-                    className={`relative flex items-center gap-4 p-4 rounded-xl border transition-all duration-500 ${
-                      vid.status === "processing"
-                        ? "border-purple-500/30 bg-purple-500/[0.04] shadow-[0_0_20px_rgba(168,85,247,0.08)]"
-                        : vid.status === "done"
-                        ? "border-green-500/20 bg-green-500/[0.02]"
-                        : vid.status === "error"
-                        ? "border-red-500/20 bg-red-500/[0.02]"
-                        : "border-white/5 bg-white/[0.02]"
-                    }`}
-                  >
-                    {/* Icon / Progress ring */}
-                    <div className="relative flex items-center justify-center flex-shrink-0">
-                      {vid.status === "processing" ? (
-                        <div className="relative">
-                          <CircularProgress progress={vid.progress} />
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <span className="text-[10px] font-bold text-purple-400">{vid.progress}%</span>
-                          </div>
-                        </div>
-                      ) : vid.status === "done" ? (
-                        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-green-500/10 border border-green-500/20">
-                          <Check className="h-5 w-5 text-green-400" />
-                        </div>
-                      ) : vid.status === "error" ? (
-                        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-red-500/10 border border-red-500/20">
-                          <X className="h-5 w-5 text-red-400" />
-                        </div>
-                      ) : (
-                        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/5 border border-white/10">
-                          <FileVideo className="h-5 w-5 text-slate-500" />
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{vid.name}</p>
-                      {vid.status === "processing" ? (
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <ProcessingStepText progress={vid.progress} />
-                          {vid.completedCopies !== undefined && (
-                            <span className="text-[11px] text-slate-600">
-                              · {vid.completedCopies}/{copies} clips
-                            </span>
-                          )}
-                        </div>
-                      ) : (
-                        <p className="text-xs text-slate-600">{vid.size}</p>
-                      )}
-                      {vid.status === "processing" && (
-                        <div className="mt-2 h-1 rounded-full bg-white/5 overflow-hidden">
-                          <div
-                            className="h-full rounded-full transition-all duration-700 ease-out bg-gradient-to-r from-purple-600 via-fuchsia-500 to-purple-600 bg-[length:200%_100%] animate-shimmer shadow-[0_0_8px_rgba(168,85,247,0.5)]"
-                            style={{ width: `${vid.progress}%` }}
-                          />
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      {vid.status === "done" && vid.outputs && (
-                        <>
-                          <button
-                            onClick={() => setPreviewVid(vid)}
-                            className="text-xs text-purple-400 hover:text-purple-300 font-medium transition-colors"
-                          >
-                            Preview
-                          </button>
-                          <span className="text-xs text-green-400 font-medium">
-                            {vid.outputs.length} clip{vid.outputs.length !== 1 ? "s" : ""} ready
-                          </span>
-                        </>
-                      )}
-                      {vid.status === "error" && (
-                        <span className="text-xs text-red-400">Failed</span>
-                      )}
-                      {vid.status === "pending" && (
-                        <button
-                          onClick={() => removeVideo(vid.id)}
-                          className="text-slate-600 hover:text-red-400 transition-colors"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-
-                {/* Download as zip */}
-                {doneCount > 0 && (
-                  <button
-                    disabled={isZipping}
-                    onClick={async () => {
-                      setIsZipping(true);
-                      try {
-                        const zip = new JSZip();
-                        const allOutputs: { url: string; filename: string }[] = [];
-                        videos.forEach((v) => {
-                          if (v.status === "done" && v.outputs) {
-                            v.outputs.forEach((out) => allOutputs.push(out));
-                          }
-                        });
-
-                        await Promise.all(
-                          allOutputs.map(async (out) => {
-                            const res = await fetch(out.url);
-                            const blob = await res.blob();
-                            zip.file(out.filename, blob);
-                          })
-                        );
-
-                        const zipBlob = await zip.generateAsync({ type: "blob", compression: "STORE" });
-                        const url = URL.createObjectURL(zipBlob);
-                        const a = document.createElement("a");
-                        a.href = url;
-                        a.download = `uniq_${Date.now()}.zip`;
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                        setTimeout(() => URL.revokeObjectURL(url), 5000);
-                      } catch (err) {
-                        console.error("Zip download failed:", err);
-                      } finally {
-                        setIsZipping(false);
-                      }
-                    }}
-                    className="w-full py-3 rounded-xl font-medium text-sm bg-purple-600 hover:bg-purple-700 text-white transition-all flex items-center justify-center gap-2 hover:shadow-lg hover:shadow-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isZipping ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <>
-                        <Download className="h-4 w-4" />
-                        Download .zip
-                      </>
-                    )}
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Sidebar — settings */}
-          <div className="space-y-6">
-            {/* Metadata profile — redesigned with logos */}
-            <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-5">
-              <h3 className="text-sm font-semibold mb-1 flex items-center gap-2">
-                <Fingerprint className="h-4 w-4 text-purple-400" />
-                Video Identity
-              </h3>
-              <p className="text-[11px] text-[--text-muted] mb-4">Choose how your video appears to platforms</p>
-
-              {/* Profile cards grid */}
-              <div className="grid grid-cols-2 gap-2 mb-3">
-                {/* CapCut */}
-                <button
-                  onClick={() => {
-                    const isSelected = metadata.includes("capcut");
-                    if (isSelected) {
-                      const next = metadata.filter((m) => m !== "capcut");
-                      setMetadata(next.length === 0 ? ["random"] : next);
-                    } else {
-                      setMetadata([...metadata.filter((m) => m !== "random"), "capcut"]);
-                    }
-                  }}
-                  className={`relative p-3 rounded-xl border text-left transition-all ${
-                    metadata.includes("capcut")
-                      ? "border-[#00d1ed]/40 bg-[#00d1ed]/10 ring-1 ring-[#00d1ed]/20"
-                      : "border-white/5 bg-white/[0.01] hover:border-white/10"
-                  }`}
-                >
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <div className="w-7 h-7 rounded-lg bg-black flex items-center justify-center border border-white/10 overflow-hidden">
-                      <img src="/capcut-logo.svg" alt="" className="w-5 h-5" />
-                    </div>
-                    <span className="text-sm font-semibold text-[--text-primary]">CapCut</span>
-                  </div>
-                  <span className="text-[10px] text-[--text-muted] leading-tight block pr-5">Edited with CapCut</span>
-                  {metadata.includes("capcut") && (
-                    <div className="absolute top-2 right-2">
-                      <Check className="h-3.5 w-3.5 text-[#00d1ed]" />
-                    </div>
-                  )}
-                  {metadata.includes("capcut") && metadata.length > 1 && !metadata.includes("random") && (
-                    <span className="text-[9px] font-bold text-[#00d1ed]/80 bg-[#00d1ed]/10 px-1.5 py-0.5 rounded mt-1.5 inline-block">STACKED</span>
-                  )}
-                </button>
-
-                {/* Snapchat */}
-                <button
-                  onClick={() => {
-                    const isSelected = metadata.includes("snapchat");
-                    if (isSelected) {
-                      const next = metadata.filter((m) => m !== "snapchat");
-                      setMetadata(next.length === 0 ? ["random"] : next);
-                    } else {
-                      setMetadata([...metadata.filter((m) => m !== "random"), "snapchat"]);
-                    }
-                  }}
-                  className={`relative p-3 rounded-xl border text-left transition-all ${
-                    metadata.includes("snapchat")
-                      ? "border-[#FFFC00]/40 bg-[#FFFC00]/10 ring-1 ring-[#FFFC00]/20"
-                      : "border-white/5 bg-white/[0.01] hover:border-white/10"
-                  }`}
-                >
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <div className="w-7 h-7 rounded-lg bg-[#FFFC00] flex items-center justify-center overflow-hidden">
-                      <img src="/snapchat-logo.svg" alt="" className="w-5 h-5" />
-                    </div>
-                    <span className="text-sm font-semibold text-[--text-primary]">Snapchat</span>
-                  </div>
-                  <span className="text-[10px] text-[--text-muted] leading-tight block pr-5">Recorded via Snap</span>
-                  {metadata.includes("snapchat") && (
-                    <div className="absolute top-2 right-2">
-                      <Check className="h-3.5 w-3.5 text-[#FFFC00]" />
-                    </div>
-                  )}
-                  {metadata.includes("snapchat") && metadata.length > 1 && !metadata.includes("random") && (
-                    <span className="text-[9px] font-bold text-[#FFFC00]/80 bg-[#FFFC00]/10 px-1.5 py-0.5 rounded mt-1.5 inline-block">STACKED</span>
-                  )}
-                </button>
-
-                {/* iPhone */}
-                <button
-                  onClick={() => {
-                    const isSelected = metadata.includes("iphone");
-                    if (isSelected) {
-                      const next = metadata.filter((m) => m !== "iphone");
-                      setMetadata(next.length === 0 ? ["random"] : next);
-                    } else {
-                      setMetadata([...metadata.filter((m) => m !== "random"), "iphone"]);
-                    }
-                  }}
-                  className={`relative p-3 rounded-xl border text-left transition-all ${
-                    metadata.includes("iphone")
-                      ? "border-[#a3a3a3]/40 bg-[#a3a3a3]/10 ring-1 ring-[#a3a3a3]/20"
-                      : "border-white/5 bg-white/[0.01] hover:border-white/10"
-                  }`}
-                >
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <div className="w-7 h-7 rounded-lg bg-gradient-to-b from-[#555] to-[#333] flex items-center justify-center border border-white/10 overflow-hidden">
-                      <svg viewBox="0 0 24 24" className="w-4 h-4" fill="white">
-                        <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
-                      </svg>
-                    </div>
-                    <span className="text-sm font-semibold text-[--text-primary]">iPhone</span>
-                  </div>
-                  <span className="text-[10px] text-[--text-muted] leading-tight block pr-5">Shot on iPhone</span>
-                  {metadata.includes("iphone") && (
-                    <div className="absolute top-2 right-2">
-                      <Check className="h-3.5 w-3.5 text-[#a3a3a3]" />
-                    </div>
-                  )}
-                  {metadata.includes("iphone") && metadata.length > 1 && !metadata.includes("random") && (
-                    <span className="text-[9px] font-bold text-[#a3a3a3]/80 bg-[#a3a3a3]/10 px-1.5 py-0.5 rounded mt-1.5 inline-block">STACKED</span>
-                  )}
-                </button>
-
-                {/* Random */}
-                <button
-                  onClick={() => setMetadata(["random"])}
-                  className={`relative p-3 rounded-xl border text-left transition-all ${
-                    metadata.includes("random")
-                      ? "border-purple-500/40 bg-purple-500/10 ring-1 ring-purple-500/20"
-                      : "border-white/5 bg-white/[0.01] hover:border-white/10"
-                  }`}
-                >
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center">
-                      <Shuffle className="h-3.5 w-3.5 text-white" />
-                    </div>
-                    <span className="text-sm font-semibold text-[--text-primary]">Random</span>
-                  </div>
-                  <span className="text-[10px] text-[--text-muted] leading-tight block">Auto-selected per copy</span>
-                  {metadata.includes("random") && (
-                    <div className="absolute top-2 right-2">
-                      <Check className="h-3.5 w-3.5 text-purple-400" />
-                    </div>
-                  )}
-                </button>
-              </div>
-
-              {/* Anti-detection toggles — the important ones */}
-              <div className="mt-4 pt-4 border-t border-white/5">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400">Anti-Detection</span>
-                  <span className="text-[9px] text-purple-400/60 bg-purple-500/10 px-1.5 py-0.5 rounded">Recommended</span>
-                </div>
-                <div className="space-y-2">
-                  {[
-                    { key: "hiddenEmoji", icon: "✦", label: "Hidden Overlay", desc: "Invisible pixel marker — beats hash matching", important: true },
-                    { key: "speedShift", icon: "⏱", label: "Speed Shift", desc: "0.5–1.5% tempo change — breaks frame timing", important: true },
-                    { key: "cropOffset", icon: "⊞", label: "Crop Offset", desc: "±8px spatial shift — changes position hash", important: true },
-                    { key: "hueShift", icon: "◐", label: "Hue Shift", desc: "±2° colour rotation — alters frame colours", important: false },
-                    { key: "thumbnailRandomise", icon: "🖼", label: "Randomise Thumbnail", desc: "Unique first-frame fingerprint", important: false },
-                  ].map((t) => (
-                    <button
-                      key={t.key}
-                      onClick={() =>
-                        setEditSettings({
-                          ...editSettings,
-                          [t.key]: !editSettings[t.key as keyof typeof editSettings],
-                        })
-                      }
-                      className={`w-full flex items-center justify-between p-3 rounded-xl border text-sm transition-all ${
-                        editSettings[t.key as keyof typeof editSettings]
-                          ? t.important ? "border-purple-500/40 bg-purple-500/10 ring-1 ring-purple-500/20" : "border-purple-500/30 bg-purple-500/10"
-                          : "border-white/5 bg-white/[0.01] hover:border-white/10"
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                          editSettings[t.key as keyof typeof editSettings] ? "bg-purple-500/20" : "bg-white/5"
-                        }`}>
-                          <span className={`text-xs ${editSettings[t.key as keyof typeof editSettings] ? "opacity-100" : "opacity-40"}`}>{t.icon}</span>
-                        </div>
-                        <div className="text-left min-w-0">
-                          <span className={`font-medium text-xs block truncate ${editSettings[t.key as keyof typeof editSettings] ? "text-[--text-primary]" : "text-[--text-secondary]"}`}>
-                            {t.label}
-                          </span>
-                          <span className="text-[10px] text-[--text-muted] block truncate">{t.desc}</span>
-                        </div>
-                      </div>
-                      <div className={`w-9 h-5 rounded-full transition-all relative flex-shrink-0 ml-2 ${
-                        editSettings[t.key as keyof typeof editSettings] ? "bg-purple-500" : "bg-white/10"
-                      }`}>
-                        <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-0.5 transition-all ${
-                          editSettings[t.key as keyof typeof editSettings] ? "left-[18px]" : "left-[3px]"
-                        }`} />
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-            </div>
-
-            {/* Captions */}
-            <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-5">
-              <div className="flex items-center justify-between mb-1">
-                <h3 className="text-sm font-semibold flex items-center gap-2">
-                  <MessageSquare className="h-4 w-4 text-purple-400" />
-                  Captions
-                </h3>
-                {captionsEnabled && (
-                  <button
-                    onClick={() => setCaptionsEnabled(false)}
-                    className="text-[10px] text-red-400/70 hover:text-red-400"
-                  >
-                    Disable
-                  </button>
-                )}
-              </div>
-              <p className="text-[11px] text-[--text-muted] mb-4">Auto-transcribe and burn captions onto your videos</p>
-
-              {!captionsEnabled ? (
-                <button
-                  onClick={transcribeVideo}
-                  disabled={isTranscribing || videos.length === 0}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold transition-all"
-                >
-                  {isTranscribing ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Transcribing...
-                    </>
-                  ) : (
-                    <>
-                      <Type className="h-4 w-4" />
-                      Transcribe Video
-                    </>
-                  )}
-                </button>
-              ) : (
-                <div className="space-y-3">
-                  {/* Transcript preview */}
-                  <div className="bg-white/5 border border-white/10 rounded-xl p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400">Transcript</span>
-                      <button
-                        onClick={transcribeVideo}
-                        disabled={isTranscribing}
-                        className="text-[10px] text-purple-400/70 hover:text-purple-400 flex items-center gap-1"
-                      >
-                        <RefreshCw className={`h-3 w-3 ${isTranscribing ? "animate-spin" : ""}`} />
-                        Re-do
-                      </button>
-                    </div>
-                    <p className="text-xs text-[--text-secondary] leading-relaxed line-clamp-4">
-                      {captionText || "No transcript yet"}
-                    </p>
-                  </div>
-
-                  {/* Caption style picker */}
-                  <button
-                    onClick={() => setShowCaptionSettings(!showCaptionSettings)}
-                    className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/[0.03] border border-white/5 hover:border-white/10 transition-all"
-                  >
-                    <span className="text-xs font-medium text-[--text-secondary]">Caption Settings</span>
-                    {showCaptionSettings ? <ChevronUp className="h-3.5 w-3.5 text-[--text-muted]" /> : <ChevronDown className="h-3.5 w-3.5 text-[--text-muted]" />}
-                  </button>
-
-                  {showCaptionSettings && (
-                    <div className="space-y-3 pl-1">
-                      {/* Style */}
-                      <div>
-                        <span className="text-[10px] font-semibold text-[--text-muted] uppercase tracking-wider block mb-2">Style</span>
-                        <div className="grid grid-cols-3 gap-1.5">
-                          {([
-                            { key: "bold-white", label: "Bold", preview: "text-white font-black" },
-                            { key: "yellow-pop", label: "Yellow", preview: "text-yellow-400 font-black" },
-                            { key: "minimal", label: "Clean", preview: "text-white font-normal" },
-                            { key: "shadow", label: "Shadow", preview: "text-white font-bold drop-shadow-lg" },
-                            { key: "outline", label: "Outline", preview: "text-white font-black" },
-                          ] as const).map((s) => (
-                            <button
-                              key={s.key}
-                              onClick={() => setCaptionStyle(s.key)}
-                              className={`p-2 rounded-lg border text-center transition-all ${
-                                captionStyle === s.key
-                                  ? "border-purple-500/40 bg-purple-500/10 ring-1 ring-purple-500/20"
-                                  : "border-white/5 bg-white/[0.01] hover:border-white/10"
-                              }`}
-                            >
-                              <span className={`text-[10px] ${s.preview}`}>{s.label}</span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Position */}
-                      <div>
-                        <span className="text-[10px] font-semibold text-[--text-muted] uppercase tracking-wider block mb-2">Position</span>
-                        <div className="grid grid-cols-3 gap-1.5">
-                          {(["top", "center", "bottom"] as const).map((p) => (
-                            <button
-                              key={p}
-                              onClick={() => setCaptionPosition(p)}
-                              className={`p-2 rounded-lg border text-center transition-all ${
-                                captionPosition === p
-                                  ? "border-purple-500/40 bg-purple-500/10"
-                                  : "border-white/5 bg-white/[0.01] hover:border-white/10"
-                              }`}
-                            >
-                              <span className="text-[10px] capitalize text-[--text-secondary]">{p}</span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Size */}
-                      <div>
-                        <span className="text-[10px] font-semibold text-[--text-muted] uppercase tracking-wider block mb-2">Size</span>
-                        <div className="grid grid-cols-3 gap-1.5">
-                          {(["small", "medium", "large"] as const).map((sz) => (
-                            <button
-                              key={sz}
-                              onClick={() => setCaptionFontSize(sz)}
-                              className={`p-2 rounded-lg border text-center transition-all ${
-                                captionFontSize === sz
-                                  ? "border-purple-500/40 bg-purple-500/10"
-                                  : "border-white/5 bg-white/[0.01] hover:border-white/10"
-                              }`}
-                            >
-                              <span className="text-[10px] capitalize text-[--text-secondary]">{sz}</span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* All caps toggle */}
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-[--text-secondary]">ALL CAPS</span>
-                        <button
-                          onClick={() => setCaptionAllCaps(!captionAllCaps)}
-                          className={`relative w-9 h-5 rounded-full transition-colors ${captionAllCaps ? "bg-purple-500" : "bg-white/10"}`}
-                        >
-                          <span className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform ${captionAllCaps ? "translate-x-4" : ""}`} />
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Generate variants button */}
-                  <button
-                    onClick={generateVariants}
-                    disabled={isGeneratingVariants || !captionText}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 hover:border-purple-500/30 hover:bg-purple-500/5 disabled:opacity-40 disabled:cursor-not-allowed text-[--text-secondary] text-xs font-semibold transition-all"
-                  >
-                    {isGeneratingVariants ? (
-                      <>
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        Generating...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="h-3.5 w-3.5 text-purple-400" />
-                        Generate Caption Variants
-                      </>
-                    )}
-                  </button>
-
-                  {/* Variants list */}
-                  {captionVariants.length > 0 && (
-                    <div className="space-y-2">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400">Variants</span>
-                      {captionVariants.map((variant, i) => (
-                        <button
-                          key={i}
-                          onClick={() => {
-                            navigator.clipboard.writeText(variant).catch(() => {});
-                            addToast("Copied to clipboard", "success");
-                          }}
-                          className="w-full text-left p-3 rounded-xl bg-white/[0.02] border border-white/5 hover:border-purple-500/20 hover:bg-purple-500/5 transition-all group"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <p className="text-[11px] text-[--text-secondary] leading-relaxed">{variant}</p>
-                            <Copy className="h-3 w-3 text-[--text-muted] opacity-0 group-hover:opacity-100 flex-shrink-0 mt-0.5" />
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Edit settings */}
-            <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-5">
-              <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
-                <Settings className="h-4 w-4 text-purple-400" />
-                Edit Parameters
-              </h3>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="text-xs text-slate-500 block mb-2">
-                    Start Trim Range (seconds)
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={editSettings.trimMin}
-                      onChange={(e) => {
-                        const v = e.target.value.replace(/[^0-9.]/g, "");
-                        setEditSettings({ ...editSettings, trimMin: v === "" ? 0 : parseFloat(v) });
-                      }}
-                      onFocus={(e) => e.target.select()}
-                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50"
-                    />
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={editSettings.trimMax}
-                      onChange={(e) => {
-                        const v = e.target.value.replace(/[^0-9.]/g, "");
-                        setEditSettings({ ...editSettings, trimMax: v === "" ? 0 : parseFloat(v) });
-                      }}
-                      onFocus={(e) => e.target.select()}
-                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-xs text-slate-500 block mb-2">
-                    Number of Cuts (trims milliseconds at each point)
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={editSettings.cutsMin}
-                      onChange={(e) => {
-                        const v = e.target.value.replace(/[^0-9]/g, "");
-                        setEditSettings({ ...editSettings, cutsMin: v === "" ? 0 : parseInt(v) });
-                      }}
-                      onFocus={(e) => e.target.select()}
-                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50"
-                    />
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={editSettings.cutsMax}
-                      onChange={(e) => {
-                        const v = e.target.value.replace(/[^0-9]/g, "");
-                        setEditSettings({ ...editSettings, cutsMax: v === "" ? 0 : parseInt(v) });
-                      }}
-                      onFocus={(e) => e.target.select()}
-                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-xs text-slate-500 block mb-2">
-                    Zoom Range (%)
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={editSettings.zoomMin}
-                      onChange={(e) => {
-                        const v = e.target.value.replace(/[^0-9.]/g, "");
-                        setEditSettings({ ...editSettings, zoomMin: v === "" ? 0 : parseFloat(v) });
-                      }}
-                      onFocus={(e) => e.target.select()}
-                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50"
-                    />
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={editSettings.zoomMax}
-                      onChange={(e) => {
-                        const v = e.target.value.replace(/[^0-9.]/g, "");
-                        setEditSettings({ ...editSettings, zoomMax: v === "" ? 0 : parseFloat(v) });
-                      }}
-                      onFocus={(e) => e.target.select()}
-                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  {[
-                    { key: "mirror", label: "Mirror (horizontal flip)" },
-                    { key: "grain", label: "Film grain" },
-                    { key: "sharpen", label: "Sharpen" },
-                  ].map((toggle) => (
-                    <label
-                      key={toggle.key}
-                      className="flex items-center justify-between cursor-pointer"
-                    >
-                      <span className="text-sm text-slate-400">{toggle.label}</span>
-                      <button
-                        onClick={() =>
-                          setEditSettings({
-                            ...editSettings,
-                            [toggle.key]:
-                              !editSettings[toggle.key as keyof typeof editSettings],
-                          })
-                        }
-                        className={`relative w-9 h-5 rounded-full transition-colors ${
-                          editSettings[toggle.key as keyof typeof editSettings]
-                            ? "bg-purple-600"
-                            : "bg-white/10"
-                        }`}
-                      >
-                        <span
-                          className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
-                            editSettings[toggle.key as keyof typeof editSettings]
-                              ? "translate-x-4"
-                              : ""
-                          }`}
-                        />
-                      </button>
-                    </label>
-                  ))}
-                </div>
-
-                <div>
-                  <label className="text-xs text-slate-500 block mb-2">
-                    Copies per video
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={copiesInput}
-                    onChange={(e) => {
-                      const raw = e.target.value.replace(/[^0-9]/g, "");
-                      setCopiesInput(raw);
-                      const num = parseInt(raw);
-                      if (!isNaN(num) && num >= 1 && num <= 100) {
-                        setCopies(num);
-                      }
-                    }}
-                    onBlur={() => {
-                      const num = parseInt(copiesInput);
-                      if (isNaN(num) || num < 1) {
-                        setCopies(1);
-                        setCopiesInput("1");
-                      } else if (num > 100) {
-                        setCopies(100);
-                        setCopiesInput("100");
-                      } else {
-                        setCopies(num);
-                        setCopiesInput(String(num));
-                      }
-                    }}
-                    onFocus={(e) => e.target.select()}
-                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500/50"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Overall progress during processing */}
-            {isProcessing && (() => {
-              const done = videos.filter((v) => v.status === "done").length;
-              const total = videos.filter((v) => v.status !== "error").length;
-              const pct = Math.round((done / Math.max(1, total)) * 100);
-              return (
-                <div className="relative rounded-2xl overflow-hidden">
-                  {/* Animated gradient border */}
-                  <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-purple-600 via-fuchsia-500 to-indigo-600 bg-[length:300%_100%] animate-shimmer opacity-40" />
-                  <div className="relative m-[1px] rounded-2xl bg-[#0a0a1a] p-5 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="relative">
-                          <div className="h-10 w-10 rounded-xl bg-purple-500/10 flex items-center justify-center">
-                            <Zap className="h-5 w-5 text-purple-400" />
-                          </div>
-                          <span className="absolute -top-0.5 -right-0.5 flex h-3 w-3">
-                            <span className="absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75 animate-ping" />
-                            <span className="relative inline-flex rounded-full h-3 w-3 bg-purple-500" />
-                          </span>
-                        </div>
-                        <div>
-                          <p className="text-sm font-semibold text-white">Processing videos</p>
-                          <p className="text-xs text-slate-500">{done} of {total} complete</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-fuchsia-400 bg-clip-text text-transparent">
-                          {pct}%
-                        </p>
-                      </div>
-                    </div>
-                    <div className="h-2 rounded-full bg-white/5 overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all duration-700 ease-out bg-gradient-to-r from-purple-600 via-fuchsia-500 to-purple-600 bg-[length:200%_100%] animate-shimmer shadow-[0_0_16px_rgba(168,85,247,0.5)]"
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* Process button */}
-            <button
-              onClick={processAll}
-              disabled={pendingCount === 0 || isProcessing || credits < pendingCount * copies}
-              className={`w-full py-3.5 rounded-xl font-medium text-sm transition-all flex items-center justify-center gap-2 ${
-                pendingCount > 0 && !isProcessing && credits >= pendingCount * copies
-                  ? "bg-purple-600 hover:bg-purple-700 text-white hover:shadow-lg hover:shadow-purple-500/20"
-                  : "bg-white/5 text-slate-600 cursor-not-allowed"
-              }`}
-            >
-              {isProcessing ? (
-                <div className="flex items-center gap-3">
-                  <div className="relative h-5 w-5">
-                    <div className="absolute inset-0 rounded-full border-2 border-purple-400/30" />
-                    <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-purple-400 animate-spin" />
-                  </div>
-                  <span className="text-slate-400">Processing — do not close this tab</span>
-                </div>
-              ) : (
-                <>
-                  <Zap className="h-4 w-4" />
-                  {pendingCount > 0
-                    ? `Generate ${pendingCount * copies} video${pendingCount * copies !== 1 ? "s" : ""}`
-                    : "Process videos"}
-                  {pendingCount > 0 && (
-                    <span className="text-purple-300 text-xs">
-                      ({pendingCount * copies} credit{pendingCount * copies !== 1 ? "s" : ""})
-                    </span>
-                  )}
-                </>
-              )}
-            </button>
-            {pendingCount > 0 && !isProcessing && credits < pendingCount * copies && (
-              <p className="text-xs text-red-400 text-center mt-2">
-                Not enough credits — you need {pendingCount * copies} but have {credits}.{" "}
-                <button onClick={() => setShowPlans(true)} className="underline text-purple-400 hover:text-purple-300">
-                  Get more credits
-                </button>
-              </p>
-            )}
-            {showProcessMore && doneCount > 0 && !isProcessing && (
-              <button
-                onClick={clearCompleted}
-                className="w-full py-3 rounded-xl font-medium text-sm transition-all flex items-center justify-center gap-2 mt-2 border border-purple-500/30 bg-purple-500/10 text-purple-300 hover:bg-purple-500/20"
-              >
-                <Plus className="h-4 w-4" />
-                Process More Videos
-              </button>
-            )}
-
-          </div>
-        </div>
-      </div>
+        <ProcessView
+          videos={videos}
+          settings={editSettings}
+          setSettings={setEditSettings}
+          metadata={metadata}
+          setMetadata={setMetadata}
+          copies={copies}
+          setCopies={setCopies}
+          fileRef={fileInputRef}
+          onDrop={onDrop}
+          addFiles={addFiles}
+          removeVideo={removeVideo}
+          clearAll={clearAll}
+          processAll={processAll}
+          isProcessing={isProcessing}
+          pendingCount={pendingCount}
+          doneCount={doneCount}
+          credits={credits}
+          selectedRows={selectedRows}
+          setSelectedRows={setSelectedRows}
+          onPreview={(video, index) => { setPreviewIndex(index); setPreviewVid(video); }}
+          settingsOpen={settingsOpen}
+          setSettingsOpen={setSettingsOpen}
+          showProcessMore={showProcessMore}
+          clearCompleted={clearCompleted}
+          onNeedCredits={() => setShowPlans(true)}
+          captionsEnabled={captionsEnabled}
+          setCaptionsEnabled={setCaptionsEnabled}
+          captionText={captionText}
+          captionStyle={captionStyle}
+          setCaptionStyle={setCaptionStyle}
+          captionPosition={captionPosition}
+          setCaptionPosition={setCaptionPosition}
+          captionFontSize={captionFontSize}
+          setCaptionFontSize={setCaptionFontSize}
+          captionAllCaps={captionAllCaps}
+          setCaptionAllCaps={setCaptionAllCaps}
+          isTranscribing={isTranscribing}
+          transcribeVideo={transcribeVideo}
+          captionVariants={captionVariants}
+          isGeneratingVariants={isGeneratingVariants}
+          generateVariants={generateVariants}
+          showCaptionSettings={showCaptionSettings}
+          setShowCaptionSettings={setShowCaptionSettings}
+          hasVideos={videos.length > 0}
+        />
       )}
 
       {/* History tab */}
@@ -1786,7 +921,7 @@ export default function Dashboard() {
       {/* Before/after preview modal */}
       {previewVid && previewVid.outputs && previewVid.outputs.length > 0 && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm px-4">
-          <div className="w-full max-w-4xl rounded-2xl border border-white/10 bg-[#010313] p-6 relative">
+          <div className="w-full max-w-4xl rounded-2xl border border-white/10 bg-[#0a0b14] p-6 relative">
             <button
               onClick={() => setPreviewVid(null)}
               className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors"
@@ -1806,7 +941,7 @@ export default function Dashboard() {
               <div>
                 <p className="text-xs text-slate-500 mb-2">Processed</p>
                 <video
-                  src={previewVid.outputs[0].url}
+                  src={previewVid.outputs[Math.min(previewIndex, previewVid.outputs.length - 1)].url}
                   controls
                   className="w-full rounded-xl border border-white/10"
                 />
@@ -1821,7 +956,7 @@ export default function Dashboard() {
       {/* Low credits popup */}
       {showLowCredits && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#010313] p-8 relative text-center">
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0a0b14] p-8 relative text-center">
             <button
               onClick={() => setShowLowCredits(false)}
               className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors"
@@ -1858,7 +993,7 @@ export default function Dashboard() {
 
       {showPlans && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-          <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#010313] p-4 sm:p-8 relative max-h-[90vh] overflow-y-auto">
+          <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#0a0b14] p-4 sm:p-8 relative max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => setShowPlans(false)}
               className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors"
@@ -1944,7 +1079,7 @@ export default function Dashboard() {
       {/* Top-up credits modal */}
       {showTopUp && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-          <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#010313] p-4 sm:p-8 relative max-h-[90vh] overflow-y-auto">
+          <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#0a0b14] p-4 sm:p-8 relative max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => setShowTopUp(false)}
               className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors"

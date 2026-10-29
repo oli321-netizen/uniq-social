@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type DragEvent, type RefObject } from "react";
 import JSZip from "jszip";
-import { ChevronDown, Download, FileText, Loader2, Settings, Upload } from "lucide-react";
+import { ChevronDown, Download, FileText, Loader2, MessageSquare, Settings, Upload } from "lucide-react";
 
 export type ProcessorSettings = {
   trimMin: number;
@@ -38,7 +38,7 @@ type VideoRow = {
   completedCopies?: number;
 };
 
-type PanelTab = "edits" | "presets" | "anti" | "manual";
+type PanelTab = "edits" | "presets" | "anti" | "manual" | "captions";
 
 function clock(seconds?: number) {
   if (!seconds || !Number.isFinite(seconds)) return "—";
@@ -106,6 +106,25 @@ export default function ProcessView(props: {
   showProcessMore: boolean;
   clearCompleted: () => void;
   onNeedCredits: () => void;
+  captionsEnabled: boolean;
+  setCaptionsEnabled: (v: boolean) => void;
+  captionText: string;
+  captionStyle: "classic" | "word" | "karaoke";
+  setCaptionStyle: (v: "classic" | "word" | "karaoke") => void;
+  captionPosition: "bottom" | "center" | "top";
+  setCaptionPosition: (v: "bottom" | "center" | "top") => void;
+  captionFontSize: number;
+  setCaptionFontSize: (v: number) => void;
+  captionAllCaps: boolean;
+  setCaptionAllCaps: (v: boolean) => void;
+  isTranscribing: boolean;
+  transcribeVideo: () => void;
+  captionVariants: string[];
+  isGeneratingVariants: boolean;
+  generateVariants: () => void;
+  showCaptionSettings: boolean;
+  setShowCaptionSettings: (v: boolean) => void;
+  hasVideos: boolean;
 }) {
   const [tab, setTab] = useState<PanelTab>("edits");
   const [open, setOpen] = useState({ vary: true, preset: true, anti: true, manual: true });
@@ -190,6 +209,7 @@ export default function ProcessView(props: {
           ["edits", "Edits"],
           ["presets", "Presets"],
           ["anti", "Anti-detect"],
+          ["captions", "Captions"],
           ["manual", "Manual"],
         ] as const).map(([id, label]) => (
           <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={`flex-1 border-b-[1.5px] px-2 py-[11px] text-[12.5px] ${tab === id ? "border-[#7c5cff] text-white" : "border-transparent text-[#8a8ea3]"}`}>
@@ -255,6 +275,81 @@ export default function ProcessView(props: {
                 <Toggle label="Crop Offset" detail="±8px spatial shift — changes position hash" on={settings.cropOffset} onClick={() => patch({ cropOffset: !settings.cropOffset })} />
                 <Toggle label="Hue Shift" detail="±2° colour rotation — alters frame colours" on={settings.hueShift} onClick={() => patch({ hueShift: !settings.hueShift })} />
                 <Toggle label="Randomise Thumbnail" detail="Unique first-frame fingerprint" on={settings.thumbnailRandomise} onClick={() => patch({ thumbnailRandomise: !settings.thumbnailRandomise })} />
+              </div>
+            )}
+          </section>
+        )}
+        {tab === "captions" && (
+          <section className="py-2">
+            <div className="flex items-center gap-2 mb-3">
+              <MessageSquare className="h-4 w-4 text-[#7c5cff]" />
+              <span className="text-[13px] font-medium">Auto Captions</span>
+            </div>
+            <p className="mb-3 text-[12px] text-[#8a8ea3]">Transcribe your video and burn captions into each copy.</p>
+
+            <button
+              type="button"
+              disabled={props.isTranscribing || !props.hasVideos}
+              onClick={props.transcribeVideo}
+              className="w-full rounded-[7px] border border-[#262a3c] bg-[#0d0f19] px-3 py-2.5 text-[12.5px] font-medium text-[#c9cbd8] disabled:opacity-40"
+            >
+              {props.isTranscribing ? (
+                <span className="flex items-center justify-center gap-2"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Transcribing…</span>
+              ) : props.captionText ? "Re-transcribe" : "Transcribe Video"}
+            </button>
+
+            {props.captionText && (
+              <div className="mt-3 space-y-3">
+                <Toggle label="Burn captions into video" on={props.captionsEnabled} onClick={() => props.setCaptionsEnabled(!props.captionsEnabled)} />
+
+                <div>
+                  <span className="block mb-1.5 text-[12px] text-[#8a8ea3]">Style</span>
+                  <div className="grid grid-cols-3 gap-1 rounded-[7px] border border-[#262a3c] bg-[#0d0f19] p-0.5">
+                    {(["classic", "word", "karaoke"] as const).map((s) => (
+                      <button key={s} type="button" onClick={() => props.setCaptionStyle(s)} className={`rounded-[5px] px-2 py-1.5 text-[12px] capitalize ${props.captionStyle === s ? "bg-[#1d2034] text-white" : "text-[#9a9eb2]"}`}>
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <span className="block mb-1.5 text-[12px] text-[#8a8ea3]">Position</span>
+                  <div className="grid grid-cols-3 gap-1 rounded-[7px] border border-[#262a3c] bg-[#0d0f19] p-0.5">
+                    {(["top", "center", "bottom"] as const).map((p) => (
+                      <button key={p} type="button" onClick={() => props.setCaptionPosition(p)} className={`rounded-[5px] px-2 py-1.5 text-[12px] capitalize ${props.captionPosition === p ? "bg-[#1d2034] text-white" : "text-[#9a9eb2]"}`}>
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <Num label="Font size" value={props.captionFontSize} onChange={(v) => props.setCaptionFontSize(Math.max(12, Math.min(72, Math.round(v))))} />
+                <Toggle label="ALL CAPS" on={props.captionAllCaps} onClick={() => props.setCaptionAllCaps(!props.captionAllCaps)} />
+
+                <div className="border-t border-[#1e2130] pt-3">
+                  <button
+                    type="button"
+                    disabled={props.isGeneratingVariants}
+                    onClick={props.generateVariants}
+                    className="w-full rounded-[7px] border border-[#262a3c] bg-[#0d0f19] px-3 py-2 text-[12px] font-medium text-[#c9cbd8] disabled:opacity-40"
+                  >
+                    {props.isGeneratingVariants ? (
+                      <span className="flex items-center justify-center gap-2"><Loader2 className="h-3 w-3 animate-spin" /> Generating…</span>
+                    ) : "Generate AI Variants"}
+                  </button>
+                  {props.captionVariants.length > 0 && (
+                    <div className="mt-2 max-h-32 overflow-y-auto space-y-1">
+                      {props.captionVariants.map((v, i) => (
+                        <div key={i} className="rounded-[5px] border border-[#262a3c] bg-[#0d0f19] px-2.5 py-1.5 text-[11.5px] text-[#c4c7d6]">{v}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-[7px] border border-[#262a3c] bg-[#0d0f19] p-2.5 max-h-24 overflow-y-auto">
+                  <p className="text-[11.5px] text-[#8a8ea3] leading-relaxed">{props.captionText}</p>
+                </div>
               </div>
             )}
           </section>
