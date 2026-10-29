@@ -153,8 +153,8 @@ export default function Dashboard() {
   const [editSettings, setEditSettings] = useState({
     trimMin: 0.05,
     trimMax: 0.15,
-    cutsMin: 2,
-    cutsMax: 5,
+    cutsMin: 3,
+    cutsMax: 6,
     zoomMin: 1,
     zoomMax: 7,
     grain: true,
