@@ -2,7 +2,7 @@ import path from "path";
 import { access } from "fs/promises";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireUserId, unauthorized } from "@/lib/session";
+import { requirePaidUserId } from "@/lib/session";
 import { assetPath, saveBytes, storageRoot, variantPath } from "@/lib/storage";
 import { exportEdit } from "@/lib/hook-export";
 import { clampSegments, composedDuration, parseWords, type Segment } from "@/lib/edit-timeline";
@@ -15,8 +15,8 @@ import type { ComposeAsset } from "@/lib/compose-export";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
-  const userId = await requireUserId();
-  if (!userId) return unauthorized();
+  const userId = await requirePaidUserId();
+  if (typeof userId !== "string") return userId;
   const body = await req.json().catch(() => null);
   const projectId = String(body?.projectId || "");
   const existing = await prisma.hookProject.findFirst({ where: { id: projectId, userId } });

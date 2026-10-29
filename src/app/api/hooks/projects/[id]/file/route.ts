@@ -2,7 +2,7 @@ import path from "path";
 import { access } from "fs/promises";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireUserId, unauthorized } from "@/lib/session";
+import { requirePaidUserId } from "@/lib/session";
 import { fileResponse } from "@/lib/file-response";
 import { storageRoot } from "@/lib/storage";
 
@@ -11,8 +11,8 @@ export const dynamic = "force-dynamic";
 type Ctx = { params: { id: string } };
 
 export async function GET(req: NextRequest, { params }: Ctx) {
-  const userId = await requireUserId();
-  if (!userId) return unauthorized();
+  const userId = await requirePaidUserId();
+  if (typeof userId !== "string") return userId;
   const project = await prisma.hookProject.findFirst({ where: { id: params.id, userId } });
   if (!project?.storageKey) return NextResponse.json({ error: "Video not found." }, { status: 404 });
   const root = path.resolve(storageRoot());

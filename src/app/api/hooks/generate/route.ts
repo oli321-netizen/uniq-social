@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireUserId, unauthorized } from "@/lib/session";
+import { requirePaidUserId } from "@/lib/session";
 import { generateHooks } from "@/lib/hooks-llm";
 import { serializeHook } from "@/lib/serialize";
 import { voiceFromParts } from "@/lib/voice";
@@ -8,8 +8,8 @@ import { voiceFromParts } from "@/lib/voice";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
-  const userId = await requireUserId();
-  if (!userId) return unauthorized();
+  const userId = await requirePaidUserId();
+  if (typeof userId !== "string") return userId;
 
   const body = await req.json().catch(() => null);
   const transcript = String(body?.transcript || "").trim();

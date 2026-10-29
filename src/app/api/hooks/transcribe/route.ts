@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { rm } from "fs/promises";
 import { prisma } from "@/lib/prisma";
-import { requireUserId, unauthorized } from "@/lib/session";
+import { requirePaidUserId } from "@/lib/session";
 import { projectPath, saveBytes } from "@/lib/storage";
 import { mediaDuration, transcribeFile } from "@/lib/transcribe";
 import { generateHooks } from "@/lib/hooks-llm";
@@ -13,8 +13,8 @@ import { DEFAULT_STYLE } from "@/lib/caption-ass";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
-  const userId = await requireUserId();
-  if (!userId) return unauthorized();
+  const userId = await requirePaidUserId();
+  if (typeof userId !== "string") return userId;
   const form = await req.formData();
   const upload = form.get("video") || form.get("file");
   if (!upload || typeof upload === "string" || typeof upload.arrayBuffer !== "function") {

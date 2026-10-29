@@ -80,7 +80,8 @@ export async function POST(req: NextRequest) {
       credits: String(plan.credits),
     },
     line_items: [{ price: priceId, quantity: 1 }],
-    success_url: `${origin}/payment-success?credits=${plan.credits}&plan=${plan.key}`,
+    allow_promotion_codes: true,
+    success_url: `${origin}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${origin}/dashboard`,
   });
 
