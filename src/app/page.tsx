@@ -1,12 +1,10 @@
 "use client";
 
-import { useState } from "react";
 import {
   Zap,
   Shield,
   Layers,
   ArrowRight,
-  Check,
   Upload,
   Shuffle,
   Film,
@@ -16,6 +14,7 @@ import {
   Clock,
   Download,
 } from "lucide-react";
+import PlanList from "@/components/hub/PlanList";
 
 const NAV_LINKS = [
   { label: "Features", href: "#features" },
@@ -254,196 +253,10 @@ function HowItWorksSection() {
 }
 
 function PricingSection() {
-  const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
-
-  const handleSubscribe = async (planKey: string) => {
-    setLoadingPlan(planKey);
-    try {
-      const res = await fetch("/api/stripe/subscribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planKey }),
-      });
-      const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
-      } else if (res.status === 401) {
-        window.location.href = "/login";
-      } else {
-        alert(data.error || "Failed to start checkout");
-      }
-    } catch {
-      window.location.href = "/login";
-    } finally {
-      setLoadingPlan(null);
-    }
-  };
-
-  const plans = [
-    {
-      key: "starter",
-      name: "Starter",
-      price: "24",
-      credits: "100",
-      perCredit: "24p",
-      save: null,
-      features: [
-        "100 credits",
-        "All edit parameters",
-        "All metadata profiles",
-        "Batch upload up to 10",
-        "1080p support",
-      ],
-      popular: false,
-    },
-    {
-      key: "growth",
-      name: "Growth",
-      price: "75",
-      credits: "500",
-      perCredit: "15p",
-      save: "38%",
-      features: [
-        "500 credits",
-        "All edit parameters",
-        "All metadata profiles",
-        "Batch upload up to 25",
-        "Up to 4K support",
-        "Priority processing",
-      ],
-      popular: false,
-    },
-    {
-      key: "pro",
-      name: "Pro",
-      price: "150",
-      credits: "1,500",
-      perCredit: "10p",
-      save: "58%",
-      features: [
-        "1,500 credits",
-        "All edit parameters",
-        "All metadata profiles",
-        "Batch upload up to 50",
-        "Up to 4K support",
-        "Priority processing",
-        "API access",
-      ],
-      popular: true,
-    },
-    {
-      key: "business",
-      name: "Business",
-      price: "350",
-      credits: "5,000",
-      perCredit: "7p",
-      save: "71%",
-      features: [
-        "5,000 credits",
-        "All edit parameters",
-        "All metadata profiles",
-        "Unlimited batch upload",
-        "Up to 4K support",
-        "Priority processing",
-        "Full API access",
-        "Priority support",
-      ],
-      popular: false,
-    },
-    {
-      key: "agency",
-      name: "Agency",
-      price: "750",
-      credits: "15,000",
-      perCredit: "5p",
-      save: "79%",
-      features: [
-        "15,000 credits",
-        "All edit parameters",
-        "All metadata profiles",
-        "Unlimited batch upload",
-        "Up to 4K support",
-        "Priority processing",
-        "Full API access",
-        "Dedicated support",
-        "Custom metadata profiles",
-      ],
-      popular: false,
-    },
-  ];
-
   return (
-    <section id="pricing" className="py-32 relative">
-      <div className="mx-auto max-w-7xl px-6">
-        <div className="text-center mb-16">
-          <p className="text-sm font-medium text-purple-400 tracking-wider uppercase mb-3">
-            Pricing
-          </p>
-          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
-            Simple, credit-based{" "}
-            <span className="gradient-text">pricing</span>
-          </h2>
-          <p className="mt-4 text-slate-400 max-w-xl mx-auto">
-            1 credit = 1 unique video. Start with 5 free credits, then buy what you need.
-            Bigger packs, bigger savings.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          {plans.map((plan) => (
-            <div
-              key={plan.name}
-              className={`relative p-6 rounded-2xl border transition-all duration-300 ${
-                plan.popular
-                  ? "border-purple-500/30 bg-purple-500/[0.03] glow-purple"
-                  : "border-white/5 bg-white/[0.02] hover:border-white/10"
-              }`}
-            >
-              {plan.popular && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-purple-600 text-white text-xs font-semibold px-3 py-1 rounded-full whitespace-nowrap">
-                  Most Popular
-                </div>
-              )}
-
-              <div className="mb-5">
-                <h3 className="text-base font-semibold mb-1">{plan.name}</h3>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-3xl font-bold">£{plan.price}</span>
-                </div>
-                <p className="text-slate-500 text-xs mt-1.5">
-                  {plan.credits} credits &middot; {plan.perCredit}/credit
-                </p>
-                {plan.save && (
-                  <span className="inline-block mt-2 text-[10px] font-semibold text-green-400 bg-green-400/10 border border-green-400/20 px-2 py-0.5 rounded-full">
-                    SAVE {plan.save}
-                  </span>
-                )}
-              </div>
-
-              <ul className="space-y-2.5 mb-6">
-                {plan.features.map((f) => (
-                  <li key={f} className="flex items-start gap-2.5 text-sm">
-                    <Check className="h-3.5 w-3.5 text-purple-400 mt-0.5 flex-shrink-0" />
-                    <span className="text-slate-300 text-xs">{f}</span>
-                  </li>
-                ))}
-              </ul>
-
-              <button
-                type="button"
-                onClick={() => handleSubscribe(plan.key)}
-                disabled={loadingPlan === plan.key}
-                className={`w-full py-2.5 rounded-xl font-medium text-sm text-center transition-all cursor-pointer disabled:opacity-50 ${
-                  plan.popular
-                    ? "bg-purple-600 hover:bg-purple-700 text-white hover:shadow-lg hover:shadow-purple-500/20"
-                    : "bg-white/5 hover:bg-white/10 text-white border border-white/10"
-                }`}
-              >
-                {loadingPlan === plan.key ? "Loading..." : "Get Started"}
-              </button>
-            </div>
-          ))}
-        </div>
+    <section id="pricing" className="py-20 relative">
+      <div className="mx-auto max-w-6xl px-6">
+        <PlanList />
 
         {/* Top-up credits */}
         <div className="mt-16 text-center">

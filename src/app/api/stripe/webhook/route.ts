@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { stripe, SUBSCRIPTION_PLANS } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
+import { activatePlan } from "@/lib/billing";
 import Stripe from "stripe";
 
 export async function POST(req: NextRequest) {
@@ -44,21 +45,14 @@ export async function POST(req: NextRequest) {
           const sub = await stripe.subscriptions.retrieve(subscriptionId);
           const priceId = sub.items.data[0]?.price?.id;
           const periodEnd = (sub as unknown as { current_period_end: number }).current_period_end;
-
-          await prisma.user.update({
-            where: { id: userId },
-            data: {
-              plan: planKey,
-              stripeSubscriptionId: subscriptionId,
-              stripePriceId: priceId || null,
-              subscriptionStatus: "active",
-              currentPeriodEnd: new Date(periodEnd * 1000),
-              credits: { increment: credits },
-            },
+          await activatePlan(userId, {
+            planKey,
+            credits,
+            subscriptionId,
+            priceId: priceId || null,
+            periodEnd: new Date(periodEnd * 1000),
+            source: "stripe",
           });
-          console.log(
-            `Subscription created: user ${userId} → ${planKey} (+${credits} credits)`
-          );
         }
         break;
       }

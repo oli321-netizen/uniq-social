@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireUserId, unauthorized } from "@/lib/session";
+import { requirePaidUserId } from "@/lib/session";
 import { assetPath, saveBytes } from "@/lib/storage";
 import { hasAudio, mediaDuration } from "@/lib/transcribe";
 
@@ -23,8 +23,8 @@ const EXT: Record<string, string> = {
 };
 
 export async function POST(req: NextRequest, { params }: Ctx) {
-  const userId = await requireUserId();
-  if (!userId) return unauthorized();
+  const userId = await requirePaidUserId();
+  if (typeof userId !== "string") return userId;
   const project = await prisma.hookProject.findFirst({ where: { id: params.id, userId } });
   if (!project) return NextResponse.json({ error: "Project not found." }, { status: 404 });
   const form = await req.formData().catch(() => null);

@@ -202,7 +202,7 @@ export default function AiEditor() {
         <h1 className="text-[15px] font-medium">AI Editor</h1>
         <p className="text-[#b4b7c8]">AI Editor is part of a paid plan. You are on {access.label}.</p>
         <p className="text-[12px] text-[#8a8ea3]">Subscribe to generate edits. Credits are used when a video is created.</p>
-        <Link href="/account" className="mt-2 inline-flex h-10 items-center justify-center rounded-[9px] bg-[#7c5cff] px-4 font-medium text-white">
+        <Link href="/account#plans" className="mt-2 inline-flex h-10 items-center justify-center rounded-[9px] bg-[#7c5cff] px-4 font-medium text-white">
           View plans
         </Link>
       </div>

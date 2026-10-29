@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireUserId, unauthorized } from "@/lib/session";
+import { requirePaidUserId } from "@/lib/session";
 import { parseCues, type CaptionCue } from "@/lib/caption-cues";
 
 export const dynamic = "force-dynamic";
@@ -7,8 +7,8 @@ export const dynamic = "force-dynamic";
 const LANGUAGES = new Set(["en", "es", "fr", "de", "pt", "it", "nl", "pl", "ja", "ko", "zh", "ar", "hi"]);
 
 export async function POST(req: NextRequest) {
-  const userId = await requireUserId();
-  if (!userId) return unauthorized();
+  const userId = await requirePaidUserId();
+  if (typeof userId !== "string") return userId;
   const body = await req.json().catch(() => null);
   const language = String(body?.language || "");
   const cues = parseCues(body?.cues);
