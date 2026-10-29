@@ -15,11 +15,13 @@ export async function renderVariant(input: {
   words: WordStamp[];
   plan: VariantPlan;
   duration: number;
+  onCommand?: (args: string[]) => void;
 }) {
   const source = await probeVideo(input.videoPath);
   const original = await hasAudio(input.videoPath);
   const silences = input.plan.silence ? await detectSilences(input.videoPath, -32, 0.45) : [];
-  const keeps = markZoom(expand(input.plan, silences, input.duration), input.plan);
+  const keeps = markZoom(expand(input.plan, silences, input.duration), input.plan).filter((range) => range.end - range.start >= 0.34 && range.start < input.duration - 0.05);
+  if (!keeps.length) throw new Error("Couldn't make a real edit from that clip.");
   const speed = input.plan.speed;
   const size = { width: 1080, height: 1920 };
   const words = remapWords(input.words, keeps, speed);
@@ -31,28 +33,30 @@ export async function renderVariant(input: {
     await writeFile(assPath, buildAss(cues, captionStyle(input.plan), size));
   }
   const useMusic = Boolean(input.musicPath);
-  const filter = filterGraph(keeps, speed, size, input.plan, composed, original, useMusic, assPath);
-  const args = ["-y", "-i", input.videoPath];
+  const filter = filterGraph(keeps, speed, size, input.plan, composed, original, useMusic, assPath, source, input.duration);
+  const args = ["-y", "-fflags", "+genpts", "-i", input.videoPath];
   if (useMusic && input.musicPath) args.push("-stream_loop", "-1", "-i", input.musicPath);
-  args.push("-filter_complex", filter, "-map", "[vout]", "-map", "[aout]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-shortest", input.outputPath);
+  args.push("-filter_complex", filter, "-map", "[vout]", "-map", "[aout]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-r", "30", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-shortest", input.outputPath);
+  input.onCommand?.(["ffmpeg", ...args]);
   try {
     await runFfmpeg(args);
   } finally {
     if (assPath) await rm(assPath, { force: true }).catch(() => {});
   }
-  return { keeps: keeps.length, width: size.width, height: size.height, captions: Boolean(assPath), seconds: composed, source };
+  return { keeps: keeps.length, width: size.width, height: size.height, captions: Boolean(assPath), seconds: composed, source, ffmpeg: ["ffmpeg", ...args] };
 }
 
 function expand(plan: VariantPlan, silences: { start: number; end: number }[], duration: number): Range[] {
   const ranges: Range[] = [];
-  const segments = plan.segments.length ? plan.segments : [{ start: 0, end: duration }];
+  const segments = plan.segments.length ? plan.segments : [];
   for (const segment of segments) {
-    const start = clamp(segment.start, 0, Math.max(0, duration - 0.4), 0);
-    const end = clamp(segment.end, start + 0.4, duration, duration);
-    if (plan.silence) ranges.push(...invert(start, end, silences));
-    else ranges.push({ start, end, zoom: false });
+    const start = alignTime(clamp(segment.start, 0, Math.max(0, duration - 0.34), 0));
+    const end = alignTime(clamp(segment.end, 0, duration, 0));
+    if (!(end - start >= 0.34) || start >= duration - 0.05) continue;
+    if (plan.silence) ranges.push(...invert(start, end, silences).filter((range) => range.end - range.start >= 0.34 && range.start < duration - 0.05));
+    else ranges.push({ start, end: Math.min(end, duration), zoom: false });
   }
-  return ranges.length ? ranges : [{ start: 0, end: Math.max(0.4, duration), zoom: false }];
+  return ranges;
 }
 
 function markZoom(ranges: Range[], plan: VariantPlan) {
@@ -75,24 +79,26 @@ function captionStyle(plan: VariantPlan): CaptionStyle {
   return style;
 }
 
-function filterGraph(keeps: Range[], speed: number, size: { width: number; height: number }, plan: VariantPlan, composed: number, original: boolean, music: boolean, assPath: string) {
+function filterGraph(keeps: Range[], speed: number, size: { width: number; height: number }, plan: VariantPlan, composed: number, original: boolean, music: boolean, assPath: string, source: { pixFmt: string; transfer: string }, duration: number) {
   const parts: string[] = [];
   const videos: string[] = [];
   const audios: string[] = [];
   const rate = speed.toFixed(3);
+  const picture = pixelPrep(source.pixFmt, source.transfer);
+  const tempo = Math.abs(speed - 1) > 0.001 ? `,setpts=(PTS-STARTPTS)/${rate}` : "";
   keeps.forEach((range, index) => {
-    const start = range.start.toFixed(3);
-    const end = range.end.toFixed(3);
+    const start = Math.max(0, Math.min(range.start, duration)).toFixed(3);
+    const end = Math.max(range.start + 0.34, Math.min(range.end, duration)).toFixed(3);
     const frame = range.zoom ? zoomChain(size, plan.zoomScale) : fitChain(size);
-    parts.push(`[0:v]trim=start=${start}:end=${end},setpts=(PTS-STARTPTS)/${rate},${frame}[v${index}]`);
+    parts.push(`[0:v]trim=start=${start}:end=${end},setpts=PTS-STARTPTS,fps=30,${picture},${frame},setsar=1${tempo}[v${index}]`);
     videos.push(`[v${index}]`);
     if (original && plan.keepOriginal) {
-      const tempo = Math.abs(speed - 1) > 0.001 ? `,atempo=${rate}` : "";
-      parts.push(`[0:a]atrim=start=${start}:end=${end},asetpts=PTS-STARTPTS${tempo},aformat=sample_rates=48000:channel_layouts=stereo[a${index}]`);
+      const atempo = Math.abs(speed - 1) > 0.001 ? `,atempo=${rate}` : "";
+      parts.push(`[0:a]atrim=start=${start}:end=${end},asetpts=PTS-STARTPTS,aresample=async=1:first_pts=0${atempo},aformat=sample_rates=48000:channel_layouts=stereo[a${index}]`);
       audios.push(`[a${index}]`);
     }
   });
-  parts.push(`${videos.join("")}concat=n=${keeps.length}:v=1:a=0[vc]`);
+  parts.push(`${videos.join("")}concat=n=${keeps.length}:v=1:a=0,format=yuv420p,fps=30[vc]`);
   if (assPath) {
     const fonts = path.join(process.cwd(), "public", "fonts");
     parts.push(`[vc]subtitles=${escapeFilter(assPath)}:fontsdir=${escapeFilter(fonts)}[vout]`);
@@ -122,14 +128,20 @@ function filterGraph(keeps: Range[], speed: number, size: { width: number; heigh
   return parts.join(";");
 }
 
+function pixelPrep(pixFmt: string, transfer: string) {
+  const hdr = /smpte2084|arib-std-b67|bt2020-10/i.test(`${transfer} ${pixFmt}`);
+  if (hdr) return "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709:t=bt709:m=bt709:r=tv,format=yuv420p";
+  return "format=yuv420p";
+}
+
 function fitChain(size: { width: number; height: number }) {
-  return `scale=${size.width}:${size.height}:force_original_aspect_ratio=increase,crop=${size.width}:${size.height},setsar=1,fps=30,format=yuv420p`;
+  return `scale=${size.width}:${size.height}:force_original_aspect_ratio=increase:flags=bicubic,crop=${size.width}:${size.height}`;
 }
 
 function zoomChain(size: { width: number; height: number }, scale: number) {
   const grownW = even(size.width * scale);
   const grownH = even(size.height * scale);
-  return `scale=${grownW}:${grownH}:force_original_aspect_ratio=increase,crop=${size.width}:${size.height},setsar=1,fps=30,format=yuv420p`;
+  return `scale=${grownW}:${grownH}:force_original_aspect_ratio=increase:flags=bicubic,crop=${size.width}:${size.height}`;
 }
 
 function invert(start: number, end: number, silences: { start: number; end: number }[]): Range[] {
@@ -181,10 +193,17 @@ async function detectSilences(file: string, noiseDb: number, minSec: number) {
 }
 
 async function probeVideo(file: string) {
-  const { stdout } = await exec("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", file]);
-  const [width, height] = String(stdout).trim().split("x").map(Number);
-  if (!width || !height) throw new Error("Could not read that video.");
-  return { width, height };
+  const { stdout } = await exec("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_streams", "-of", "json", file]);
+  const data = JSON.parse(stdout) as { streams?: { width?: number; height?: number; pix_fmt?: string; color_transfer?: string; side_data_list?: { rotation?: number }[] }[] };
+  const stream = data.streams && data.streams[0];
+  if (!stream?.width || !stream.height) throw new Error("Could not read that video.");
+  let rotation = 0;
+  const side = stream.side_data_list || [];
+  for (let index = 0; index < side.length; index += 1) {
+    const value = Number(side[index]?.rotation);
+    if (Number.isFinite(value) && value !== 0) rotation = value;
+  }
+  return { width: stream.width, height: stream.height, pixFmt: stream.pix_fmt || "", transfer: stream.color_transfer || "", rotation };
 }
 
 async function hasAudio(file: string) {
@@ -198,6 +217,10 @@ async function hasAudio(file: string) {
 
 function even(value: number) {
   return Math.max(2, Math.round(value / 2) * 2);
+}
+
+function alignTime(value: number) {
+  return Math.round(value * 30) / 30;
 }
 
 function clamp(value: number, min: number, max: number, fallback: number) {
