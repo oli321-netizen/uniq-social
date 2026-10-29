@@ -4,46 +4,64 @@ import path from "path";
 import { applyPreset, buildAss, type CaptionStyle } from "@/lib/caption-ass";
 import { buildCues } from "@/lib/caption-cues";
 import type { WordStamp } from "@/lib/edit-timeline";
-import type { AiPlan } from "@/lib/ai-editor/plan";
+import type { VariantPlan } from "@/lib/ai-editor/types";
 
 type Range = { start: number; end: number; zoom: boolean };
 
-export async function renderAiVideo(input: { videoPath: string; outputPath: string; words: WordStamp[]; plan: AiPlan; duration: number; window?: { start: number; end: number } }) {
-  const source = await probe(input.videoPath);
-  const windowStart = input.window ? bound(input.window.start, 0, Math.max(0, input.duration - 0.4)) : input.plan.trimStart;
-  const windowEnd = input.window ? bound(input.window.end, windowStart + 0.4, input.duration) : Math.max(input.plan.trimStart + 0.4, input.duration - input.plan.trimEnd);
-  if (!(windowEnd - windowStart >= 0.4)) throw new Error("That clip is too short to render.");
-  const silences = input.plan.silence ? await detectSilences(input.videoPath, input.plan.silenceDb, input.plan.silenceMin) : [];
-  const keeps = input.plan.silence ? invert(windowStart, windowEnd, silences) : [{ start: windowStart, end: windowEnd, zoom: false }];
-  const marked = keeps.map((range) => ({
-    ...range,
-    zoom: input.plan.zoom && input.plan.zoomMoments.some((moment) => moment.end > range.start && moment.start < range.end),
-  }));
-  const speed = input.plan.tighten ? input.plan.speed : 1;
-  const size = input.plan.aspect === "9:16" ? { width: 1080, height: 1920 } : evenSize(source.width, source.height);
-  const words = remapWords(input.words, marked, speed);
-  const composed = marked.reduce((sum, range) => sum + (range.end - range.start) / speed, 0);
+export async function renderVariant(input: {
+  videoPath: string;
+  musicPath?: string;
+  outputPath: string;
+  words: WordStamp[];
+  plan: VariantPlan;
+  duration: number;
+}) {
+  const source = await probeVideo(input.videoPath);
+  const original = await hasAudio(input.videoPath);
+  const silences = input.plan.silence ? await detectSilences(input.videoPath, -32, 0.45) : [];
+  const keeps = markZoom(expand(input.plan, silences, input.duration), input.plan);
+  const speed = input.plan.speed;
+  const size = { width: 1080, height: 1920 };
+  const words = remapWords(input.words, keeps, speed);
+  const composed = keeps.reduce((sum, range) => sum + (range.end - range.start) / speed, 0);
   let assPath = "";
   if (input.plan.captions && words.length) {
     const cues = buildCues(words, [{ id: "all", start: 0, end: Math.max(0.4, composed), speed: 1 }]);
     assPath = input.outputPath.replace(/\.mp4$/i, ".ass");
     await writeFile(assPath, buildAss(cues, captionStyle(input.plan), size));
   }
-  const filter = filterGraph(marked, speed, size, input.plan.zoomScale, assPath);
+  const useMusic = Boolean(input.musicPath);
+  const filter = filterGraph(keeps, speed, size, input.plan, composed, original, useMusic, assPath);
+  const args = ["-y", "-i", input.videoPath];
+  if (useMusic && input.musicPath) args.push("-stream_loop", "-1", "-i", input.musicPath);
+  args.push("-filter_complex", filter, "-map", "[vout]", "-map", "[aout]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-shortest", input.outputPath);
   try {
-    await runFfmpeg(["-y", "-i", input.videoPath, "-filter_complex", filter, "-map", "[vout]", "-map", "[aout]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", input.outputPath]);
+    await runFfmpeg(args);
   } finally {
     if (assPath) await rm(assPath, { force: true }).catch(() => {});
   }
-  return { keeps: marked.length, width: size.width, height: size.height, captions: Boolean(assPath) };
+  return { keeps: keeps.length, width: size.width, height: size.height, captions: Boolean(assPath), seconds: composed, source };
 }
 
-function bound(value: number, min: number, max: number) {
-  if (!Number.isFinite(value)) return min;
-  return Math.min(max, Math.max(min, value));
+function expand(plan: VariantPlan, silences: { start: number; end: number }[], duration: number): Range[] {
+  const ranges: Range[] = [];
+  const segments = plan.segments.length ? plan.segments : [{ start: 0, end: duration }];
+  for (const segment of segments) {
+    const start = clamp(segment.start, 0, Math.max(0, duration - 0.4), 0);
+    const end = clamp(segment.end, start + 0.4, duration, duration);
+    if (plan.silence) ranges.push(...invert(start, end, silences));
+    else ranges.push({ start, end, zoom: false });
+  }
+  return ranges.length ? ranges : [{ start: 0, end: Math.max(0.4, duration), zoom: false }];
 }
 
-function captionStyle(plan: AiPlan): CaptionStyle {
+function markZoom(ranges: Range[], plan: VariantPlan) {
+  if (!plan.zoom || !ranges.length) return ranges;
+  const target = plan.silence ? ranges[Math.min(ranges.length - 1, 1)] : ranges[ranges.length - 1];
+  return ranges.map((range) => ({ ...range, zoom: range === target }));
+}
+
+function captionStyle(plan: VariantPlan): CaptionStyle {
   const id = plan.captionStyle === "karaoke" ? "karaoke" : plan.captionStyle === "minimal" ? "minimal" : "outline";
   const style = applyPreset(id);
   style.position = plan.captionPosition;
@@ -57,25 +75,49 @@ function captionStyle(plan: AiPlan): CaptionStyle {
   return style;
 }
 
-function filterGraph(keeps: Range[], speed: number, size: { width: number; height: number }, zoomScale: number, assPath: string) {
+function filterGraph(keeps: Range[], speed: number, size: { width: number; height: number }, plan: VariantPlan, composed: number, original: boolean, music: boolean, assPath: string) {
   const parts: string[] = [];
-  const labels: string[] = [];
+  const videos: string[] = [];
+  const audios: string[] = [];
+  const rate = speed.toFixed(3);
   keeps.forEach((range, index) => {
     const start = range.start.toFixed(3);
     const end = range.end.toFixed(3);
-    const rate = speed.toFixed(3);
-    const frame = range.zoom ? zoomChain(size, zoomScale) : fitChain(size);
+    const frame = range.zoom ? zoomChain(size, plan.zoomScale) : fitChain(size);
     parts.push(`[0:v]trim=start=${start}:end=${end},setpts=(PTS-STARTPTS)/${rate},${frame}[v${index}]`);
-    const tempo = Math.abs(speed - 1) > 0.001 ? `,atempo=${rate}` : "";
-    parts.push(`[0:a]atrim=start=${start}:end=${end},asetpts=PTS-STARTPTS${tempo},aformat=sample_rates=48000:channel_layouts=stereo[a${index}]`);
-    labels.push(`[v${index}][a${index}]`);
+    videos.push(`[v${index}]`);
+    if (original && plan.keepOriginal) {
+      const tempo = Math.abs(speed - 1) > 0.001 ? `,atempo=${rate}` : "";
+      parts.push(`[0:a]atrim=start=${start}:end=${end},asetpts=PTS-STARTPTS${tempo},aformat=sample_rates=48000:channel_layouts=stereo[a${index}]`);
+      audios.push(`[a${index}]`);
+    }
   });
-  parts.push(`${labels.join("")}concat=n=${keeps.length}:v=1:a=1[vc][aout]`);
+  parts.push(`${videos.join("")}concat=n=${keeps.length}:v=1:a=0[vc]`);
   if (assPath) {
     const fonts = path.join(process.cwd(), "public", "fonts");
     parts.push(`[vc]subtitles=${escapeFilter(assPath)}:fontsdir=${escapeFilter(fonts)}[vout]`);
   } else {
     parts.push("[vc]format=yuv420p[vout]");
+  }
+  const speech = original && plan.keepOriginal;
+  if (speech) parts.push(`${audios.join("")}concat=n=${keeps.length}:v=0:a=1[sp]`);
+  const length = Math.max(0.4, composed).toFixed(3);
+  if (music) {
+    const fade = plan.fade ? `,afade=t=in:st=0:d=0.3,afade=t=out:st=${Math.max(0, composed - 0.45).toFixed(3)}:d=0.4` : "";
+    const offset = Math.max(0, plan.musicOffset).toFixed(3);
+    parts.push(`[1:a]atrim=start=${offset}:duration=${length},asetpts=PTS-STARTPTS,volume=${plan.musicVolume.toFixed(3)}${fade},aformat=sample_rates=48000:channel_layouts=stereo[m]`);
+    if (speech && plan.duck) {
+      parts.push(`[m][sp]sidechaincompress=threshold=0.02:ratio=8:attack=25:release=280:makeup=1.5[md]`);
+      parts.push(`[md][sp]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]`);
+    } else if (speech) {
+      parts.push(`[m][sp]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]`);
+    } else {
+      parts.push(`[m]atrim=0:${length}[aout]`);
+    }
+  } else if (speech) {
+    parts.push("[sp]aformat=sample_rates=48000:channel_layouts=stereo[aout]");
+  } else {
+    parts.push(`anullsrc=channel_layout=stereo:sample_rate=48000,atrim=0:${length}[aout]`);
   }
   return parts.join(";");
 }
@@ -101,7 +143,7 @@ function invert(start: number, end: number, silences: { start: number; end: numb
     if (cursor >= end) break;
   }
   if (end - cursor >= 0.2) keeps.push({ start: cursor, end, zoom: false });
-  if (keeps.length === 0) keeps.push({ start, end: Math.max(start + 0.4, end), zoom: false });
+  if (!keeps.length) keeps.push({ start, end: Math.max(start + 0.4, end), zoom: false });
   return keeps;
 }
 
@@ -122,7 +164,7 @@ function remapWords(words: WordStamp[], keeps: Range[], speed: number): WordStam
   return mapped;
 }
 
-export async function detectSilences(file: string, noiseDb: number, minSec: number) {
+async function detectSilences(file: string, noiseDb: number, minSec: number) {
   const stderr = await runCollect(["-i", file, "-af", `silencedetect=noise=${noiseDb}dB:d=${minSec.toFixed(2)}`, "-f", "null", "-"]);
   const ranges: { start: number; end: number }[] = [];
   let start: number | null = null;
@@ -138,21 +180,29 @@ export async function detectSilences(file: string, noiseDb: number, minSec: numb
   return ranges;
 }
 
-async function probe(file: string) {
+async function probeVideo(file: string) {
   const { stdout } = await exec("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", file]);
   const [width, height] = String(stdout).trim().split("x").map(Number);
-  if (!width || !height) throw new Error("Could not read the video size.");
+  if (!width || !height) throw new Error("Could not read that video.");
   return { width, height };
 }
 
-function evenSize(width: number, height: number) {
-  const cap = 1280;
-  const scale = Math.min(1, cap / Math.max(width, height));
-  return { width: even(width * scale), height: even(height * scale) };
+async function hasAudio(file: string) {
+  try {
+    const { stdout } = await exec("ffprobe", ["-v", "error", "-select_streams", "a", "-show_entries", "stream=codec_type", "-of", "csv=p=0", file]);
+    return stdout.includes("audio");
+  } catch {
+    return false;
+  }
 }
 
 function even(value: number) {
   return Math.max(2, Math.round(value / 2) * 2);
+}
+
+function clamp(value: number, min: number, max: number, fallback: number) {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, value));
 }
 
 function escapeFilter(filePath: string) {
@@ -178,7 +228,7 @@ function runFfmpeg(args: string[]) {
     child.on("close", (code) => {
       clearTimeout(timer);
       if (code === 0) resolve();
-      else reject(new Error((stderr.trim().split("\n").slice(-4).join(" ") || `ffmpeg exited ${code}`).slice(0, 400)));
+      else reject(new Error(stderr.trim().split("\n").slice(-4).join(" ").slice(0, 300) || `ffmpeg exited ${code}`));
     });
   });
 }
@@ -193,7 +243,7 @@ function runCollect(args: string[]) {
     child.on("error", reject);
     child.on("close", (code) => {
       if (code === 0) resolve(stderr);
-      else reject(new Error(stderr.trim().split("\n").slice(-3).join(" ").slice(0, 400)));
+      else reject(new Error(stderr.trim().split("\n").slice(-3).join(" ").slice(0, 240)));
     });
   });
 }
@@ -212,7 +262,7 @@ function exec(command: string, args: string[]) {
     child.on("error", reject);
     child.on("close", (code) => {
       if (code === 0) resolve({ stdout });
-      else reject(new Error(stderr.trim().slice(0, 300) || `${command} failed`));
+      else reject(new Error(stderr.trim().slice(0, 240) || `${command} failed`));
     });
   });
 }
