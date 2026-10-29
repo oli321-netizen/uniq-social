@@ -3,11 +3,12 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Clapperboard, Film, LayoutGrid, Settings, SlidersHorizontal, UserRound, Users } from "lucide-react";
+import { AudioLines, BarChart3, Clapperboard, Film, LayoutGrid, Settings, SlidersHorizontal, UserRound, Users } from "lucide-react";
 
 export const SECTIONS = [
   { href: "/dashboard", label: "Process", icon: Clapperboard },
   { href: "/hub/editor-lab", label: "Editor Lab", icon: Film },
+  { href: "/hub/ai-editor", label: "AI Editor", icon: AudioLines },
   { href: "/hub/variants", label: "Variants", icon: LayoutGrid },
   { href: "/hub/creators", label: "Creators", icon: UserRound },
   { href: "/hub/results", label: "Results", icon: BarChart3 },
