@@ -457,7 +457,7 @@ export async function POST(req: NextRequest) {
     let prev = 0;
     for (const cp of uniqueCuts) {
       if (cp - prev < 0.3) continue;
-      const msTrim = parseFloat(rand(0.005, 0.03).toFixed(3));
+      const msTrim = parseFloat(rand(0.01, 0.05).toFixed(3));
       const segEnd = parseFloat((cp - msTrim).toFixed(3));
       if (segEnd > prev + 0.1) {
         segments.push([prev, segEnd]);
@@ -465,7 +465,7 @@ export async function POST(req: NextRequest) {
       prev = cp;
     }
     if (effectiveDuration - prev > 0.3) {
-      const msTrim = parseFloat(rand(0.005, 0.03).toFixed(3));
+      const msTrim = parseFloat(rand(0.01, 0.05).toFixed(3));
       segments.push([prev, parseFloat((effectiveDuration - msTrim).toFixed(3))]);
     }
 
