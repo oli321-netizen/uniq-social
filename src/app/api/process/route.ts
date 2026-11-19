@@ -47,6 +47,10 @@ interface ProcessingConfig {
   mirror: boolean;
   metadata: MetadataProfile | MetadataProfile[];
   thumbnailRandomise: boolean;
+  hiddenEmoji: boolean;
+  speedShift: boolean;
+  cropOffset: boolean;
+  hueShift: boolean;
   captions?: CaptionConfig;
 }
 
@@ -391,6 +395,10 @@ export async function POST(req: NextRequest) {
           mirror: true,
           metadata: "random",
           thumbnailRandomise: false,
+          hiddenEmoji: true,
+          speedShift: true,
+          cropOffset: true,
+          hueShift: true,
         };
 
     const jobId = randomUUID();
@@ -427,16 +435,20 @@ export async function POST(req: NextRequest) {
     // Re-encoding alone completely changes the video bitstream.
     // Tiny invisible tweaks to brightness/contrast/saturation shift the DCT hash.
     // NO speed changes, NO intro frames, NO pixel padding — just clean re-encode.
-    const speedFactor = 1.0;
-    const brightnessDelta = parseFloat(rand(-0.01, 0.01).toFixed(4));
-    const contrastDelta = parseFloat(rand(0.99, 1.01).toFixed(4));
-    const saturationDelta = parseFloat(rand(0.98, 1.02).toFixed(4));
-    const crfValue = Math.floor(rand(18, 22));
+    // Anti-detection: speed shift — 0.5-1.5% tempo change breaks frame timing fingerprints
+    const speedFactor = config.speedShift ? parseFloat(rand(0.985, 1.015).toFixed(4)) : 1.0;
+    // Stronger colour shifts — enough to change perceptual hash but not visible
+    const brightnessDelta = parseFloat(rand(-0.03, 0.03).toFixed(4));
+    const contrastDelta = parseFloat(rand(0.97, 1.03).toFixed(4));
+    const saturationDelta = parseFloat(rand(0.96, 1.04).toFixed(4));
+    const crfValue = Math.floor(rand(18, 23));
     const gopSize = Math.floor(rand(24, 72));
-    const hueRotation = 0;
-    const gammaShift = 1.0;
-    const cropOffsetX = 0;
-    const cropOffsetY = 0;
+    // Anti-detection: hue shift — ±3° colour rotation alters frame colour hashes
+    const hueRotation = config.hueShift ? parseFloat(rand(-3, 3).toFixed(2)) : 0;
+    const gammaShift = parseFloat(rand(0.98, 1.02).toFixed(3));
+    // Anti-detection: crop offset — ±12px spatial shift changes position hash
+    const cropOffsetX = config.cropOffset ? Math.floor(rand(-12, 12)) : 0;
+    const cropOffsetY = config.cropOffset ? Math.floor(rand(-12, 12)) : 0;
     const introFadeDuration = 0;
 
     // Random parameters
@@ -475,15 +487,16 @@ export async function POST(req: NextRequest) {
     let cropH = Math.floor(origH / zoomFactor);
     cropW = cropW - (cropW % 2);
     cropH = cropH - (cropH % 2);
-    const cropX = Math.floor((origW - cropW) / 2);
-    const cropY = Math.floor((origH - cropH) / 2);
+    const cropX = Math.max(0, Math.min(origW - cropW, Math.floor((origW - cropW) / 2) + cropOffsetX));
+    const cropY = Math.max(0, Math.min(origH - cropH, Math.floor((origH - cropH) / 2) + cropOffsetY));
 
     // Build filter chain
     let vf = `crop=${cropW}:${cropH}:${cropX}:${cropY},scale=${origW}:${origH}`;
     if (config.mirror) vf += ",hflip";
     if (config.grain) vf += `,noise=alls=${config.grainIntensity}:allf=t`;
     if (config.sharpen) vf += `,unsharp=3:3:${config.sharpenAmount}:3:3:0.0`;
-    vf += `,eq=brightness=${brightnessDelta}:contrast=${contrastDelta}:saturation=${saturationDelta}`;
+    vf += `,eq=brightness=${brightnessDelta}:contrast=${contrastDelta}:saturation=${saturationDelta}:gamma=${gammaShift}`;
+    if (hueRotation !== 0) vf += `,hue=h=${hueRotation}`;
 
     // === SPEED OPTIMISATION 1: Process segments in PARALLEL (3 at a time) ===
     const segFiles: string[] = new Array(segments.length);
@@ -496,9 +509,11 @@ export async function POST(req: NextRequest) {
         const segDur = segEnd - segStart;
 
         // === SPEED OPTIMISATION 2: Use ultrafast preset with randomised CRF/GOP ===
+        const speedVf = speedFactor !== 1.0 ? `,setpts=${(1 / speedFactor).toFixed(6)}*PTS` : "";
+        const speedAf = speedFactor !== 1.0 ? `-af "atempo=${speedFactor.toFixed(4)}" ` : "";
         await execAsync(
           `ffmpeg -y -ss ${actualStart} -i "${inputPath}" -t ${segDur} ` +
-            `-vf "${vf}" -c:v libx264 -preset ultrafast -crf ${crfValue} -g ${gopSize} ` +
+            `-vf "${vf}${speedVf}" ${speedAf}-c:v libx264 -preset ultrafast -crf ${crfValue} -g ${gopSize} ` +
             `-c:a aac -b:a 128k -pix_fmt yuv420p -threads 2 "${segPath}"`,
           EXEC_OPTIONS
         );
@@ -540,8 +555,27 @@ export async function POST(req: NextRequest) {
       EXEC_OPTIONS
     );
 
+    // === Anti-detection: Hidden overlay — invisible pixel marker beats hash matching ===
+    let overlayPath = outputPath;
+    if (config.hiddenEmoji) {
+      const overlayOutput = path.join(tmpDir, "output_overlay.mp4");
+      // Draw a 2x2 pixel semi-transparent block at a random position — invisible to eye, changes frame hash
+      const ox = Math.floor(rand(10, origW - 20));
+      const oy = Math.floor(rand(10, origH - 20));
+      const r = Math.floor(rand(0, 255));
+      const g = Math.floor(rand(0, 255));
+      const b = Math.floor(rand(0, 255));
+      await execAsync(
+        `ffmpeg -y -i "${outputPath}" -vf "drawbox=x=${ox}:y=${oy}:w=2:h=2:color=0x${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}@0.03:t=fill" ` +
+          `-c:v libx264 -preset ultrafast -crf ${crfValue} -pix_fmt yuv420p -c:a copy ` +
+          `-f mp4 -brand isom -movflags +faststart "${overlayOutput}"`,
+        EXEC_OPTIONS
+      );
+      overlayPath = overlayOutput;
+    }
+
     // === Optional captions burn-in ===
-    let captionedPath = outputPath;
+    let captionedPath = overlayPath;
     if (config.captions?.enabled && config.captions.words?.length > 0) {
       const assContent = generateASS(config.captions, origW, origH);
       const assPath = path.join(tmpDir, "captions.ass");
