@@ -1,50 +1,53 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Fingerprint, CheckCircle, ArrowRight } from "lucide-react";
 
 function SuccessContent() {
   const searchParams = useSearchParams();
-  const credits = searchParams.get("credits") || "0";
-  const plan = searchParams.get("plan");
+  const sessionId = searchParams.get("session_id") || "";
+  const credits = searchParams.get("credits");
+  const [message, setMessage] = useState(sessionId ? "Checking your plan…" : "");
+
+  useEffect(() => {
+    if (!sessionId) return;
+    let cancelled = false;
+    fetch("/api/stripe/confirm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId }),
+    })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        if (res.ok && data.plan) {
+          window.location.replace(`/dashboard?upgraded=${encodeURIComponent(data.plan)}`);
+          return;
+        }
+        if (res.ok && data.topUp) {
+          window.location.replace("/dashboard");
+          return;
+        }
+        setMessage(data.error || "Payment is recorded. Your plan will update when the receipt arrives.");
+      })
+      .catch(() => {
+        if (!cancelled) setMessage("Payment is recorded. Your plan will update when the receipt arrives.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId]);
 
   return (
-    <div className="min-h-screen bg-[#0a0b14] flex items-center justify-center px-4">
-      <div className="fixed inset-0 grid-bg opacity-30 pointer-events-none" />
-
-      <div className="w-full max-w-md relative z-10 text-center">
-        <a href="/" className="inline-flex items-center gap-2 mb-8">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-500/10 border border-purple-500/20">
-            <Fingerprint className="h-5 w-5 text-purple-400" />
-          </div>
-          <span className="text-xl font-bold tracking-tight">
-            Uniq<span className="text-purple-400">Social</span>
-          </span>
+    <div className="flex min-h-screen items-center justify-center bg-[#0a0b14] px-4 text-[13px] text-[#e6e7ee]">
+      <div className="w-full max-w-md rounded-[10px] border border-[#1e2130] bg-[#10121c] p-6 text-center">
+        <h1 className="text-[16px] font-medium">Payment successful</h1>
+        <p className="mt-2 text-[12px] text-[#8a8ea3]">
+          {message || (credits ? `${credits} credits were added.` : "Your account is updating.")}
+        </p>
+        <a href="/dashboard" className="mt-4 inline-flex h-10 items-center justify-center rounded-[8px] bg-[#7c5cff] px-4 font-medium text-white">
+          Back to Process
         </a>
-
-        <div className="rounded-2xl border border-white/5 bg-white/[0.02] backdrop-blur-sm p-8">
-          <div className="flex justify-center mb-4">
-            <div className="h-16 w-16 rounded-2xl bg-green-500/10 border border-green-500/20 flex items-center justify-center">
-              <CheckCircle className="h-8 w-8 text-green-400" />
-            </div>
-          </div>
-
-          <h1 className="text-2xl font-bold mb-2">Payment successful</h1>
-          <p className="text-sm text-slate-400 mb-6">
-            {plan
-              ? `You're now on the ${plan.charAt(0).toUpperCase() + plan.slice(1)} plan. ${credits} credits have been added to your account.`
-              : `${credits} credits have been added to your account.`}
-          </p>
-
-          <a
-            href="/dashboard"
-            className="inline-flex items-center gap-2 py-3 px-8 rounded-xl font-medium text-sm bg-purple-600 hover:bg-purple-700 text-white transition-all hover:shadow-lg hover:shadow-purple-500/20"
-          >
-            Back to Dashboard
-            <ArrowRight className="h-4 w-4" />
-          </a>
-        </div>
       </div>
     </div>
   );
@@ -52,13 +55,7 @@ function SuccessContent() {
 
 export default function PaymentSuccessPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen bg-[#0a0b14] flex items-center justify-center">
-          <div className="text-purple-400">Loading...</div>
-        </div>
-      }
-    >
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-[#0a0b14] text-[13px] text-[#8a8ea3]">Loading…</div>}>
       <SuccessContent />
     </Suspense>
   );

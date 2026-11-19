@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import PlanList from "@/components/hub/PlanList";
 import {
   Fingerprint,
   ArrowLeft,
@@ -372,7 +373,7 @@ export default function AccountPage() {
             {plan === "free" ? (
               <button
                 type="button"
-                onClick={() => (window.location.href = "/#pricing")}
+                onClick={() => (window.location.href = "/account#plans")}
                 className="text-xs font-medium text-purple-400 hover:text-purple-300 transition-colors"
               >
                 Upgrade →
@@ -398,6 +399,10 @@ export default function AccountPage() {
             )}
           </div>
           )}
+        </div>
+
+        <div className="mb-8">
+          <PlanList />
         </div>
 
         {/* Redeem Code — hidden for team members */}
@@ -984,7 +989,7 @@ export default function AccountPage() {
               </button>
               {!isTeamMember && (
               <a
-                href="/#pricing"
+                href="/account#plans"
                 className="flex-1 py-3 rounded-xl text-sm font-medium bg-purple-600 hover:bg-purple-700 text-white text-center transition-all hover:shadow-lg hover:shadow-purple-500/20"
               >
                 View Plans

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireUserId, unauthorized } from "@/lib/session";
+import { requirePaidUserId } from "@/lib/session";
 import { serializeHook } from "@/lib/serialize";
 
 export const dynamic = "force-dynamic";
@@ -8,8 +8,8 @@ export const dynamic = "force-dynamic";
 type Ctx = { params: { id: string } };
 
 export async function PATCH(req: NextRequest, { params }: Ctx) {
-  const userId = await requireUserId();
-  if (!userId) return unauthorized();
+  const userId = await requirePaidUserId();
+  if (typeof userId !== "string") return userId;
   const existing = await prisma.hook.findFirst({ where: { id: params.id, userId } });
   if (!existing) return NextResponse.json({ error: "Hook not found." }, { status: 404 });
 
@@ -29,8 +29,8 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
 }
 
 export async function DELETE(_req: NextRequest, { params }: Ctx) {
-  const userId = await requireUserId();
-  if (!userId) return unauthorized();
+  const userId = await requirePaidUserId();
+  if (typeof userId !== "string") return userId;
   const existing = await prisma.hook.findFirst({ where: { id: params.id, userId } });
   if (!existing) return NextResponse.json({ error: "Hook not found." }, { status: 404 });
   await prisma.hook.delete({ where: { id: existing.id } });

@@ -21,6 +21,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import ProcessView from "@/components/hub/ProcessView";
+import PlanList from "@/components/hub/PlanList";
 
 type VideoOutput = {
   url: string;
@@ -118,10 +119,7 @@ export default function Dashboard() {
   const [showPlans, setShowPlans] = useState(false);
   const [showLowCredits, setShowLowCredits] = useState(false);
   const lowCreditsShownRef = useRef(false);
-  const [subscribingPlan, setSubscribingPlan] = useState<string | null>(null);
   const outOfCreditsRef = useRef(false);
-  const planRank: Record<string, number> = { free: 0, starter: 1, growth: 2, pro: 3, business: 4, agency: 5 };
-  const currentRank = planRank[plan] ?? 0;
   const [activeTab, setActiveTab] = useState<"process" | "history" | "stats" | "refer" | "duplicates">("process");
   const [duplicateData, setDuplicateData] = useState<any>(null);
   const [duplicatesLoading, setDuplicatesLoading] = useState(false);
@@ -1011,61 +1009,7 @@ export default function Dashboard() {
               </p>
             </div>
 
-            <div className="space-y-3 mb-6">
-              {[
-                { key: "starter", label: "Starter", credits: "100", price: "24", icon: "\u2728" },
-                { key: "growth", label: "Growth", credits: "500", price: "75", icon: "\u2728" },
-                { key: "pro", label: "Pro", credits: "1,500", price: "150", icon: "\u2b50" },
-                { key: "business", label: "Business", credits: "5,000", price: "350", icon: "\ud83c\udfe2" },
-                { key: "agency", label: "Agency", credits: "15,000", price: "750", icon: "\ud83d\udc51" },
-              ].filter((p) => (planRank[p.key] ?? 0) > currentRank).map((p) => (
-                <button
-                  type="button"
-                  key={p.key}
-                  disabled={subscribingPlan === p.key}
-                  onClick={async () => {
-                    setSubscribingPlan(p.key);
-                    try {
-                      const res = await fetch("/api/stripe/subscribe", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ planKey: p.key }),
-                      });
-                      const data = await res.json();
-                      if (data.url) {
-                        window.location.href = data.url;
-                      } else {
-                        addToast(data.error || "Failed to start checkout", "error");
-                        setSubscribingPlan(null);
-                      }
-                    } catch {
-                      addToast("Failed to connect to payment service", "error");
-                      setSubscribingPlan(null);
-                    }
-                  }}
-                  className="w-full flex items-center justify-between p-4 rounded-xl border border-white/10 bg-white/[0.02] hover:border-purple-500/30 hover:bg-purple-500/[0.03] transition-all text-left cursor-pointer disabled:opacity-50"
-                >
-                  <div>
-                    <div className="text-sm font-semibold text-white">{p.label}</div>
-                    <div className="text-xs text-slate-500">{p.credits} credits/mo</div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-semibold text-white">£{p.price}/mo</span>
-                    {subscribingPlan === p.key ? (
-                      <Loader2 className="h-4 w-4 text-purple-400 animate-spin" />
-                    ) : (
-                      <span className="text-xs font-medium text-purple-400">Subscribe →</span>
-                    )}
-                  </div>
-                </button>
-              ))}
-            </div>
-
-            {plan === "agency" && (
-              <div className="text-center py-6 text-sm text-slate-400">
-                You&apos;re on the top plan — Agency with 15,000 credits/mo.
-              </div>
-            )}
+            <PlanList />
 
             <button
               onClick={() => setShowPlans(false)}

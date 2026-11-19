@@ -19,7 +19,7 @@ export type WhisperRequest = {
 
 export type WhisperTransport = (request: WhisperRequest) => Promise<{ ok: boolean; status: number; body: string }>;
 
-export async function transcribeFile(videoPath: string, durationSec: number, transport?: WhisperTransport): Promise<Transcript> {
+export async function transcribeFile(videoPath: string, durationSec: number, transport?: WhisperTransport, language?: string): Promise<Transcript> {
   if (!(await hasAudio(videoPath))) {
     throw new Error("This video has no usable audio to transcribe.");
   }
@@ -42,7 +42,7 @@ export async function transcribeFile(videoPath: string, durationSec: number, tra
     const words: WordStamp[] = [];
     const texts: string[] = [];
     for (const piece of pieces) {
-      const part = await whisper(piece, send);
+      const part = await whisper(piece, send, language);
       texts.push(part.text);
       for (const word of part.words) {
         words.push({ word: word.word, start: word.start + offset, end: word.end + offset });
@@ -120,21 +120,24 @@ export function formatWhisperError(status: number, body: string) {
   return `OpenAI ${status}: ${detail || "request failed"}`;
 }
 
-async function whisper(filePath: string, send: WhisperTransport): Promise<{ text: string; words: WordStamp[] }> {
-  const request = await buildWhisperRequest(filePath);
+async function whisper(filePath: string, send: WhisperTransport, language?: string): Promise<{ text: string; words: WordStamp[] }> {
+  const request = await buildWhisperRequest(filePath, language);
   const res = await send(request);
   if (!res.ok) throw new Error(formatWhisperError(res.status, res.body));
   return parseVerboseJson(res.body);
 }
 
-async function buildWhisperRequest(filePath: string): Promise<WhisperRequest> {
+async function buildWhisperRequest(filePath: string, language?: string): Promise<WhisperRequest> {
   const bytes = await readFile(filePath);
-  const { body, contentType } = multipart([
+  const parts: { name: string; value?: string; filename?: string; contentType?: string; data?: Buffer }[] = [
     { name: "file", filename: "speech.mp3", contentType: "audio/mpeg", data: bytes },
     { name: "model", value: "whisper-1" },
     { name: "response_format", value: "verbose_json" },
     { name: "timestamp_granularities[]", value: "word" },
-  ]);
+  ];
+  const lang = String(language || "").trim().toLowerCase();
+  if (lang && lang !== "auto" && /^[a-z]{2}$/.test(lang)) parts.push({ name: "language", value: lang });
+  const { body, contentType } = multipart(parts);
   return { url: WHISPER_URL, contentType, body };
 }
 

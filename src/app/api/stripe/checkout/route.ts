@@ -63,6 +63,7 @@ export async function POST(req: NextRequest) {
         quantity: 1,
       },
     ],
+    allow_promotion_codes: true,
     success_url: `${origin}/payment-success?credits=${pack.credits}`,
     cancel_url: `${origin}/dashboard`,
   });

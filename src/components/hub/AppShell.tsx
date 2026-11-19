@@ -7,6 +7,7 @@ import { signOut, useSession } from "next-auth/react";
 import { Loader2, LogOut, Menu, Moon, PanelLeft, Settings, Sun, X } from "lucide-react";
 import NotificationsMenu from "@/components/hub/NotificationsMenu";
 import SectionNav from "@/components/hub/SectionNav";
+import UpgradeNotice from "@/components/hub/UpgradeNotice";
 import InstallButton from "@/components/InstallButton";
 import { useTheme } from "@/components/ThemeProvider";
 
@@ -119,6 +120,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <main id="hub-main" className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {children}
         </main>
+        <UpgradeNotice />
       </div>
     );
   }
@@ -227,6 +229,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       )}
+      <UpgradeNotice />
     </div>
   );
 }

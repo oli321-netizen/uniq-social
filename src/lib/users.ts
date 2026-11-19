@@ -124,3 +124,33 @@ export async function getUserPlan(userId: string): Promise<PlanName> {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   return (user?.plan as PlanName) ?? "free";
 }
+
+export type CreditSource = "user" | "team";
+
+/** Atomic spend of the same user/team balance as deductCredits. */
+export async function spendCredits(userId: string, amount: number): Promise<CreditSource | null> {
+  if (amount <= 0) return "user";
+  const spent = await prisma.user.updateMany({
+    where: { id: userId, credits: { gte: amount } },
+    data: { credits: { decrement: amount } },
+  });
+  if (spent.count === 1) return "user";
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user?.teamId) return null;
+  const team = await prisma.team.updateMany({
+    where: { id: user.teamId, credits: { gte: amount } },
+    data: { credits: { decrement: amount } },
+  });
+  return team.count === 1 ? "team" : null;
+}
+
+export async function refundCredits(userId: string, amount: number, source: CreditSource) {
+  if (amount <= 0) return;
+  if (source === "user") {
+    await prisma.user.update({ where: { id: userId }, data: { credits: { increment: amount } } });
+    return;
+  }
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user?.teamId) return;
+  await prisma.team.update({ where: { id: user.teamId }, data: { credits: { increment: amount } } });
+}
