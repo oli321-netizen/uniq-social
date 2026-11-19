@@ -165,6 +165,13 @@ export default function Dashboard() {
     speedShift: true,
     cropOffset: true,
     hueShift: true,
+    audioPitchShift: true,
+    audioNoiseFloor: true,
+    colourChannelShift: true,
+    encodingProfileRandom: true,
+    audioBitrateRandom: true,
+    durationPad: true,
+    borderPad: true,
   });
 
   const onDrop = useCallback((e: React.DragEvent) => {

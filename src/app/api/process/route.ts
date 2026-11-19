@@ -51,6 +51,14 @@ interface ProcessingConfig {
   speedShift: boolean;
   cropOffset: boolean;
   hueShift: boolean;
+  // New anti-detection features
+  audioPitchShift: boolean;
+  audioNoiseFloor: boolean;
+  colourChannelShift: boolean;
+  encodingProfileRandom: boolean;
+  audioBitrateRandom: boolean;
+  durationPad: boolean;
+  borderPad: boolean;
   captions?: CaptionConfig;
 }
 
@@ -399,6 +407,13 @@ export async function POST(req: NextRequest) {
           speedShift: true,
           cropOffset: true,
           hueShift: true,
+          audioPitchShift: true,
+          audioNoiseFloor: true,
+          colourChannelShift: true,
+          encodingProfileRandom: true,
+          audioBitrateRandom: true,
+          durationPad: true,
+          borderPad: true,
         };
 
     const jobId = randomUUID();
@@ -451,6 +466,28 @@ export async function POST(req: NextRequest) {
     const cropOffsetY = config.cropOffset ? Math.floor(rand(-12, 12)) : 0;
     const introFadeDuration = 0;
 
+    // Anti-detection: audio pitch shift — ±2% sample rate change (imperceptible, breaks audio fingerprint)
+    const audioPitchFactor = config.audioPitchShift ? parseFloat(rand(0.98, 1.02).toFixed(4)) : 1.0;
+
+    // Anti-detection: colour channel shift — independent R/G/B level adjustments via colorchannelmixer
+    const ccmRR = config.colourChannelShift ? parseFloat(rand(0.97, 1.03).toFixed(4)) : 1.0;
+    const ccmGG = config.colourChannelShift ? parseFloat(rand(0.97, 1.03).toFixed(4)) : 1.0;
+    const ccmBB = config.colourChannelShift ? parseFloat(rand(0.97, 1.03).toFixed(4)) : 1.0;
+
+    // Anti-detection: encoding profile randomisation — baseline/main/high
+    const h264Profiles = ["baseline", "main", "high"];
+    const h264Profile = config.encodingProfileRandom ? pickRandom(h264Profiles) : "high";
+    const h264Levels = ["3.1", "4.0", "4.1", "4.2", "5.0", "5.1"];
+    const h264Level = config.encodingProfileRandom ? pickRandom(h264Levels) : "4.1";
+
+    // Anti-detection: audio bitrate randomisation — 96k to 192k
+    const audioBitrates = [96, 112, 128, 144, 160, 192];
+    const audioBitrate = config.audioBitrateRandom ? pickRandom(audioBitrates) : 128;
+
+    // Anti-detection: audio EQ micro-adjustments — subtle high/low pass
+    const audioHighpass = config.audioNoiseFloor ? Math.floor(rand(15, 35)) : 0;
+    const audioLowpass = config.audioNoiseFloor ? Math.floor(rand(18000, 19500)) : 0;
+
     // Random parameters
     const startTrim = parseFloat(rand(config.trimMin, config.trimMax).toFixed(3));
     const zoomPct = parseFloat(rand(config.zoomMin, config.zoomMax).toFixed(2));
@@ -497,6 +534,8 @@ export async function POST(req: NextRequest) {
     if (config.sharpen) vf += `,unsharp=3:3:${config.sharpenAmount}:3:3:0.0`;
     vf += `,eq=brightness=${brightnessDelta}:contrast=${contrastDelta}:saturation=${saturationDelta}:gamma=${gammaShift}`;
     if (hueRotation !== 0) vf += `,hue=h=${hueRotation}`;
+    // Anti-detection: independent RGB channel shifts — changes colour fingerprint without visible effect
+    if (config.colourChannelShift) vf += `,colorchannelmixer=rr=${ccmRR}:gg=${ccmGG}:bb=${ccmBB}`;
 
     // === SPEED OPTIMISATION 1: Process segments in PARALLEL (3 at a time) ===
     const segFiles: string[] = new Array(segments.length);
@@ -510,11 +549,27 @@ export async function POST(req: NextRequest) {
 
         // === SPEED OPTIMISATION 2: Use ultrafast preset with randomised CRF/GOP ===
         const speedVf = speedFactor !== 1.0 ? `,setpts=${(1 / speedFactor).toFixed(6)}*PTS` : "";
-        const speedAf = speedFactor !== 1.0 ? `-af "atempo=${speedFactor.toFixed(4)}" ` : "";
+
+        // Build audio filter chain
+        const afFilters: string[] = [];
+        if (speedFactor !== 1.0) afFilters.push(`atempo=${speedFactor.toFixed(4)}`);
+        // Anti-detection: audio pitch shift — change sample rate then resample back (imperceptible ±2%)
+        if (audioPitchFactor !== 1.0) {
+          afFilters.push(`asetrate=44100*${audioPitchFactor.toFixed(4)}`);
+          afFilters.push("aresample=44100");
+        }
+        // Anti-detection: subtle EQ shift — micro high/low pass alters audio frequency fingerprint
+        if (audioHighpass > 0) afFilters.push(`highpass=f=${audioHighpass}`);
+        if (audioLowpass > 0) afFilters.push(`lowpass=f=${audioLowpass}`);
+        const afArg = afFilters.length > 0 ? `-af "${afFilters.join(",")}" ` : "";
+
+        // Anti-detection: H.264 profile/level randomisation
+        const profileArg = config.encodingProfileRandom ? `-profile:v ${h264Profile} -level ${h264Level} ` : "";
+
         await execAsync(
           `ffmpeg -y -ss ${actualStart} -i "${inputPath}" -t ${segDur} ` +
-            `-vf "${vf}${speedVf}" ${speedAf}-c:v libx264 -preset ultrafast -crf ${crfValue} -g ${gopSize} ` +
-            `-c:a aac -b:a 128k -pix_fmt yuv420p -threads 2 "${segPath}"`,
+            `-vf "${vf}${speedVf}" ${afArg}-c:v libx264 -preset ultrafast -crf ${crfValue} -g ${gopSize} ` +
+            `${profileArg}-c:a aac -b:a ${audioBitrate}k -pix_fmt yuv420p -threads 2 "${segPath}"`,
           EXEC_OPTIONS
         );
         segFiles[i] = segPath;
@@ -574,8 +629,68 @@ export async function POST(req: NextRequest) {
       overlayPath = overlayOutput;
     }
 
+    // === Anti-detection: Audio noise floor — imperceptible white noise mixed into audio ===
+    let noisePath = overlayPath;
+    if (config.audioNoiseFloor) {
+      const noiseOutput = path.join(tmpDir, "output_noise.mp4");
+      // Mix very quiet white noise (-60dB to -50dB) into the audio track — changes audio hash completely
+      // Get duration of current output for noise generation
+      const { stdout: durOut } = await execAsync(
+        `ffprobe -v quiet -show_entries format=duration -of csv=p=0 "${overlayPath}"`,
+        EXEC_OPTIONS
+      );
+      const noiseDur = parseFloat(durOut.trim()) || 10;
+      await execAsync(
+        `ffmpeg -y -i "${overlayPath}" -f lavfi -t ${noiseDur.toFixed(3)} -i "anoisesrc=d=${noiseDur.toFixed(3)}:c=white:a=0.001" ` +
+          `-filter_complex "[0:a][1:a]amix=inputs=2:duration=first:weights=1 0.003[aout]" ` +
+          `-map 0:v -map "[aout]" -c:v copy -c:a aac -b:a ${audioBitrate}k ` +
+          `-f mp4 -brand isom -movflags +faststart "${noiseOutput}"`,
+        EXEC_OPTIONS
+      );
+      noisePath = noiseOutput;
+    }
+
+    // === Anti-detection: Border padding — add 1-2px border then crop back to original size ===
+    let borderPath = noisePath;
+    if (config.borderPad) {
+      const borderOutput = path.join(tmpDir, "output_border.mp4");
+      // Pad by 2px on each side with edge colour, then crop back — subtly shifts all pixel positions
+      const padAmt = Math.floor(rand(1, 3)); // 1-2 pixels
+      const padW = origW + padAmt * 2;
+      const padH = origH + padAmt * 2;
+      // Ensure even dimensions
+      const evenPadW = padW - (padW % 2);
+      const evenPadH = padH - (padH % 2);
+      await execAsync(
+        `ffmpeg -y -i "${noisePath}" -vf "pad=${evenPadW}:${evenPadH}:${padAmt}:${padAmt}:edge,crop=${origW}:${origH}:${padAmt}:${padAmt}" ` +
+          `-c:v libx264 -preset ultrafast -crf ${crfValue} -pix_fmt yuv420p -c:a copy ` +
+          `-f mp4 -brand isom -movflags +faststart "${borderOutput}"`,
+        EXEC_OPTIONS
+      );
+      borderPath = borderOutput;
+    }
+
+    // === Anti-detection: Duration micro-pad — add tiny black+silent padding at start/end ===
+    let padPath = borderPath;
+    if (config.durationPad) {
+      const padOutput = path.join(tmpDir, "output_pad.mp4");
+      // Add 10-80ms of black+silence at start and/or end — changes total duration fingerprint
+      const startPadMs = Math.floor(rand(10, 80));
+      const endPadMs = Math.floor(rand(10, 80));
+      const startPadSec = (startPadMs / 1000).toFixed(3);
+      const endPadSec = (endPadMs / 1000).toFixed(3);
+      await execAsync(
+        `ffmpeg -y -i "${borderPath}" -vf "tpad=start_duration=${startPadSec}:stop_duration=${endPadSec}:start_mode=clone:stop_mode=clone" ` +
+          `-af "adelay=${startPadMs}|${startPadMs},apad=pad_dur=${endPadSec}" ` +
+          `-c:v libx264 -preset ultrafast -crf ${crfValue} -pix_fmt yuv420p -c:a aac -b:a ${audioBitrate}k ` +
+          `-f mp4 -brand isom -movflags +faststart "${padOutput}"`,
+        EXEC_OPTIONS
+      );
+      padPath = padOutput;
+    }
+
     // === Optional captions burn-in ===
-    let captionedPath = overlayPath;
+    let captionedPath = padPath;
     if (config.captions?.enabled && config.captions.words?.length > 0) {
       const assContent = generateASS(config.captions, origW, origH);
       const assPath = path.join(tmpDir, "captions.ass");
@@ -584,7 +699,7 @@ export async function POST(req: NextRequest) {
       const captionOutput = path.join(tmpDir, "output_captioned.mp4");
       // Burn subtitles using ASS filter — re-encode video with captions overlay
       await execAsync(
-        `ffmpeg -y -i "${outputPath}" -vf "ass=${assPath}" ` +
+        `ffmpeg -y -i "${padPath}" -vf "ass=${assPath}" ` +
           `-c:v libx264 -preset ultrafast -crf ${crfValue} -pix_fmt yuv420p -c:a copy ` +
           `-f mp4 -brand isom -movflags +faststart "${captionOutput}"`,
         EXEC_OPTIONS

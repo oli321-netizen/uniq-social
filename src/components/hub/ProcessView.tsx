@@ -21,6 +21,13 @@ export type ProcessorSettings = {
   speedShift: boolean;
   cropOffset: boolean;
   hueShift: boolean;
+  audioPitchShift: boolean;
+  audioNoiseFloor: boolean;
+  colourChannelShift: boolean;
+  encodingProfileRandom: boolean;
+  audioBitrateRandom: boolean;
+  durationPad: boolean;
+  borderPad: boolean;
 };
 
 type Profile = "capcut" | "snapchat" | "iphone" | "random";
@@ -272,9 +279,18 @@ export default function ProcessView(props: {
               <div className="pb-2">
                 <Toggle label="Hidden Overlay" detail="Invisible pixel marker — beats hash matching" on={settings.hiddenEmoji} onClick={() => patch({ hiddenEmoji: !settings.hiddenEmoji })} />
                 <Toggle label="Speed Shift" detail="0.5–1.5% tempo change — breaks frame timing" on={settings.speedShift} onClick={() => patch({ speedShift: !settings.speedShift })} />
-                <Toggle label="Crop Offset" detail="±8px spatial shift — changes position hash" on={settings.cropOffset} onClick={() => patch({ cropOffset: !settings.cropOffset })} />
-                <Toggle label="Hue Shift" detail="±2° colour rotation — alters frame colours" on={settings.hueShift} onClick={() => patch({ hueShift: !settings.hueShift })} />
+                <Toggle label="Crop Offset" detail="±12px spatial shift — changes position hash" on={settings.cropOffset} onClick={() => patch({ cropOffset: !settings.cropOffset })} />
+                <Toggle label="Hue Shift" detail="±3° colour rotation — alters frame colours" on={settings.hueShift} onClick={() => patch({ hueShift: !settings.hueShift })} />
                 <Toggle label="Randomise Thumbnail" detail="Unique first-frame fingerprint" on={settings.thumbnailRandomise} onClick={() => patch({ thumbnailRandomise: !settings.thumbnailRandomise })} />
+                <div className="mt-2 mb-1 text-[11px] font-medium text-[#7c5cff] uppercase tracking-wide">Audio</div>
+                <Toggle label="Audio Pitch Shift" detail="±2% pitch — breaks audio fingerprint" on={settings.audioPitchShift} onClick={() => patch({ audioPitchShift: !settings.audioPitchShift })} />
+                <Toggle label="Audio Noise Floor" detail="Imperceptible noise + EQ shift" on={settings.audioNoiseFloor} onClick={() => patch({ audioNoiseFloor: !settings.audioNoiseFloor })} />
+                <Toggle label="Audio Bitrate Jitter" detail="Randomise 96–192kbps per copy" on={settings.audioBitrateRandom} onClick={() => patch({ audioBitrateRandom: !settings.audioBitrateRandom })} />
+                <div className="mt-2 mb-1 text-[11px] font-medium text-[#7c5cff] uppercase tracking-wide">Encoding</div>
+                <Toggle label="Colour Channel Shift" detail="Independent RGB level offsets" on={settings.colourChannelShift} onClick={() => patch({ colourChannelShift: !settings.colourChannelShift })} />
+                <Toggle label="Encoding Profile Random" detail="Randomise H.264 profile & level" on={settings.encodingProfileRandom} onClick={() => patch({ encodingProfileRandom: !settings.encodingProfileRandom })} />
+                <Toggle label="Border Pad" detail="Sub-pixel position shift via edge padding" on={settings.borderPad} onClick={() => patch({ borderPad: !settings.borderPad })} />
+                <Toggle label="Duration Pad" detail="10–80ms padding — unique duration per copy" on={settings.durationPad} onClick={() => patch({ durationPad: !settings.durationPad })} />
               </div>
             )}
           </section>
