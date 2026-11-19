@@ -662,7 +662,7 @@ export async function POST(req: NextRequest) {
       const evenPadW = padW - (padW % 2);
       const evenPadH = padH - (padH % 2);
       await execAsync(
-        `ffmpeg -y -i "${noisePath}" -vf "pad=${evenPadW}:${evenPadH}:${padAmt}:${padAmt}:edge,crop=${origW}:${origH}:${padAmt}:${padAmt}" ` +
+        `ffmpeg -y -i "${noisePath}" -vf "pad=${evenPadW}:${evenPadH}:${padAmt}:${padAmt}:black,crop=${origW}:${origH}:${padAmt}:${padAmt}" ` +
           `-c:v libx264 -preset ultrafast -crf ${crfValue} -pix_fmt yuv420p -c:a copy ` +
           `-f mp4 -brand isom -movflags +faststart "${borderOutput}"`,
         EXEC_OPTIONS
